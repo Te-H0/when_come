@@ -24,7 +24,7 @@ async function odsayFetch(path: string): Promise<unknown> {
     if (code === "-98" || code === "-99") return null
     if (code === "-8") throw new AppError("ODsay: 파라미터 형식 오류", 400)
     if (code === "-9") throw new AppError("ODsay: 필수 파라미터 누락", 400)
-    throw new AppError(`ODsay 오류 [${code}]: ${err.message ?? ""}`, 502)
+    throw new AppError(`ODsay 오류 [${code}]${err.message ? `: ${err.message}` : ""}`, 502)
   }
   return data.result
 }
@@ -75,6 +75,20 @@ export interface OdsayLane {
   subwayExCode?: number
 }
 
+export interface OdsayStationRoute {
+  busNo: string
+  busID: string
+  busLocalBlID: string  // 서울 버스 API busRouteId
+  stID: string          // 서울 버스 API stId
+  stationOrd: number    // 서울 버스 API ord
+  type: number
+}
+
+function hasStationRoutes(val: unknown): val is { lane: OdsayStationRoute[] } {
+  return val !== null && typeof val === "object" && "lane" in val &&
+    Array.isArray((val as Record<string, unknown>)["lane"])
+}
+
 export interface OdsaySubPath {
   trafficType: number   // 1: 지하철, 2: 버스, 3: 도보
   sectionTime: number
@@ -102,6 +116,13 @@ export async function realtimeStation(stationId: string): Promise<OdsayArrival[]
     `/realtimeStation?lang=0&stationID=${stationId}&apiKey=${apiKey()}`,
   )
   return hasReal(result) ? result.real : []
+}
+
+export async function stationInfo(stationId: string): Promise<OdsayStationRoute[]> {
+  const result = await odsayFetch(
+    `/stationInfo?stationID=${stationId}&apiKey=${apiKey()}`,
+  )
+  return hasStationRoutes(result) ? result.lane : []
 }
 
 export async function searchPubTransPath(

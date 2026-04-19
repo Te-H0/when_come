@@ -96,6 +96,7 @@ Deno.test("route-search — 지하철 경로를 올바르게 매핑한다", asyn
       assertEquals(body[0].segments[0].lines[0].routeName, "수도권 2호선")
       assertEquals(body[0].segments[0].lines[0].subwayCode, 2)
       assertEquals(body[0].segments[0].lines[0].busRouteId, null)
+      assertEquals(body[0].segments[0].lines[0].busType, null)
     })
   )
 })
@@ -113,7 +114,7 @@ Deno.test("route-search — 버스 경로를 올바르게 매핑한다", async (
               sectionTime: 25,
               startName: "강남역",
               endName: "홍대입구",
-              lane: [{ busNo: "273", busLocalBlID: "100100118" }],
+              lane: [{ busNo: "273", busLocalBlID: "100100118", type: 1 }],
             },
           ],
         },
@@ -126,6 +127,7 @@ Deno.test("route-search — 버스 경로를 올바르게 매핑한다", async (
       assertEquals(seg.type, "bus")
       assertEquals(seg.lines[0].routeName, "273")
       assertEquals(seg.lines[0].busRouteId, "100100118")
+      assertEquals(seg.lines[0].busType, 1)
       assertEquals(seg.lines[0].subwayCode, null)
     })
   )

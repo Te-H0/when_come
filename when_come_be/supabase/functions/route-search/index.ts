@@ -13,6 +13,7 @@ interface RouteSearchRequest {
 interface RouteSegmentLine {
   routeName: string
   busRouteId: string | null
+  busType: number | null   // ODsay 버스 노선 타입 (1:간선 2:지선 3:순환 4:광역 5:공항 6:마을)
   subwayCode: number | null
 }
 
@@ -66,6 +67,7 @@ export async function handler(req: Request): Promise<Response> {
           lines: sub.lane?.map((l): RouteSegmentLine => ({
             routeName: l.name ?? l.busNo ?? "",
             busRouteId: l.busLocalBlID ?? null,
+            busType: l.type ?? null,
             subwayCode: l.subwayCode ?? null,
           })) ?? [],
         })),
