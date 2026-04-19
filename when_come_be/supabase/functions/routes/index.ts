@@ -39,6 +39,10 @@ interface DeleteRouteResponse {
   ok: true
 }
 
+interface PatchRouteResponse {
+  ok: true
+}
+
 // ─── DB 클라이언트 ─────────────────────────────────────────────
 // ANON_KEY + 사용자 JWT → RLS가 auth.uid() = user_id 를 직접 검증
 function supabaseClient(authHeader: string) {
@@ -182,6 +186,34 @@ async function deleteRoute(req: Request, id: string): Promise<DeleteRouteRespons
   return { ok: true }
 }
 
+// ─── PATCH /routes/:id — is_active 토글 ───────────────────────
+async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse> {
+  const user = await authGuard(req)
+  const db = supabaseClient(req.headers.get("Authorization")!)
+
+  let body: { is_active?: boolean }
+  try {
+    body = await req.json()
+  } catch {
+    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400)
+  }
+
+  if (typeof body.is_active !== "boolean") {
+    throw new AppError("is_active(boolean) 이 필요합니다", 400)
+  }
+
+  const { data, error } = await db
+    .from("routes")
+    .update({ is_active: body.is_active })
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .select("id")
+
+  if (error) throw new AppError("경로 수정 실패", 500)
+  if (!data || data.length === 0) throw new AppError("경로를 찾을 수 없습니다", 404)
+  return { ok: true }
+}
+
 // ─── URL 라우팅 ────────────────────────────────────────────────
 // /routes 또는 /functions/v1/routes/:id 양쪽 경로 패턴 지원
 function extractRouteId(pathname: string): string | undefined {
@@ -206,6 +238,13 @@ export async function handler(req: Request): Promise<Response> {
       const data = await createRoute(req)
       return new Response(JSON.stringify(data), {
         status: 201,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    if (req.method === "PATCH" && id) {
+      const data = await patchRoute(req, id)
+      return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
     }
