@@ -11,17 +11,17 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RouteNodeCard, { RouteNode } from "../components/RouteNodeCard";
 import SearchResultNode, { SearchNodeData } from "../components/SearchResultNode";
-import StopPicker from "../components/StopPicker";
+import PlacePicker from "../components/PlacePicker";
 import BottomNav from "@/components/BottomNav";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { searchStops, searchRoutes, saveRoute } from "@/lib/api";
+import { searchStops, searchRoutes, saveRoute, getOdsayArrival } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { subwayCodeToLineName } from "@/utils/transitColors";
-import type { ApiStop, ApiRouteOption } from "@/types/api";
+import type { ApiPlace, ApiStop, ApiRouteOption } from "@/types/api";
 import { toast } from "sonner";
 
 function apiRouteToSearchResult(route: ApiRouteOption): {
@@ -47,7 +47,11 @@ function apiRouteToSearchResult(route: ApiRouteOption): {
       name: seg.startName,
       type: 'bus',
       availableBuses: seg.lines.map(l => l.routeName),
-      busRouteId: seg.lines[0]?.busRouteId ?? undefined,
+      busLines: seg.lines.map(l => ({
+        routeName: l.routeName,
+        busRouteId: l.busRouteId ?? undefined,
+        busType: l.busType,
+      })),
     }
   })
   return { routeId: route.id, totalTime: route.totalMinutes, transferCount: route.transferCount, nodes }
@@ -58,8 +62,8 @@ export default function SetupRoute() {
   const queryClient = useQueryClient();
 
   const [routeName, setRouteName] = useState('');
-  const [startStop, setStartStop] = useState<ApiStop | null>(null);
-  const [endStop, setEndStop] = useState<ApiStop | null>(null);
+  const [startPlace, setStartPlace] = useState<ApiPlace | null>(null);
+  const [endPlace, setEndPlace] = useState<ApiPlace | null>(null);
 
   const [nodes, setNodes] = useState<RouteNode[]>([]);
   const [searchResults, setSearchResults] = useState<ReturnType<typeof apiRouteToSearchResult>[]>([]);
@@ -96,10 +100,13 @@ export default function SetupRoute() {
   };
 
   const handleAutoSearch = async () => {
-    if (!startStop || !endStop) return;
+    if (!startPlace || !endPlace) return;
     setIsSearching(true);
     try {
-      const routes = await searchRoutes(startStop.lng, startStop.lat, endStop.lng, endStop.lat);
+      const routes = await searchRoutes(
+        parseFloat(startPlace.x), parseFloat(startPlace.y),
+        parseFloat(endPlace.x), parseFloat(endPlace.y),
+      );
       const results = routes.map(apiRouteToSearchResult);
       setSearchResults(results);
       if (results.length > 0) setExpandedRoutes(new Set([results[0].routeId]));
@@ -116,9 +123,10 @@ export default function SetupRoute() {
     setExpandedRoutes(next);
   };
 
-  const handleAddNodeFromSearch = (node: SearchNodeData) => {
+  const handleAddNodeFromSearch = async (node: SearchNodeData) => {
+    const nodeId = `node-${Date.now()}`;
     const newNode: RouteNode = {
-      id: `node-${Date.now()}`,
+      id: nodeId,
       name: node.name,
       type: node.type,
       order: nodes.length + 1,
@@ -126,16 +134,32 @@ export default function SetupRoute() {
       lat: node.lat,
       lng: node.lng,
       busNumbers: node.type === 'bus' ? (node.availableBuses ?? []) : undefined,
+      busLines: node.busLines,
       subwayLine: node.subwayLine,
       direction: node.direction,
-      busRouteId: node.busRouteId,
     };
     setNodes(prev => [...prev, newNode]);
+
+    // 자동검색은 정류장 ID가 없으므로 이름으로 실제 ODsay ID 조회
+    if (node.type === 'bus' && !node.stopId) {
+      try {
+        const stops = await searchStops(node.name);
+        const match = stops.find(s => s.type === 'bus') ?? stops[0];
+        if (match) {
+          setNodes(prev => prev.map(n =>
+            n.id === nodeId ? { ...n, stopId: match.id } : n
+          ));
+        }
+      } catch {
+        // 조회 실패 시 무시
+      }
+    }
   };
 
-  const handleAddNodeManual = (stop: ApiStop) => {
+  const handleAddNodeManual = async (stop: ApiStop) => {
+    const nodeId = `node-${Date.now()}`;
     const newNode: RouteNode = {
-      id: `node-${Date.now()}`,
+      id: nodeId,
       name: stop.name,
       type: stop.type,
       order: nodes.length + 1,
@@ -147,6 +171,18 @@ export default function SetupRoute() {
     setNodes(prev => [...prev, newNode]);
     setManualQuery('');
     setManualResults([]);
+
+    if (stop.type === 'bus') {
+      try {
+        const arrivals = await getOdsayArrival(stop.id);
+        const busNumbers = [...new Set(arrivals.map(a => a.routeName))];
+        setNodes(prev => prev.map(n =>
+          n.id === nodeId ? { ...n, busNumbers } : n
+        ));
+      } catch {
+        // 실패하면 사용자가 직접 입력
+      }
+    }
   };
 
   const handleRemoveNode = (nodeId: string) => {
@@ -176,19 +212,23 @@ export default function SetupRoute() {
               routeName: node.subwayLine ?? '',
               stationName: node.name,
             }]
-          : (node.busNumbers ?? []).map(busNum => ({
-              odsayRouteId: node.busRouteId ?? busNum,
-              routeName: busNum,
-              busRouteId: node.busRouteId,
-            })),
+          : (node.busNumbers ?? []).map(busNum => {
+              const lineInfo = node.busLines?.find(l => l.routeName === busNum);
+              return {
+                odsayRouteId: lineInfo?.busRouteId ?? busNum,
+                routeName: busNum,
+                busRouteId: lineInfo?.busRouteId ?? node.busRouteId,
+                busType: lineInfo?.busType,
+              };
+            }),
       }));
 
       await saveRoute({
         name: routeName.trim(),
-        originName: startStop?.name ?? '출발지',
-        destinationName: endStop?.name ?? '도착지',
-        originCoords: startStop ? { lat: startStop.lat, lng: startStop.lng } : undefined,
-        destinationCoords: endStop ? { lat: endStop.lat, lng: endStop.lng } : undefined,
+        originName: startPlace?.name ?? '출발지',
+        destinationName: endPlace?.name ?? '도착지',
+        originCoords: startPlace ? { lat: parseFloat(startPlace.y), lng: parseFloat(startPlace.x) } : undefined,
+        destinationCoords: endPlace ? { lat: parseFloat(endPlace.y), lng: parseFloat(endPlace.x) } : undefined,
         stops,
       }, jwt);
 
@@ -231,17 +271,17 @@ export default function SetupRoute() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <StopPicker
+            <PlacePicker
               label="출발지"
-              placeholder="정류장·역 검색"
-              value={startStop}
-              onChange={setStartStop}
+              placeholder="장소·주소 검색"
+              value={startPlace}
+              onChange={setStartPlace}
             />
-            <StopPicker
+            <PlacePicker
               label="도착지"
-              placeholder="정류장·역 검색"
-              value={endStop}
-              onChange={setEndStop}
+              placeholder="장소·주소 검색"
+              value={endPlace}
+              onChange={setEndPlace}
             />
           </div>
         </Card>
@@ -298,7 +338,7 @@ export default function SetupRoute() {
               <Button
                 onClick={handleAutoSearch}
                 className="w-full bg-[#111827] hover:bg-[#1F2937] rounded-xl h-11 text-[15px] font-medium"
-                disabled={!startStop || !endStop || isSearching}
+                disabled={!startPlace || !endPlace || isSearching}
               >
                 {isSearching ? (
                   <Loader2 className="w-[18px] h-[18px] mr-2 animate-spin" />

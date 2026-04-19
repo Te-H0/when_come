@@ -1,3 +1,10 @@
+export interface ApiPlace {
+  name: string
+  address: string
+  x: string  // longitude
+  y: string  // latitude
+}
+
 export interface ApiStop {
   id: string
   name: string
@@ -11,6 +18,7 @@ export interface ApiRouteLine {
   routeName: string
   busRouteId: string | null
   subwayCode: number | null
+  busType: number | null
 }
 
 export interface ApiRouteSegment {
@@ -36,6 +44,7 @@ export interface ApiStopRoute {
   bus_route_id: string | null
   station_ord: number | null
   station_name: string | null
+  bus_type: number | null
 }
 
 export interface ApiRouteStop {
@@ -57,6 +66,14 @@ export interface ApiRoute {
   is_active: boolean
   created_at: string
   route_stops: ApiRouteStop[]
+}
+
+export interface ApiOdsayArrival {
+  routeID: string
+  routeName: string
+  arrivalTime1: number | null  // 분 단위
+  arrivalTime2: number | null
+  type: number  // ODsay 버스 타입 코드
 }
 
 export interface ApiBusArrival {

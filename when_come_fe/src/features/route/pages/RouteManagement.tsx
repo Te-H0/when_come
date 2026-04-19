@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, MoreVertical, Pencil, Trash2, Bus, Train, Loader2 } from "lucide-react";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import BottomNav from "@/components/BottomNav";
 import { getBusType, getSubwayColor } from "@/utils/transitColors";
-import { listRoutes, deleteRoute } from "@/lib/api";
+import { listRoutes, deleteRoute, updateRoute } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { mapApiRoute } from "@/lib/mappers";
 import type { SavedRoute } from "@/lib/mockData";
@@ -34,9 +34,12 @@ export default function RouteManagement() {
 
   const routes = useMemo<SavedRoute[]>(() => (apiRoutes ?? []).map(mapApiRoute), [apiRoutes]);
 
-  const [localActive, setLocalActive] = useState<Record<string, boolean>>({});
-  const getIsActive = (route: SavedRoute) =>
-    localActive[route.id] ?? route.isActive;
+  const toggleMutation = useMutation({
+    mutationFn: (route: SavedRoute) =>
+      updateRoute(route.id, { is_active: !route.isActive }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['routes'] }),
+    onError: () => toast.error('변경에 실패했습니다'),
+  });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -123,7 +126,7 @@ export default function RouteManagement() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="text-[17px] font-semibold text-[#111827]">{route.name}</h3>
-                      {getIsActive(route) && (
+                      {route.isActive && (
                         <span className="px-2 py-0.5 rounded-md bg-[#111827] text-white text-[11px] font-medium">
                           활성
                         </span>
@@ -160,10 +163,9 @@ export default function RouteManagement() {
                 <div className="flex items-center justify-between">
                   <span className="text-[14px] text-[#6B7280]">활성화</span>
                   <Switch
-                    checked={getIsActive(route)}
-                    onCheckedChange={(checked) =>
-                      setLocalActive(prev => ({ ...prev, [route.id]: checked }))
-                    }
+                    checked={route.isActive}
+                    onCheckedChange={() => toggleMutation.mutate(route)}
+                    disabled={toggleMutation.isPending}
                   />
                 </div>
               </div>

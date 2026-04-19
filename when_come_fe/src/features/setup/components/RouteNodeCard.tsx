@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import { getBusType, getSubwayColor } from "@/utils/transitColors";
+import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 
 export interface RouteNode {
   id: string;
@@ -13,11 +13,11 @@ export interface RouteNode {
   lat?: number;
   lng?: number;
   busNumbers?: string[];
+  busLines?: { routeName: string; busRouteId?: string; busType?: number | null }[];
   subwayLine?: string;
   direction?: string;
   order: number;
-  // 버스 도착 API 호출에 필요 (route-search에서 채워짐)
-  busRouteId?: string;
+  busRouteId?: string;   // deprecated: busLines 사용
 }
 
 interface RouteNodeCardProps {
@@ -58,7 +58,8 @@ export default function RouteNodeCard({
       return getSubwayColor(node.subwayLine).color;
     }
     if (node.type === 'bus' && node.busNumbers && node.busNumbers.length > 0) {
-      return getBusType(node.busNumbers[0]).color;
+      const firstLine = node.busLines?.find(l => l.routeName === node.busNumbers![0]);
+      return getBusTypeByOdsay(firstLine?.busType, node.busNumbers[0]).color;
     }
     return '#6B7280'; // 기본 색상
   };
@@ -113,7 +114,8 @@ export default function RouteNodeCard({
             <div className="space-y-2">
               <div className="flex flex-wrap gap-1.5">
                 {node.busNumbers?.map((busNum) => {
-                  const busInfo = getBusType(busNum);
+                  const lineInfo = node.busLines?.find(l => l.routeName === busNum);
+                  const busInfo = getBusTypeByOdsay(lineInfo?.busType, busNum);
                   return (
                     <span
                       key={busNum}

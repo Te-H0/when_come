@@ -28,6 +28,7 @@ export function mapApiRoute(route: ApiRoute): SavedRoute {
             busRouteId: r.bus_route_id,
             stationOrd: r.station_ord,
             stationName: r.station_name,
+            busType: r.bus_type,
           })),
         },
       })),

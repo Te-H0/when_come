@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import BottomNav from "@/components/BottomNav";
-import { getBusType, getSubwayColor } from "@/utils/transitColors";
+import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,7 +46,7 @@ export default function Home() {
   const currentSegment = currentRoute?.segments[currentSegmentIndex];
   const nextSegment = currentRoute?.segments[currentSegmentIndex + 1];
 
-  const { data: arrivalData } = useQuery({
+  const { data: arrivalData, refetch: refetchArrival } = useQuery({
     queryKey: ['arrival', currentSegment?.stop.id, currentSegment?.stop.type, currentSegment?.stop.name],
     queryFn: () => fetchArrival(currentSegment!.stop),
     refetchInterval: 30_000,
@@ -55,9 +55,7 @@ export default function Home() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([
-      refetch(),
-    ]);
+    await Promise.all([refetch(), refetchArrival()]);
     setIsRefreshing(false);
   };
 
@@ -267,7 +265,8 @@ export default function Home() {
               ) : (
                 currentSegment.stop.lines.map((line, idx) => {
                   const isSubway = currentSegment.stop.type === 'subway';
-                  const busTypeInfo = !isSubway ? getBusType(line) : null;
+                  const stopRoute = currentSegment.stop.stopRoutes?.find(r => r.routeName === line);
+                  const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null;
                   const subwayColorInfo = isSubway ? getSubwayColor(line) : null;
                   const arrivalText = getArrivalDisplay(currentSegment.stop, line, idx, arrivalData ?? null);
                   const arrivalMin = getArrivalMin(currentSegment.stop, line, idx, arrivalData ?? null);

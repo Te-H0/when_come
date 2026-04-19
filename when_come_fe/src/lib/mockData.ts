@@ -5,6 +5,7 @@ export interface StopRouteInfo {
   busRouteId?: string | null
   stationOrd?: number | null
   stationName?: string | null
+  busType?: number | null
 }
 
 export interface TransitStop {

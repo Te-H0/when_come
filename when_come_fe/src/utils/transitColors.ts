@@ -22,6 +22,23 @@ export const subwayApiCodeToLineName = (lineName: string): string => {
   return map[lineName] ?? lineName
 }
 
+// ODsay busType 코드 → 색상 (busType이 null이면 번호 기반 추론으로 fallback)
+export const getBusTypeByOdsay = (
+  busType: number | null | undefined,
+  fallbackBusNumber: string,
+): { type: string; color: string; bgColor: string; label: string } => {
+  const map: Record<number, { type: string; color: string; bgColor: string; label: string }> = {
+    1: { type: 'trunk',    color: '#2563EB', bgColor: '#DBEAFE', label: '간선' },
+    2: { type: 'branch',   color: '#16A34A', bgColor: '#DCFCE7', label: '지선' },
+    3: { type: 'circular', color: '#CA8A04', bgColor: '#FEF9C3', label: '순환' },
+    4: { type: 'metro',    color: '#DC2626', bgColor: '#FEE2E2', label: '광역' },
+    5: { type: 'airport',  color: '#4B5563', bgColor: '#F3F4F6', label: '공항' },
+    6: { type: 'village',  color: '#65A30D', bgColor: '#ECFCCB', label: '마을' },
+  }
+  if (busType != null && map[busType]) return map[busType]
+  return getBusType(fallbackBusNumber)
+}
+
 // 버스 노선 타입 구분
 export const getBusType = (busNumber: string): {
   type: string;
@@ -31,73 +48,37 @@ export const getBusType = (busNumber: string): {
 } => {
   const num = busNumber.replace(/[^0-9]/g, '');
   
-  // 공항버스 (6xxx)
-  if (num.startsWith('6')) {
-    return {
-      type: 'airport',
-      color: '#4B5563', // gray-600
-      bgColor: '#F3F4F6', // gray-100
-      label: '공항'
-    };
+  // 공항버스: 6001, 6002 등 60으로 시작하는 4자리
+  if (num.length >= 4 && num.startsWith('60')) {
+    return { type: 'airport', color: '#4B5563', bgColor: '#F3F4F6', label: '공항' };
   }
-  
-  // 광역버스 (M, 1xxx, 9xxx)
-  if (busNumber.startsWith('M') || num.startsWith('1') || num.startsWith('9')) {
-    return {
-      type: 'metro',
-      color: '#DC2626', // red-600
-      bgColor: '#FEE2E2', // red-100
-      label: '광역'
-    };
+
+  // 광역버스: M, 9xxx, 1xxx
+  if (busNumber.startsWith('M') || num.startsWith('9') || num.startsWith('1')) {
+    return { type: 'metro', color: '#DC2626', bgColor: '#FEE2E2', label: '광역' };
   }
-  
-  // 간선버스 (3xxx, 4xxx)
-  if (num.startsWith('3') || num.startsWith('4')) {
-    return {
-      type: 'trunk',
-      color: '#2563EB', // blue-600
-      bgColor: '#DBEAFE', // blue-100
-      label: '간선'
-    };
+
+  // 간선버스: 2xxx, 3xxx, 4xxx
+  if (num.startsWith('2') || num.startsWith('3') || num.startsWith('4')) {
+    return { type: 'trunk', color: '#2563EB', bgColor: '#DBEAFE', label: '간선' };
   }
-  
-  // 지선버스 (5xxx, 6xxx대 일부)
-  if (num.startsWith('5')) {
-    return {
-      type: 'branch',
-      color: '#16A34A', // green-600
-      bgColor: '#DCFCE7', // green-100
-      label: '지선'
-    };
+
+  // 지선버스: 5xxx, 6xxx, 7xxx
+  if (num.startsWith('5') || num.startsWith('6') || num.startsWith('7')) {
+    return { type: 'branch', color: '#16A34A', bgColor: '#DCFCE7', label: '지선' };
   }
-  
-  // 순환버스 (0x)
+
+  // 순환버스: 0x
   if (num.length <= 2 && num.startsWith('0')) {
-    return {
-      type: 'circular',
-      color: '#CA8A04', // yellow-600
-      bgColor: '#FEF9C3', // yellow-100
-      label: '순환'
-    };
+    return { type: 'circular', color: '#CA8A04', bgColor: '#FEF9C3', label: '순환' };
   }
-  
-  // 마을버스 (기본 2자리 숫자)
+
+  // 마을버스: 짧은 숫자
   if (num.length <= 2) {
-    return {
-      type: 'village',
-      color: '#65A30D', // lime-600
-      bgColor: '#ECFCCB', // lime-100
-      label: '마을'
-    };
+    return { type: 'village', color: '#65A30D', bgColor: '#ECFCCB', label: '마을' };
   }
-  
-  // 일반버스 (기타)
-  return {
-    type: 'general',
-    color: '#65A30D', // lime-600
-    bgColor: '#ECFCCB', // lime-100
-    label: '일반'
-  };
+
+  return { type: 'general', color: '#65A30D', bgColor: '#ECFCCB', label: '일반' };
 };
 
 // 지하철 노선별 색상
