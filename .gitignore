@@ -42,3 +42,5 @@ yarn-error.log*
 
 # 타입체크 캐시
 *.tsbuildinfo
+when_come_be/.claude/settings.local.json
+when_come_fe/.claude/settings.local.json
