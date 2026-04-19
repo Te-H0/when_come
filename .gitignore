@@ -25,6 +25,9 @@ supabase/.temp
 .DS_Store
 Thumbs.db
 
+# Claude Code
+.claude/settings.local.json
+
 # 에디터
 .vscode/
 .idea/
