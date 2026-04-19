@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"^-.*\\\\.\\(json|js|ts\\)$\")",
+      "Bash(mkdir -p /Users/te___ho/Desktop/teho/dev/project/when_come/when_come_fe/.claude/rules)",
+      "Bash(mkdir -p /Users/te___ho/Desktop/teho/dev/project/when_come/when_come_fe/docs/architecture)",
+      "Bash(npx vite *)",
+      "Read(//Users/te___ho/.claude/**)",
+      "Read(//Users/te___ho/.claude/skills/**)",
+      "Bash(curl -s http://localhost:5173)"
+    ]
+  }
+}
