@@ -93,7 +93,11 @@ export interface OdsaySubPath {
   trafficType: number   // 1: 지하철, 2: 버스, 3: 도보
   sectionTime: number
   startName?: string
+  startID?: number      // ODsay 정류장 ID
+  startArsID?: string   // 서울 버스 ARS 번호
   endName?: string
+  endID?: number
+  endArsID?: string
   lane?: OdsayLane[]
 }
 

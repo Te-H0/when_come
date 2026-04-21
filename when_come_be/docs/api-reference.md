@@ -182,7 +182,7 @@ GET /searchPubTransPathT?SX={lng}&SY={lat}&EX={lng}&EY={lat}&apiKey={key}
 | `subwayCode` | 지하철 호선 코드 → [4. 코드 매핑](#42-odsay-지하철-호선-subwaycode) |
 | `subwayExCode` | 지하철 확장 호선 코드 |
 
-> **⚠️ 현재 이슈:** `route-search` 응답에 lane의 `type` 필드가 포함되지 않아 프론트가 버스 번호로 타입을 추론 중. 서울 외 광역버스(경기) 등에서 오분류 가능. `busType` 필드 추가 검토 필요 → collab-notes 참고.
+> `route-search` 응답의 `lines[].busType`으로 이 코드가 전달됨. 저장 시 `stop_routes.bus_type`에 보관.
 
 ---
 
@@ -230,37 +230,66 @@ GET /arrive/getArrInfoByRoute?serviceKey={key}&stId={stId}&busRouteId={id}&ord={
 
 ---
 
-### 2-2. 노선 전체 정류장 목록 `getRouteAllStaionList`
+### 2-2. 정류장명으로 정류장 조회 `getStationByName`
 
 ```
-GET /busRouteInfo/getRouteAllStaionList?serviceKey={key}&busRouteId={id}&resultType=json
+GET /stationinfo/getStationByName?ServiceKey={key}&stSrch={name}&resultType=json
 ```
+
+> `stSrch`는 `encodeURIComponent` 적용 필요. 동명 정류장이 여러 개 반환될 수 있음.
 
 **응답 (`msgBody.itemList[]`):**
 ```json
 {
-  "stationNm": "개봉역",
-  "stId": "101000043",
-  "arsId": "21003",
-  "seq": "12"
+  "stId": "116000142",
+  "stNm": "개봉역",
+  "arsId": "17233"
 }
 ```
 
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| `stationNm` | string | 정류장명 |
-| `stId` | string | 서울 버스 정류장 ID (`getArrInfoByRoute`의 `stId`에 사용) |
-| `arsId` | string | 정류장 고유번호 |
-| `seq` | string | 정류장 순번 (`getArrInfoByRoute`의 `ord`에 사용) |
-
-> `stationName` fallback 방식: `busRouteId` + `stationNm` 으로 `stId`/`seq` 조회 후 도착정보 요청.
+| `stId` | string | 서울 버스 정류장 ID (`getLowArrInfoByStId`에 사용) |
+| `stNm` | string | 정류장명 |
+| `arsId` | string | 정류장 고유번호 (`getRouteByStation`의 `arsId`에 사용) |
 
 ---
 
-### 2-3. 정류장 노선 목록 `getRouteByStation`
+### 2-3. 정류장 실시간 도착정보 `getLowArrInfoByStId`
 
 ```
-GET /stationinfo/getRouteByStation?serviceKey={key}&arsId={arsId}&resultType=json
+GET /arrive/getLowArrInfoByStId?ServiceKey={key}&stId={stId}&resultType=json
+```
+
+> 해당 정류장에 오는 **현재 운행 중인 버스 전체** 반환. 운행 종료 시간대엔 빈 배열.
+
+**응답 (`msgBody.itemList[]`):**
+```json
+{
+  "busRouteId": "100100096",
+  "busRouteAbrv": "643",
+  "arrmsg1": "3분50초후[1번째 전]",
+  "arrmsg2": "13분후[6번째 전]",
+  "traTime1": "230",
+  "traTime2": "813"
+}
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `busRouteId` | string | 서울 버스 노선 ID (필터링 키) |
+| `busRouteAbrv` | string | 노선 번호 약자 |
+| `arrmsg1` | string | 첫 번째 버스 도착 메시지 |
+| `arrmsg2` | string | 두 번째 버스 도착 메시지 |
+| `traTime1` | string | 첫 번째 버스 도착까지 초 (`"0"` = 정보없음) |
+| `traTime2` | string | 두 번째 버스 도착까지 초 |
+
+---
+
+### 2-4. 정류장 노선 목록 `getRouteByStation`
+
+```
+GET /stationinfo/getRouteByStation?ServiceKey={key}&arsId={arsId}&resultType=json
 ```
 
 **응답 (`msgBody.itemList[]`):**
@@ -269,8 +298,7 @@ GET /stationinfo/getRouteByStation?serviceKey={key}&arsId={arsId}&resultType=jso
   "busRouteId": "100100643",
   "busRouteAbrv": "643",
   "busRouteNm": "643",
-  "stId": "101000043",
-  "stOrd": "12"
+  "busRouteType": "12"
 }
 ```
 
@@ -279,8 +307,9 @@ GET /stationinfo/getRouteByStation?serviceKey={key}&arsId={arsId}&resultType=jso
 | `busRouteId` | string | 서울 버스 노선 ID |
 | `busRouteAbrv` | string | 노선 번호 약자 |
 | `busRouteNm` | string | 노선 전체명 |
-| `stId` | string | 서울 버스 정류장 ID |
-| `stOrd` | string | 정류장 순번 |
+| `busRouteType` | string | 서울 버스 노선 타입 코드 (ODsay `type`과 다름) |
+
+> `stId`, `stOrd` 필드는 응답에 포함되지 않음 (확인됨).
 
 ---
 
@@ -324,22 +353,25 @@ GET /{key}/json/realtimeStationArrival/0/10/{stationName}
 
 `realtimeStation`, `stationInfo`, `searchPubTransPathT` lane에서 공통 사용.
 
-| 값 | 색상 | 의미 |
-|----|------|------|
-| `1` | 🔵 파랑 | 간선버스 |
-| `2` | 🟢 초록 | 지선버스 |
-| `3` | 🟡 노랑 | 순환버스 |
-| `4` | 🔴 빨강 | 광역버스 |
-| `5` | ⬛ 회색 | 공항버스 |
-| `6` | 🟢 연두 | 마을버스 |
-| `10` | — | 경기도 일반버스 |
-| `11` | — | 직행좌석버스 (경기) |
-| `14` | — | 경기 일반버스 |
-| `20` | — | 인천버스 |
-| `22` | — | 인천 광역버스 |
-| `26` | — | 공항리무진 |
-
-> **현재 상태:** 프론트 `getBusType()`은 버스 번호 문자열로 타입 추론 중 (e.g., 2xxx→간선). ODsay `type` 코드를 직접 활용하면 더 정확함. `route-search` 응답에 `busType` 필드 추가 시 개선 가능.
+| 값 | 의미 |
+|----|------|
+| `1` | 일반 |
+| `2` | 좌석 |
+| `3` | 마을버스 |
+| `4` | 직행좌석 |
+| `5` | 공항버스 |
+| `6` | 간선급행 |
+| `10` | 외곽 |
+| `11` | 간선 |
+| `12` | 지선 |
+| `13` | 순환 |
+| `14` | 광역 |
+| `15` | 급행 |
+| `16` | 관광버스 |
+| `20` | 농어촌버스 |
+| `22` | 경기도 시외형버스 |
+| `26` | 급행간선 |
+| `30` | 한강버스 |
 
 ---
 

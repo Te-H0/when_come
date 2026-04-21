@@ -29,17 +29,17 @@ interface SeoulBusApiResponse {
   }
 }
 
-interface SeoulBusRouteStationItem {
-  stationNm: string
-  stId: string
-  arsId: string
-  seq: string
+interface SeoulBusStationByUidItem {
+  busRouteId: string
+  busRouteAbrv: string
+  arrmsg1: string
+  arrmsg2: string
+  traTime1: string
+  traTime2: string
 }
 
-interface SeoulBusRouteStationApiResponse {
-  msgBody?: {
-    itemList?: SeoulBusRouteStationItem[]
-  }
+interface SeoulBusStationByUidResponse {
+  msgBody?: { itemList?: SeoulBusStationByUidItem[] }
 }
 
 // ─── 서울 지하철 API 원시 응답 타입 ────────────────────────────
@@ -79,7 +79,7 @@ async function getBusArrival(
   ord: string,
 ): Promise<BusArrivalResponse | null> {
   const url = `http://ws.bus.go.kr/api/rest/arrive/getArrInfoByRoute` +
-    `?serviceKey=${busApiKey()}&stId=${stId}&busRouteId=${busRouteId}&ord=${ord}&resultType=json`
+    `?ServiceKey=${busApiKey()}&stId=${stId}&busRouteId=${busRouteId}&ord=${ord}&resultType=json`
 
   const res = await fetch(url)
   if (!res.ok) throw new AppError("서울 버스 API 도착정보 조회 실패", 502)
@@ -97,22 +97,28 @@ async function getBusArrival(
   }
 }
 
-// ─── busRouteId + 정류장명으로 stId / ord 조회 ────────────────
-async function resolveStationFromRoute(
+// ─── arsId로 도착정보 조회 — getStationByUid 단일 호출 ─────────
+async function findBusArrivalByArsId(
   busRouteId: string,
-  stationName: string,
-): Promise<{ stId: string; ord: string } | null> {
-  const url = `http://ws.bus.go.kr/api/rest/busRouteInfo/getRouteAllStaionList` +
-    `?serviceKey=${busApiKey()}&busRouteId=${busRouteId}&resultType=json`
+  arsId: string,
+): Promise<BusArrivalResponse | null> {
+  const url = `http://ws.bus.go.kr/api/rest/stationinfo/getStationByUid` +
+    `?ServiceKey=${busApiKey()}&arsId=${arsId}&resultType=json`
 
   const res = await fetch(url)
-  if (!res.ok) throw new AppError("서울 버스 API 노선 정류장 조회 실패", 502)
+  if (!res.ok) throw new AppError("서울 버스 API 정류장 조회 실패", 502)
 
-  const data: SeoulBusRouteStationApiResponse = await res.json()
-  const items = data?.msgBody?.itemList ?? []
-  const match = items.find((item) => item.stationNm === stationName)
+  const data: SeoulBusStationByUidResponse = await res.json()
+  const match = (data?.msgBody?.itemList ?? []).find((item) => item.busRouteId === busRouteId)
   if (!match) return null
-  return { stId: match.stId, ord: match.seq }
+
+  return {
+    routeName: match.busRouteAbrv,
+    arrmsg1: match.arrmsg1,
+    arrmsg2: match.arrmsg2,
+    arrivalSec1: parseArrivalSec(match.traTime1),
+    arrivalSec2: parseArrivalSec(match.traTime2),
+  }
 }
 
 // ─── 서울 지하철 실시간 도착정보 — realtimeStationArrival ──────
@@ -152,26 +158,21 @@ export async function handler(req: Request): Promise<Response> {
       const busRouteId = searchParams.get("busRouteId")
       const stId = searchParams.get("stId")
       const ord = searchParams.get("ord")
-      const stationName = searchParams.get("stationName")
+      const arsId = searchParams.get("arsId")
 
       if (!busRouteId) {
         throw new AppError("bus 타입은 busRouteId 가 필요합니다", 400)
       }
 
-      let resolvedStId = stId
-      let resolvedOrd = ord
+      let data: BusArrivalResponse | null
 
-      if (!resolvedStId || !resolvedOrd) {
-        if (!stationName) {
-          throw new AppError("bus 타입은 stId+ord 또는 stationName 이 필요합니다", 400)
-        }
-        const found = await resolveStationFromRoute(busRouteId, stationName)
-        if (!found) throw new AppError("해당 노선에서 정류장을 찾을 수 없습니다", 404)
-        resolvedStId = found.stId
-        resolvedOrd = found.ord
+      if (stId && ord) {
+        data = await getBusArrival(stId, busRouteId, ord)
+      } else if (arsId) {
+        data = await findBusArrivalByArsId(busRouteId, arsId)
+      } else {
+        throw new AppError("bus 타입은 stId+ord 또는 arsId 가 필요합니다", 400)
       }
-
-      const data = await getBusArrival(resolvedStId, busRouteId, resolvedOrd)
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })

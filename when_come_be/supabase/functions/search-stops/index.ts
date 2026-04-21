@@ -20,7 +20,7 @@ export async function handler(req: Request): Promise<Response> {
       type: s.type === 2 ? "subway" : "bus",
       lat: s.y,
       lng: s.x,
-      arsId: s.arsID ?? null,
+      arsId: s.arsID || null,
     }))
 
     return new Response(JSON.stringify(data), {

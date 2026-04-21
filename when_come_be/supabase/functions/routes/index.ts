@@ -7,6 +7,7 @@ import { AppError, errorResponse } from "../_shared/error.ts"
 interface StopRouteInput {
   odsayRouteId: string
   routeName: string
+  busType?: number | null
   stId?: string
   busRouteId?: string
   stationOrd?: number
@@ -18,6 +19,7 @@ interface RouteStopInput {
   stopName: string
   stopType: "bus" | "subway"
   sequence: number
+  arsId?: string
   stopRoutes: StopRouteInput[]
 }
 
@@ -65,9 +67,9 @@ async function listRoutes(req: Request) {
       origin_coords, destination_coords, is_active,
       created_at, updated_at,
       route_stops (
-        id, odsay_stop_id, stop_name, stop_type, sequence,
+        id, odsay_stop_id, stop_name, stop_type, sequence, ars_id,
         stop_routes (
-          id, odsay_route_id, route_name,
+          id, odsay_route_id, route_name, bus_type,
           st_id, bus_route_id, station_ord, station_name
         )
       )
@@ -138,6 +140,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
     stop_name: s.stopName,
     stop_type: s.stopType,
     sequence: s.sequence,
+    ars_id: s.arsId ?? null,
   }))
 
   const { data: insertedStops, error: stopsErr } = await db
@@ -154,6 +157,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
       stop_id: inserted.id,
       odsay_route_id: sr.odsayRouteId,
       route_name: sr.routeName,
+      bus_type: sr.busType ?? null,
       st_id: sr.stId ?? null,
       bus_route_id: sr.busRouteId ?? null,
       station_ord: sr.stationOrd ?? null,

@@ -46,11 +46,11 @@ Deno.test("arrival-info bus — busRouteId 없으면 400을 반환한다", async
   assertEquals(body.error, "bus 타입은 busRouteId 가 필요합니다")
 })
 
-Deno.test("arrival-info bus — stId/ord/stationName 모두 없으면 400을 반환한다", async () => {
+Deno.test("arrival-info bus — stId/ord/arsId 모두 없으면 400을 반환한다", async () => {
   const res = await handler(makeRequest("GET", `${BASE}?type=bus&busRouteId=100100118`))
   assertEquals(res.status, 400)
   const body = await res.json()
-  assertEquals(body.error, "bus 타입은 stId+ord 또는 stationName 이 필요합니다")
+  assertEquals(body.error, "bus 타입은 stId+ord 또는 arsId 가 필요합니다")
 })
 
 // ─── bus 정상 동작 (stId + ord 직접 전달) ─────────────────────
@@ -137,71 +137,54 @@ Deno.test("arrival-info bus — API 키 미설정 시 500을 반환한다", asyn
   )
 })
 
-// ─── bus 정상 동작 (stationName으로 stId/ord 조회) ─────────────
+// ─── bus 정상 동작 (arsId로 단일 조회) ──────────────────────────
 
-Deno.test("arrival-info bus — stationName으로 stId/ord 조회 후 도착정보를 반환한다", async () => {
-  await withEnv(ENV, () =>
-    withMockFetch(
-      multiMockFetch([
-        {
-          match: "getRouteAllStaionList",
-          response: () =>
-            jsonResponse({
-              msgBody: {
-                itemList: [
-                  { stationNm: "기타정류장", stId: "10001", arsId: "01001", seq: "1" },
-                  { stationNm: "개봉역", stId: "101000043", arsId: "21003", seq: "12" },
-                ],
-              },
-            }),
-        },
-        {
-          match: "getArrInfoByRoute",
-          response: () =>
-            jsonResponse({
-              msgBody: {
-                itemList: [{
-                  busRouteAbrv: "643",
-                  arrmsg1: "5분후[3번째 전]",
-                  arrmsg2: "18분후[10번째 전]",
-                  traTime1: "300",
-                  traTime2: "1080",
-                }],
-              },
-            }),
-        },
-      ]),
-      async () => {
-        const url = `${BASE}?type=bus&busRouteId=100100643&stationName=개봉역`
-        const res = await handler(makeRequest("GET", url))
-        assertEquals(res.status, 200)
-        const body = await res.json()
-        assertEquals(body.routeName, "643")
-        assertEquals(body.arrivalSec1, 300)
-      },
-    )
-  )
-})
-
-Deno.test("arrival-info bus — 노선에 정류장이 없으면 404를 반환한다", async () => {
+Deno.test("arrival-info bus — arsId로 도착정보를 반환한다", async () => {
   await withEnv(ENV, () =>
     withMockFetch(async () =>
       jsonResponse({
-        msgBody: { itemList: [{ stationNm: "다른정류장", stId: "10001", arsId: "01001", seq: "1" }] },
+        msgBody: {
+          itemList: [{
+            busRouteId: "100100643",
+            busRouteAbrv: "643",
+            arrmsg1: "5분후[3번째 전]",
+            arrmsg2: "18분후[10번째 전]",
+            traTime1: "300",
+            traTime2: "1080",
+          }],
+        },
       }), async () => {
-      const url = `${BASE}?type=bus&busRouteId=100100643&stationName=개봉역`
+      const url = `${BASE}?type=bus&busRouteId=100100643&arsId=17243`
       const res = await handler(makeRequest("GET", url))
-      assertEquals(res.status, 404)
+      assertEquals(res.status, 200)
       const body = await res.json()
-      assertEquals(body.error, "해당 노선에서 정류장을 찾을 수 없습니다")
+      assertEquals(body.routeName, "643")
+      assertEquals(body.arrivalSec1, 300)
     })
   )
 })
 
-Deno.test("arrival-info bus — 노선 정류장 조회 API 오류 시 502를 반환한다", async () => {
+Deno.test("arrival-info bus — 해당 노선 없으면 null 반환한다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        msgBody: {
+          itemList: [{ busRouteId: "999999", busRouteAbrv: "999", arrmsg1: "", arrmsg2: "", traTime1: "0", traTime2: "0" }],
+        },
+      }), async () => {
+      const url = `${BASE}?type=bus&busRouteId=100100643&arsId=17243`
+      const res = await handler(makeRequest("GET", url))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      assertEquals(body, null)
+    })
+  )
+})
+
+Deno.test("arrival-info bus — getStationByUid API 오류 시 502를 반환한다", async () => {
   await withEnv(ENV, () =>
     withMockFetch(async () => new Response("", { status: 500 }), async () => {
-      const url = `${BASE}?type=bus&busRouteId=100100643&stationName=개봉역`
+      const url = `${BASE}?type=bus&busRouteId=100100643&arsId=17243`
       const res = await handler(makeRequest("GET", url))
       assertEquals(res.status, 502)
     })
