@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import BottomNav from "@/components/BottomNav";
-import { getBusType, getSubwayColor } from "@/utils/transitColors";
+import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 import { listRoutes, deleteRoute, updateRoute } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { mapApiRoute } from "@/lib/mappers";
@@ -178,10 +178,11 @@ export default function RouteManagement() {
 
                 {route.segments.map((segment, idx) => {
                   const isSubway = segment.stop.type === 'subway';
+                  const firstStopRoute = segment.stop.stopRoutes?.[0];
                   const nodeColor = isSubway && segment.stop.lines.length > 0
                     ? getSubwayColor(segment.stop.lines[0]).color
                     : !isSubway && segment.stop.lines.length > 0
-                      ? getBusType(segment.stop.lines[0]).color
+                      ? getBusTypeByOdsay(firstStopRoute?.busType, segment.stop.lines[0]).color
                       : '#6B7280';
 
                   return (
