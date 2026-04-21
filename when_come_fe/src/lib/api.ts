@@ -6,6 +6,7 @@ import type {
   ApiBusArrival,
   ApiSubwayArrivalItem,
   ApiRoute,
+  ApiStopBus,
 } from '@/types/api'
 import { getJwt } from './supabase'
 
@@ -48,6 +49,10 @@ export function searchRoutes(
   })
 }
 
+export function getStopBuses(arsId: string): Promise<ApiStopBus[]> {
+  return apiFetch<ApiStopBus[]>(`/stop-buses?arsId=${encodeURIComponent(arsId)}`)
+}
+
 export function getOdsayArrival(stationId: string): Promise<ApiOdsayArrival[]> {
   return apiFetch<ApiOdsayArrival[]>(
     `/arrival-info?type=odsay&stationId=${encodeURIComponent(stationId)}`,
@@ -56,17 +61,9 @@ export function getOdsayArrival(stationId: string): Promise<ApiOdsayArrival[]> {
 
 export function getBusArrival(params: {
   busRouteId: string
-  stId?: string
-  ord?: string
-  stationName?: string
+  arsId: string
 }): Promise<ApiBusArrival | null> {
-  const q = new URLSearchParams({ type: 'bus', busRouteId: params.busRouteId })
-  if (params.stId && params.ord) {
-    q.set('stId', params.stId)
-    q.set('ord', params.ord)
-  } else if (params.stationName) {
-    q.set('stationName', params.stationName)
-  }
+  const q = new URLSearchParams({ type: 'bus', busRouteId: params.busRouteId, arsId: params.arsId })
   return apiFetch<ApiBusArrival | null>(`/arrival-info?${q.toString()}`)
 }
 
@@ -87,6 +84,7 @@ export interface SaveRouteStop {
   stopName: string
   stopType: 'bus' | 'subway'
   sequence: number
+  arsId?: string
   stopRoutes: Array<{
     odsayRouteId: string
     routeName: string

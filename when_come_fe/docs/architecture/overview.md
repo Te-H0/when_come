@@ -35,7 +35,10 @@ src/
 │       ├── components/       ← TransitCard, RouteProgress, RouteOption
 │       └── pages/RouteManagement.tsx
 ├── lib/
-│   └── mockData.ts           ← 임시 mock 데이터 (API 연동 시 제거)
+│   ├── api.ts                ← API 클라이언트 함수
+│   ├── arrival.ts            ← 실시간 도착정보 fetch/파싱 로직
+│   ├── mappers.ts            ← API 응답 → 도메인 모델 변환
+│   └── mockData.ts           ← TransitStop, SavedRoute 타입 정의 + mock 데이터
 ├── utils/
 │   └── transitColors.ts      ← 버스/지하철 공식 색상 매핑
 └── styles/
@@ -62,7 +65,20 @@ src/
 
 | 상태 종류 | 도구 | 예시 |
 |-----------|------|------|
-| 서버 상태 | TanStack Query (API 연동 후) | 경로 목록, 정류장 정보 |
+| 서버 상태 | TanStack Query | 경로 목록, 도착정보 |
 | 클라이언트 전역 | Zustand (최소화) | 활성 경로 ID |
 | 지역 UI 상태 | useState | 모달 열림/닫힘, 드래그 상태 |
-| 현재 (mock) | useState | 전체 상태 (임시) |
+
+## 실시간 도착정보 조회 전략
+
+```
+fetchArrival(stop)
+  ├─ subway → GET /arrival-info?type=subway&stationName=...
+  └─ bus
+      ├─ arsId 있음 → GET /arrival-info?type=bus&busRouteId=...&arsId=...  (1회)
+      └─ arsId 없음 → null (운행 없음 표시)
+```
+
+- 버스 도착 조회는 반드시 `arsId` 필요 — 경로 저장 시 `route_stops.ars_id` 저장 필수
+- `subwayCode`는 서울 지하철 API 형식(`"1002"`) 사용 — arrival `lineName`과 직접 비교
+- 도착정보 자동 조회 비활성화 중 (`enabled: false`) — 새로고침 버튼으로만 조회 (개발 중 API 절약)

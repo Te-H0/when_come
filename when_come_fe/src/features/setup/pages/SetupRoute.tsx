@@ -18,9 +18,9 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { searchStops, searchRoutes, saveRoute, getOdsayArrival } from "@/lib/api";
+import { searchStops, searchRoutes, saveRoute, getStopBuses } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
-import { subwayCodeToLineName } from "@/utils/transitColors";
+import { subwayApiCodeToLineName } from "@/utils/transitColors";
 import type { ApiPlace, ApiStop, ApiRouteOption } from "@/types/api";
 import { toast } from "sonner";
 
@@ -33,11 +33,12 @@ function apiRouteToSearchResult(route: ApiRouteOption): {
   const nodes: SearchNodeData[] = route.segments.map((seg, idx) => {
     if (seg.type === 'subway') {
       const line = seg.lines[0]
-      const lineName = line ? subwayCodeToLineName(line.subwayCode) || line.routeName : ''
+      const lineName = line ? subwayApiCodeToLineName(line.subwayCode ?? '') || line.routeName : ''
       return {
         id: `${route.id}-${idx}`,
         name: seg.startName,
         type: 'subway',
+        stopId: seg.startOdsayId ? String(seg.startOdsayId) : undefined,
         subwayLine: lineName,
         direction: seg.endName,
       }
@@ -46,6 +47,8 @@ function apiRouteToSearchResult(route: ApiRouteOption): {
       id: `${route.id}-${idx}`,
       name: seg.startName,
       type: 'bus',
+      stopId: seg.startArsId ?? undefined,
+      arsId: seg.startArsId ?? undefined,
       availableBuses: seg.lines.map(l => l.routeName),
       busLines: seg.lines.map(l => ({
         routeName: l.routeName,
@@ -131,6 +134,7 @@ export default function SetupRoute() {
       type: node.type,
       order: nodes.length + 1,
       stopId: node.stopId,
+      arsId: node.arsId,
       lat: node.lat,
       lng: node.lng,
       busNumbers: node.type === 'bus' ? (node.availableBuses ?? []) : undefined,
@@ -140,18 +144,21 @@ export default function SetupRoute() {
     };
     setNodes(prev => [...prev, newNode]);
 
-    // 자동검색은 정류장 ID가 없으므로 이름으로 실제 ODsay ID 조회
-    if (node.type === 'bus' && !node.stopId) {
+    if (node.type === 'bus' && node.arsId) {
       try {
-        const stops = await searchStops(node.name);
-        const match = stops.find(s => s.type === 'bus') ?? stops[0];
-        if (match) {
-          setNodes(prev => prev.map(n =>
-            n.id === nodeId ? { ...n, stopId: match.id } : n
-          ));
-        }
+        const buses = await getStopBuses(node.arsId);
+        const stopBusLines = buses.map(b => ({ routeName: b.routeName, busRouteId: b.busRouteId, busType: b.busRouteType }));
+        setNodes(prev => prev.map(n => {
+          if (n.id !== nodeId) return n;
+          // 기존 busLines(route search busType 포함) + stop-buses 결과 merge, 중복은 기존 우선
+          const merged = [...(n.busLines ?? [])];
+          for (const sb of stopBusLines) {
+            if (!merged.some(l => l.routeName === sb.routeName)) merged.push(sb);
+          }
+          return { ...n, busLines: merged };
+        }));
       } catch {
-        // 조회 실패 시 무시
+        // 실패 시 기존 busLines 유지
       }
     }
   };
@@ -164,6 +171,7 @@ export default function SetupRoute() {
       type: stop.type,
       order: nodes.length + 1,
       stopId: stop.id,
+      arsId: stop.arsId,
       lat: stop.lat,
       lng: stop.lng,
       busNumbers: stop.type === 'bus' ? [] : undefined,
@@ -172,15 +180,18 @@ export default function SetupRoute() {
     setManualQuery('');
     setManualResults([]);
 
-    if (stop.type === 'bus') {
+    if (stop.type === 'bus' && stop.arsId) {
       try {
-        const arrivals = await getOdsayArrival(stop.id);
-        const busNumbers = [...new Set(arrivals.map(a => a.routeName))];
+        const buses = await getStopBuses(stop.arsId);
         setNodes(prev => prev.map(n =>
-          n.id === nodeId ? { ...n, busNumbers } : n
+          n.id === nodeId ? { ...n, busLines: buses.map(b => ({
+            routeName: b.routeName,
+            busRouteId: b.busRouteId,
+            busType: b.busRouteType,
+          })) } : n
         ));
       } catch {
-        // 실패하면 사용자가 직접 입력
+        // 실패하면 수동 입력
       }
     }
   };
@@ -206,6 +217,7 @@ export default function SetupRoute() {
         stopName: node.name,
         stopType: node.type,
         sequence: node.order,
+        arsId: node.arsId,
         stopRoutes: node.type === 'subway'
           ? [{
               odsayRouteId: node.stopId ?? node.id,

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -19,7 +19,7 @@ import { listRoutes } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { mapApiRoute } from "@/lib/mappers";
 import type { SavedRoute } from "@/lib/mockData";
-import { fetchArrival, getArrivalDisplay, getArrivalMin } from "@/lib/arrival";
+import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg } from "@/lib/arrival";
 import type { ArrivalData } from "@/lib/arrival";
 
 export default function Home() {
@@ -49,9 +49,22 @@ export default function Home() {
   const { data: arrivalData, refetch: refetchArrival } = useQuery({
     queryKey: ['arrival', currentSegment?.stop.id, currentSegment?.stop.type, currentSegment?.stop.name],
     queryFn: () => fetchArrival(currentSegment!.stop),
-    refetchInterval: 30_000,
-    enabled: !!currentSegment,
+    // refetchInterval: 30_000, enabled: !!currentSegment, // 프로덕션 시 복원
+    enabled: false,
   });
+
+  // 도착 데이터가 갱신될 때마다 기준 시각 기록
+  const fetchedAtRef = useRef(Date.now());
+  useEffect(() => {
+    fetchedAtRef.current = Date.now();
+  }, [arrivalData]);
+
+  // 1초마다 리렌더링 → 카운트다운 효과
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forceUpdate(n => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -252,6 +265,13 @@ export default function Home() {
                     <MapPin className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
                     <span className="text-[14px] text-[#6B7280]">도보 150m</span>
                   </div>
+                  {(currentSegment.stop.arsId || currentSegment.stop.odsayStopId) && (
+                    <div className="text-[11px] text-[#9CA3AF] font-mono mt-1">
+                      {currentSegment.stop.arsId
+                        ? `ARS: ${currentSegment.stop.arsId}`
+                        : `ODsay: ${currentSegment.stop.odsayStopId}`}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -268,9 +288,16 @@ export default function Home() {
                   const stopRoute = currentSegment.stop.stopRoutes?.find(r => r.routeName === line);
                   const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null;
                   const subwayColorInfo = isSubway ? getSubwayColor(line) : null;
-                  const arrivalText = getArrivalDisplay(currentSegment.stop, line, idx, arrivalData ?? null);
-                  const arrivalMin = getArrivalMin(currentSegment.stop, line, idx, arrivalData ?? null);
-                  const isUrgent = arrivalMin !== null && arrivalMin <= 3;
+
+                  const elapsedSec = (Date.now() - fetchedAtRef.current) / 1000;
+                  const rawMsg1 = getArrivalDisplay(currentSegment.stop, line, idx, arrivalData ?? null);
+                  const rawMsg2 = getArrivalDisplay2(currentSegment.stop, line, idx, arrivalData ?? null);
+                  const arrivalText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec) : '--';
+                  const arrivalText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec) : null;
+                  const baseMin = getArrivalMin(currentSegment.stop, line, idx, arrivalData ?? null);
+                  const remainSec = baseMin !== null ? Math.max(0, baseMin * 60 - elapsedSec) : null;
+                  const isUrgent = remainSec !== null && remainSec < 180;
+                  const noService = arrivalData !== undefined && arrivalText === '--';
 
                   return (
                     <div key={line} className="px-5 py-4 flex items-center justify-between hover:bg-[#F9FAFB] transition-colors">
@@ -300,13 +327,25 @@ export default function Home() {
                           <div className="text-[13px] text-[#6B7280]">
                             {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
                           </div>
+                          {!isSubway && stopRoute?.stId && (
+                            <div className="text-[11px] text-[#9CA3AF] font-mono">
+                              stId: {stopRoute.stId}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
-                        <span className={`text-[18px] font-bold tabular-nums leading-tight ${isUrgent ? 'text-[#DC2626]' : 'text-[#111827]'}`}>
-                          {arrivalText}
-                        </span>
+                      <div className="text-right space-y-1">
+                        <div className="flex items-center gap-2 justify-end">
+                          <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
+                          <span className={`text-[18px] font-bold tabular-nums leading-tight ${isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
+                            {noService ? '운행 없음' : arrivalText}
+                          </span>
+                        </div>
+                        {arrivalText2 && (
+                          <div className="text-[12px] text-[#9CA3AF] tabular-nums">
+                            {arrivalText2}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

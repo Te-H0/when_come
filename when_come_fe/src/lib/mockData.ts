@@ -16,6 +16,7 @@ export interface TransitStop {
   arrivalTimes: number[]; // 분 단위
   // 실시간 API 호출에 필요한 메타데이터 (API 로드 시 채워짐)
   odsayStopId?: string;
+  arsId?: string;
   stopRoutes?: StopRouteInfo[];
 }
 

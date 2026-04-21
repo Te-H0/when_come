@@ -6,7 +6,8 @@ export interface SearchNodeData {
   id: string;
   name: string;
   type: 'bus' | 'subway';
-  stopId?: string;       // ODsay 정류장 ID
+  stopId?: string;       // 버스: ARS ID, 지하철: ODsay 정류장 ID
+  arsId?: string;
   lat?: number;
   lng?: number;
   availableBuses?: string[];
@@ -50,9 +51,9 @@ export default function SearchResultNode({ node, routeIndex, onAdd }: SearchResu
             {node.name}
           </div>
 
-          {node.type === 'bus' && node.stopId && (
+          {node.type === 'bus' && (node.arsId || node.stopId) && (
             <div className="text-[12px] text-[#9CA3AF] mb-1.5">
-              ID {node.stopId}
+              {node.arsId ? `ARS ${node.arsId}` : `ODsay ${node.stopId}`}
             </div>
           )}
 

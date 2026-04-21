@@ -17,7 +17,7 @@ export interface ApiStop {
 export interface ApiRouteLine {
   routeName: string
   busRouteId: string | null
-  subwayCode: number | null
+  subwayCode: string | null
   busType: number | null
 }
 
@@ -25,8 +25,18 @@ export interface ApiRouteSegment {
   type: 'bus' | 'subway'
   sectionMinutes: number
   startName: string
+  startOdsayId?: number | null
+  startArsId?: string | null
   endName: string
+  endOdsayId?: number | null
+  endArsId?: string | null
   lines: ApiRouteLine[]
+}
+
+export interface ApiStopBus {
+  routeName: string
+  busRouteId: string
+  busRouteType: number | null
 }
 
 export interface ApiRouteOption {
@@ -53,6 +63,7 @@ export interface ApiRouteStop {
   stop_name: string
   stop_type: 'bus' | 'subway'
   sequence: number
+  ars_id?: string | null
   stop_routes: ApiStopRoute[]
 }
 
