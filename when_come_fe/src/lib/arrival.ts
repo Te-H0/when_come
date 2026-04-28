@@ -40,6 +40,20 @@ function matchSubwayItems(
   return filtered.length > 0 ? filtered : sameLine
 }
 
+// 지하철 매칭 item 전체를 외부에서 사용할 수 있도록 export
+export function getMatchedSubwayItems(
+  stop: TransitStop,
+  line: string,
+  arrival: ArrivalData,
+): ApiSubwayArrivalItem[] {
+  if (!arrival || arrival.type !== 'subway') return []
+  const direction: SubwayDirection = {
+    headsign: stop.directionHeadsign ?? null,
+    updn: stop.directionUpdn ?? null,
+  }
+  return matchSubwayItems(arrival.items, line, direction)
+}
+
 export type ArrivalData =
   | { type: 'subway'; items: ApiSubwayArrivalItem[] }
   | { type: 'odsay'; items: ApiOdsayArrival[] }
