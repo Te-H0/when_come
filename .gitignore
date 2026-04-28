@@ -17,6 +17,10 @@ build/
 # Vite
 *.local
 
+# 로컬 전용 시크릿 노트 (실값 보관용, 절대 커밋 금지)
+*.local.md
+secrets.local.*
+
 # Supabase
 supabase/.branches
 supabase/.temp
