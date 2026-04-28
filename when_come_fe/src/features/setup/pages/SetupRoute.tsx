@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, Search, MapPin, ChevronDown, ChevronUp, Loader2,
+  ArrowLeft, Search, MapPin, ChevronDown, ChevronUp, Loader2, Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,12 +25,23 @@ import { wayCodeToUpdn } from "@/utils/transitDirection";
 import type { ApiPlace, ApiStop, ApiRouteOption } from "@/types/api";
 import { toast } from "sonner";
 
-function apiRouteToSearchResult(route: ApiRouteOption): {
+interface SearchRouteResult {
   routeId: string
   totalTime: number
   transferCount: number
   nodes: SearchNodeData[]
-} {
+  totalTransferCount: number | null
+  totalWalkMeters: number | null
+  paymentWon: number | null
+}
+
+function formatWalkDistance(meters: number | null): string | null {
+  if (meters === null) return null
+  if (meters < 1000) return `도보 ${meters}m`
+  return `도보 ${(meters / 1000).toFixed(1)}km`
+}
+
+function apiRouteToSearchResult(route: ApiRouteOption): SearchRouteResult {
   const nodes: SearchNodeData[] = route.segments.map((seg, idx) => {
     if (seg.type === 'subway') {
       const line = seg.lines[0]
@@ -61,7 +72,15 @@ function apiRouteToSearchResult(route: ApiRouteOption): {
       })),
     }
   })
-  return { routeId: route.id, totalTime: route.totalMinutes, transferCount: route.transferCount, nodes }
+  return {
+    routeId: route.id,
+    totalTime: route.totalMinutes,
+    transferCount: route.transferCount,
+    nodes,
+    totalTransferCount: route.totalTransferCount ?? null,
+    totalWalkMeters: route.totalWalkMeters ?? null,
+    paymentWon: route.paymentWon ?? null,
+  }
 }
 
 interface ReverseOfState {
@@ -85,10 +104,16 @@ export default function SetupRoute() {
   const endPlaceholderHint = reverseOf?.toName ?? '장소·주소 검색';
 
   const [nodes, setNodes] = useState<RouteNode[]>([]);
-  const [searchResults, setSearchResults] = useState<ReturnType<typeof apiRouteToSearchResult>[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchRouteResult[]>([]);
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // 정렬 옵션
+  type SortKey = 'default' | 'time' | 'transfer' | 'walk'
+  const [sortKey, setSortKey] = useState<SortKey>('default');
+  // 더보기 (초기 3건 → 전체)
+  const [showAll, setShowAll] = useState(false);
 
   const [manualQuery, setManualQuery] = useState('');
   const [manualResults, setManualResults] = useState<ApiStop[]>([]);
@@ -128,6 +153,8 @@ export default function SetupRoute() {
       );
       const results = routes.map(apiRouteToSearchResult);
       setSearchResults(results);
+      setSortKey('default');
+      setShowAll(false);
       if (results.length > 0) setExpandedRoutes(new Set([results[0].routeId]));
     } catch {
       toast.error('경로 검색에 실패했습니다');
@@ -182,6 +209,20 @@ export default function SetupRoute() {
     }
   };
 
+  const handleAddAllNodes = async (route: SearchRouteResult) => {
+    // 이미 추가된 stopId 집합
+    const existingStopIds = new Set(nodes.map(n => n.stopId).filter(Boolean));
+    const newNodes = route.nodes.filter(n => !n.stopId || !existingStopIds.has(n.stopId));
+    if (newNodes.length === 0) {
+      toast.info('이미 모든 정류장이 추가되어 있습니다');
+      return;
+    }
+    for (const node of newNodes) {
+      await handleAddNodeFromSearch(node);
+    }
+    toast.success(`경로 ${newNodes.length}개 정류장이 추가되었습니다`);
+  };
+
   const handleAddNodeManual = async (stop: ApiStop) => {
     const nodeId = `node-${Date.now()}`;
     const newNode: RouteNode = {
@@ -223,6 +264,28 @@ export default function SetupRoute() {
   const handleUpdateBusNumbers = (nodeId: string, busNumbers: string[]) => {
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, busNumbers } : n));
   };
+
+  const sortedResults = useMemo<SearchRouteResult[]>(() => {
+    if (sortKey === 'default') return searchResults;
+    return [...searchResults].sort((a, b) => {
+      if (sortKey === 'time') return a.totalTime - b.totalTime;
+      if (sortKey === 'transfer') {
+        const ta = a.totalTransferCount ?? Infinity;
+        const tb = b.totalTransferCount ?? Infinity;
+        return ta - tb;
+      }
+      if (sortKey === 'walk') {
+        const wa = a.totalWalkMeters ?? Infinity;
+        const wb = b.totalWalkMeters ?? Infinity;
+        return wa - wb;
+      }
+      return 0;
+    });
+  }, [searchResults, sortKey]);
+
+  const INITIAL_VISIBLE = 3;
+  const visibleResults = showAll ? sortedResults : sortedResults.slice(0, INITIAL_VISIBLE);
+  const remainingCount = sortedResults.length - INITIAL_VISIBLE;
 
   const handleSave = async () => {
     if (!routeName.trim() || nodes.length === 0) return;
@@ -293,7 +356,7 @@ export default function SetupRoute() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F7F9] pb-24">
+    <div className="min-h-screen bg-[#F6F7F9] pb-36">
       {/* 헤더 */}
       <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -408,38 +471,83 @@ export default function SetupRoute() {
 
             {searchResults.length > 0 && (
               <div className="space-y-2">
-                {searchResults.map((route, routeIdx) => (
+                {/* 정렬 칩 */}
+                <div className="flex gap-2 flex-wrap">
+                  {([
+                    { key: 'default', label: '추천' },
+                    { key: 'time', label: '시간 짧은 순' },
+                    { key: 'transfer', label: '환승 적은 순' },
+                    { key: 'walk', label: '도보 적은 순' },
+                  ] as const).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => { setSortKey(key); setShowAll(false); }}
+                      className={`px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors ${
+                        sortKey === key
+                          ? 'bg-[#111827] text-white'
+                          : 'bg-[#F1F3F5] text-[#6B7280] hover:bg-[#E5E7EB]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {visibleResults.map((route, routeIdx) => (
                   <Card key={route.routeId} className="overflow-hidden rounded-2xl border border-black/5 shadow-sm bg-white">
                     <Collapsible
                       open={expandedRoutes.has(route.routeId)}
                       onOpenChange={() => toggleRoute(route.routeId)}
                     >
-                      <CollapsibleTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          className="w-full p-4 h-auto hover:bg-[#F9FAFB] transition-colors justify-between rounded-none"
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <div className="text-left">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-[15px] font-semibold text-[#111827]">경로 {routeIdx + 1}</span>
+                      <div className="px-4 pt-4 pb-0">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <CollapsibleTrigger asChild>
+                            <button className="flex-1 text-left group">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="text-[15px] font-semibold text-[#111827]">추천 {routeIdx + 1}</span>
+                                {expandedRoutes.has(route.routeId) ? (
+                                  <ChevronUp className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                )}
                               </div>
-                              <div className="flex items-center gap-3 text-[13px] text-[#6B7280]">
-                                <span>{route.totalTime}분</span>
-                                <span>환승 {route.transferCount}회</span>
+                              {/* 부가 정보 chip */}
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                  {route.totalTime}분
+                                </span>
+                                {route.totalTransferCount !== null && (
+                                  <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                    {route.totalTransferCount === 0 ? '직통' : `환승 ${route.totalTransferCount}회`}
+                                  </span>
+                                )}
+                                {route.totalWalkMeters !== null && (
+                                  <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                    {formatWalkDistance(route.totalWalkMeters)}
+                                  </span>
+                                )}
+                                {route.paymentWon !== null && (
+                                  <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                    {route.paymentWon.toLocaleString()}원
+                                  </span>
+                                )}
                               </div>
-                            </div>
-                            {expandedRoutes.has(route.routeId) ? (
-                              <ChevronUp className="w-5 h-5 text-[#6B7280] flex-shrink-0" strokeWidth={2} />
-                            ) : (
-                              <ChevronDown className="w-5 h-5 text-[#6B7280] flex-shrink-0" strokeWidth={2} />
-                            )}
-                          </div>
-                        </Button>
-                      </CollapsibleTrigger>
+                            </button>
+                          </CollapsibleTrigger>
+
+                          {/* 전체 경로 추가 버튼 */}
+                          <button
+                            onClick={() => handleAddAllNodes(route)}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#111827] hover:bg-[#1F2937] text-white text-[12px] font-medium transition-colors flex-shrink-0"
+                          >
+                            <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                            전체 추가
+                          </button>
+                        </div>
+                      </div>
 
                       <CollapsibleContent>
-                        <div className="p-3 space-y-2 border-t border-black/5">
+                        <div className="px-3 pb-3 pt-2 space-y-2 border-t border-black/5 mt-2">
                           {route.nodes.map((node) => (
                             <SearchResultNode
                               key={node.id}
@@ -453,6 +561,16 @@ export default function SetupRoute() {
                     </Collapsible>
                   </Card>
                 ))}
+
+                {/* 더보기 버튼 */}
+                {!showAll && remainingCount > 0 && (
+                  <button
+                    onClick={() => setShowAll(true)}
+                    className="w-full py-3 rounded-2xl border border-black/5 bg-white text-[14px] text-[#6B7280] font-medium hover:bg-[#F9FAFB] transition-colors"
+                  >
+                    더보기 (남은 {remainingCount}개)
+                  </button>
+                )}
               </div>
             )}
           </TabsContent>
@@ -502,23 +620,28 @@ export default function SetupRoute() {
           </TabsContent>
         </Tabs>
 
-        {/* 저장 */}
-        {nodes.length > 0 && (
-          <Button
-            onClick={handleSave}
-            className="w-full bg-[#111827] hover:bg-[#1F2937] rounded-xl h-12 text-[15px] font-medium shadow-sm"
-            size="lg"
-            disabled={!routeName.trim() || isSaving}
-          >
-            {isSaving ? (
-              <Loader2 className="w-[18px] h-[18px] mr-2 animate-spin" />
-            ) : (
-              <MapPin className="w-[18px] h-[18px] mr-2" strokeWidth={2} />
-            )}
-            경로 저장하기
-          </Button>
-        )}
       </div>
+
+      {/* Sticky 저장 버튼 — BottomNav(56px) 위에 고정 */}
+      {nodes.length > 0 && (
+        <div className="fixed bottom-14 left-0 right-0 z-20 px-4 pb-3 pt-2 bg-gradient-to-t from-[#F6F7F9] via-[#F6F7F9]/90 to-transparent">
+          <div className="max-w-2xl mx-auto">
+            <Button
+              onClick={handleSave}
+              className="w-full bg-[#111827] hover:bg-[#1F2937] rounded-xl h-12 text-[15px] font-medium shadow-lg"
+              size="lg"
+              disabled={!routeName.trim() || isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="w-[18px] h-[18px] mr-2 animate-spin" />
+              ) : (
+                <MapPin className="w-[18px] h-[18px] mr-2" strokeWidth={2} />
+              )}
+              경로 저장하기
+            </Button>
+          </div>
+        </div>
+      )}
 
       <BottomNav />
     </div>
