@@ -1,8 +1,8 @@
 ---
 paths:
-  - "src/**/components/**/*.tsx"
-  - "src/**/pages/**/*.tsx"
-  - "src/**/features/**/*.tsx"
+  - "when_come_fe/src/**/components/**/*.tsx"
+  - "when_come_fe/src/**/pages/**/*.tsx"
+  - "when_come_fe/src/**/features/**/*.tsx"
 ---
 
 # 컴포넌트 규칙
@@ -13,10 +13,9 @@ paths:
 |------|------|------|
 | Page | `src/features/{domain}/pages/` | 라우팅 단위, 데이터 페칭 |
 | Feature Component | `src/features/{domain}/components/` | 도메인 로직 포함 |
-| UI Component | `src/app/components/ui/` (현재) → 추후 `src/components/ui/` | 순수 UI, 도메인 무관 |
+| UI Component | `src/components/ui/` | 순수 UI, 도메인 무관 |
 
-> **현재 상태:** 초기 Figma 생성 코드가 `src/app/` 아래에 있음.
-> 신규 기능은 `src/features/{domain}/` 구조로 작성하고, 기존 코드는 점진적으로 이전.
+> 초기 Figma 생성 코드는 `src/app/` 아래에 있음. 신규 기능은 `src/features/{domain}/`로 작성, 기존 코드는 점진적 이전.
 
 ## 단방향 의존성
 
@@ -44,10 +43,8 @@ function RouteCard({ route, isActive = false, onSelect }: RouteCardProps) {
 
 ## 상태 관리 원칙
 
-> **현재:** mock 데이터 + `useState` 사용 중. API 연동 시 아래로 전환.
-
-- 서버 상태: TanStack Query (React Query)
-- 클라이언트 전역 상태: Zustand (최소화)
+- 서버 상태: TanStack Query (현재 mock + useState → API 연동 시 전환)
+- 클라이언트 전역 상태: Zustand (최소화, 필요 시 도입)
 - 지역 상태: `useState` / `useReducer`
 
 서버 상태를 전역 상태로 복사하지 않는다. React Query 캐시가 단일 진실 공급원.
