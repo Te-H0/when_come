@@ -53,8 +53,15 @@ interface RouteSegment {
 
 interface RouteSearchResult {
   id: string
-  totalMinutes: number
-  transferCount: number
+  pathType: number | null
+  totalMinutes: number | null
+  totalWalkMeters: number | null
+  totalDistanceMeters: number | null
+  paymentWon: number | null
+  busTransferCount: number | null
+  subwayTransferCount: number | null
+  totalTransferCount: number | null
+  totalStationCount: number | null
   segments: RouteSegment[]
 }
 
@@ -79,11 +86,26 @@ export async function handler(req: Request): Promise<Response> {
 
     const paths = await searchPubTransPath(startX, startY, endX, endY)
 
-    const results: RouteSearchResult[] = paths.map((path, i) => ({
-      id: String(i),
-      totalMinutes: path.info.totalTime,
-      transferCount: path.info.transferCount,
-      segments: path.subPath
+    const results: RouteSearchResult[] = paths.map((path, i) => {
+      const busTransferCount = path.info.busTransitCount ?? null
+      const subwayTransferCount = path.info.subwayTransitCount ?? null
+      const totalTransferCount =
+        busTransferCount !== null || subwayTransferCount !== null
+          ? (busTransferCount ?? 0) + (subwayTransferCount ?? 0)
+          : 0
+
+      return {
+        id: String(i),
+        pathType: path.pathType ?? null,
+        totalMinutes: path.info.totalTime ?? null,
+        totalWalkMeters: path.info.totalWalk ?? null,
+        totalDistanceMeters: path.info.totalDistance ?? null,
+        paymentWon: path.info.payment ?? null,
+        busTransferCount,
+        subwayTransferCount,
+        totalTransferCount,
+        totalStationCount: path.info.totalStationCount ?? null,
+        segments: path.subPath
         .filter((sub) => sub.trafficType !== 3)
         .map((sub): RouteSegment => {
           const isSubway = sub.trafficType === 1
@@ -108,7 +130,8 @@ export async function handler(req: Request): Promise<Response> {
             })) ?? [],
           }
         }),
-    }))
+      }
+    })
 
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -103,9 +103,21 @@ export interface OdsaySubPath {
   lane?: OdsayLane[]
 }
 
+export interface OdsayPathInfo {
+  totalTime?: number
+  totalWalk?: number
+  totalDistance?: number
+  payment?: number
+  busTransitCount?: number
+  subwayTransitCount?: number
+  totalStationCount?: number
+  firstStartStation?: string
+  lastEndStation?: string
+}
+
 export interface OdsayPath {
   pathType: number
-  info: { totalTime: number; transferCount: number }
+  info: OdsayPathInfo
   subPath: OdsaySubPath[]
 }
 
