@@ -20,6 +20,9 @@ interface RouteStopInput {
   stopType: "bus" | "subway"
   sequence: number
   arsId?: string
+  directionHeadsign?: string | null
+  directionUpdn?: string | null
+  directionNextStop?: string | null
   stopRoutes: StopRouteInput[]
 }
 
@@ -68,6 +71,7 @@ async function listRoutes(req: Request) {
       created_at, updated_at,
       route_stops (
         id, odsay_stop_id, stop_name, stop_type, sequence, ars_id,
+        direction_headsign, direction_updn, direction_next_stop,
         stop_routes (
           id, odsay_route_id, route_name, bus_type,
           st_id, bus_route_id, station_ord, station_name
@@ -75,7 +79,6 @@ async function listRoutes(req: Request) {
       )
     `)
     .eq("user_id", user.id)
-    .eq("is_active", true)
     .order("created_at", { ascending: false })
     .limit(50) // 사용자당 최대 50개
 
@@ -141,6 +144,10 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
     stop_type: s.stopType,
     sequence: s.sequence,
     ars_id: s.arsId ?? null,
+    direction_headsign: s.directionHeadsign ?? null,
+    direction_updn:
+      s.directionUpdn === "up" || s.directionUpdn === "down" ? s.directionUpdn : null,
+    direction_next_stop: s.directionNextStop ?? null,
   }))
 
   const { data: insertedStops, error: stopsErr } = await db
