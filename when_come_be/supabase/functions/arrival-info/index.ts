@@ -122,16 +122,32 @@ async function findBusArrivalByArsId(
 }
 
 // ─── 서울 지하철 실시간 도착정보 — realtimeStationArrival ──────
+// 서울 지하철 API quirk:
+// - 끝의 "역" 접미사와 ODsay가 붙이는 "(별칭)" 부분은 받지 않음
+// - 정규식으로 못 잡는 예외 케이스는 OVERRIDES에 명시 (발견 시 추가)
+const SUBWAY_NAME_OVERRIDES: Record<string, string> = {}
+
+export function normalizeSubwayStationName(stationName: string): string {
+  if (stationName in SUBWAY_NAME_OVERRIDES) return SUBWAY_NAME_OVERRIDES[stationName]
+  return stationName.replace(/\([^)]*\)/g, '').replace(/역$/, '').trim()
+}
+
 async function getSubwayArrival(stationName: string): Promise<SubwayArrivalItem[]> {
-  const encoded = encodeURIComponent(stationName)
+  const normalized = normalizeSubwayStationName(stationName)
+  const encoded = encodeURIComponent(normalized)
   const url = `http://swopenapi.seoul.go.kr/api/subway/${subwayApiKey()}/json/realtimeStationArrival/0/10/${encoded}`
 
   const res = await fetch(url)
   if (!res.ok) throw new AppError("서울 지하철 API 연결 실패", 502)
 
   const data: SeoulSubwayApiResponse = await res.json()
+  const list = data?.realtimeArrivalList ?? []
 
-  return (data?.realtimeArrivalList ?? []).map((item) => ({
+  if (list.length === 0) {
+    console.warn(`[subway-arrival] empty result: input="${stationName}" normalized="${normalized}"`)
+  }
+
+  return list.map((item) => ({
     lineName: item.subwayId,
     direction: item.trainLineNm,
     arrmsg1: item.arvlMsg2,
