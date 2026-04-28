@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   MapPin, Settings, RefreshCw, Navigation,
   ChevronRight, Clock, Loader2,
@@ -81,6 +82,19 @@ export default function Home() {
     setIsRefreshing(false);
   };
 
+  function handleBoardingComplete() {
+    if (!currentRoute || currentSegmentIndex >= currentRoute.segments.length - 1) return;
+    const prevIndex = currentSegmentIndex;
+    setCurrentSegmentIndex(prevIndex + 1);
+    toast.success('탑승 완료', {
+      duration: 5000,
+      action: {
+        label: '되돌리기',
+        onClick: () => setCurrentSegmentIndex(prevIndex),
+      },
+    });
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#F6F7F9] flex items-center justify-center pb-20">
@@ -138,9 +152,14 @@ export default function Home() {
       {/* 헤더 */}
       <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Navigation className="w-4 h-4 text-[#6B7280]" strokeWidth={2} />
-            <span className="text-[15px] text-[#111827] font-medium">{currentRoute?.name ?? '내 경로'}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <Navigation className="w-4 h-4 text-[#6B7280] flex-shrink-0" strokeWidth={2} />
+            <div className="min-w-0">
+              <span className="text-[15px] text-[#111827] font-medium">{currentRoute?.name ?? '내 경로'}</span>
+              {currentRoute?.to && (
+                <span className="text-[13px] text-[#9CA3AF] ml-1.5 truncate max-w-[160px] inline-block align-middle">· {currentRoute.to}</span>
+              )}
+            </div>
           </div>
 
           <div className="flex gap-1">
@@ -191,31 +210,42 @@ export default function Home() {
       )}
 
       <div className="max-w-2xl mx-auto px-4 pt-4 space-y-3">
-        {/* 목적지 카드 */}
-        <Card className="p-5 rounded-2xl border border-black/5 shadow-sm bg-white">
-          <div className="flex items-center gap-2">
-            <div className="text-[13px] text-[#6B7280]">목적지</div>
-            <div className="text-[18px] font-semibold text-[#111827]">{currentRoute.to}</div>
-          </div>
-        </Card>
-
         {/* 경로 타임라인 */}
         <Card className="p-4 rounded-2xl border border-black/5 shadow-sm bg-white">
           <div className="flex items-center gap-2 overflow-x-auto">
             {currentRoute.segments.map((segment, idx) => {
               const isPassed = segment.order < currentSegment.order;
               const isCurrent = segment.id === currentSegment.id;
+              const firstLine = segment.stop.lines[0] ?? null;
+              const isSubwaySeg = segment.stop.type === 'subway';
+              const subwayInfo = isSubwaySeg && firstLine ? getSubwayColor(firstLine) : null;
+              const busInfo = !isSubwaySeg && firstLine
+                ? getBusTypeByOdsay(segment.stop.stopRoutes?.find(r => r.routeName === firstLine)?.busType, firstLine)
+                : null;
+
+              const chipLabel = firstLine
+                ? (isSubwaySeg ? firstLine : `${firstLine}번`)
+                : (isSubwaySeg ? '전철' : '버스');
+
+              let chipStyle: React.CSSProperties = {};
+              let chipClassName = `px-3 py-1.5 rounded-lg text-[13px] font-medium`;
+
+              if (isCurrent) {
+                chipClassName += ' bg-[#111827] text-white';
+              } else if (isPassed) {
+                chipClassName += ' bg-[#F1F3F5] text-[#6B7280]';
+              } else if (subwayInfo && firstLine) {
+                chipStyle = { backgroundColor: subwayInfo.bgColor, color: subwayInfo.textColor };
+              } else if (busInfo && firstLine) {
+                chipStyle = { backgroundColor: busInfo.bgColor, color: busInfo.color };
+              } else {
+                chipClassName += ' bg-[#F9FAFB] text-[#9CA3AF]';
+              }
 
               return (
                 <div key={segment.id} className="flex items-center gap-2 flex-shrink-0">
-                  <div className={`px-3 py-1.5 rounded-lg text-[13px] font-medium ${
-                    isCurrent
-                      ? 'bg-[#111827] text-white'
-                      : isPassed
-                        ? 'bg-[#F1F3F5] text-[#6B7280]'
-                        : 'bg-[#F9FAFB] text-[#9CA3AF]'
-                  }`}>
-                    {segment.stop.type === 'bus' ? '버스' : '전철'}
+                  <div className={chipClassName} style={chipStyle}>
+                    {chipLabel}
                   </div>
                   {idx < currentRoute.segments.length - 1 && (
                     <ChevronRight className="w-4 h-4 text-[#D1D5DB]" strokeWidth={2} />
@@ -234,11 +264,7 @@ export default function Home() {
               variant="ghost"
               size="sm"
               className="text-[13px] text-[#6B7280] hover:text-[#111827] h-auto p-0 font-medium"
-              onClick={() => {
-                if (currentSegmentIndex < currentRoute.segments.length - 1) {
-                  setCurrentSegmentIndex(currentSegmentIndex + 1);
-                }
-              }}
+              onClick={handleBoardingComplete}
             >
               탑승 완료
             </Button>
@@ -252,11 +278,9 @@ export default function Home() {
                   <h4 className="text-[18px] font-semibold text-[#111827] mb-1">
                     {currentSegment.stop.name}
                   </h4>
-                  {(currentSegment.stop.arsId || currentSegment.stop.odsayStopId) && (
+                  {currentSegment.stop.type === 'bus' && currentSegment.stop.arsId && (
                     <div className="text-[11px] text-[#9CA3AF] font-mono mt-1">
-                      {currentSegment.stop.arsId
-                        ? currentSegment.stop.arsId
-                        : currentSegment.stop.odsayStopId}
+                      ARS {currentSegment.stop.arsId}
                     </div>
                   )}
                 </div>
@@ -321,8 +345,14 @@ export default function Home() {
                               {isSubway ? line : `${line}번`}
                             </div>
                             {headsign && (
-                              <span className="text-[11px] px-1.5 py-0.5 rounded bg-[#F1F3F5] text-[#6B7280]">
-                                {headsign}
+                              <span
+                                className="text-[12px] font-medium px-2 py-0.5 rounded-md border"
+                                style={subwayColorInfo
+                                  ? { backgroundColor: subwayColorInfo.bgColor, color: subwayColorInfo.textColor, borderColor: `${subwayColorInfo.color}33` }
+                                  : { backgroundColor: '#F1F3F5', color: '#6B7280', borderColor: '#E5E7EB' }
+                                }
+                              >
+                                {headsign}방향
                               </span>
                             )}
                           </div>
@@ -338,15 +368,21 @@ export default function Home() {
                         </div>
                       </div>
                       <div className="text-right space-y-1">
-                        <div className="flex items-center gap-2 justify-end">
-                          <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
-                          <span className={`text-[18px] font-bold tabular-nums leading-tight ${isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
-                            {noService ? '운행 없음' : arrivalText}
-                          </span>
+                        <div>
+                          <div className="text-[11px] text-[#9CA3AF] text-right leading-none mb-0.5">이번 차</div>
+                          <div className="flex items-center gap-2 justify-end">
+                            <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
+                            <span className={`text-[18px] font-bold tabular-nums leading-tight ${isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
+                              {noService ? '운행 없음' : arrivalText}
+                            </span>
+                          </div>
                         </div>
                         {arrivalText2 && (
-                          <div className="text-[12px] text-[#9CA3AF] tabular-nums">
-                            {arrivalText2}
+                          <div>
+                            <div className="text-[11px] text-[#9CA3AF] text-right leading-none mb-0.5">다음 차</div>
+                            <div className="text-[12px] text-[#9CA3AF] tabular-nums text-right">
+                              {arrivalText2}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -387,7 +423,6 @@ export default function Home() {
                     )}
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-[#D1D5DB]" strokeWidth={2} />
               </div>
             </Card>
           </div>
