@@ -46,6 +46,14 @@ export interface ApiRouteOption {
   totalMinutes: number
   transferCount: number
   segments: ApiRouteSegment[]
+  pathType?: number | null
+  totalWalkMeters?: number | null
+  totalDistanceMeters?: number | null
+  paymentWon?: number | null
+  busTransferCount?: number | null
+  subwayTransferCount?: number | null
+  totalTransferCount?: number | null
+  totalStationCount?: number | null
 }
 
 export interface ApiStopRoute {
