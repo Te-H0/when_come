@@ -3,18 +3,12 @@ import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   MapPin, Settings, RefreshCw, Navigation,
-  ChevronRight, Clock, ChevronDown, Loader2,
+  ChevronRight, Clock, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import BottomNav from "@/components/BottomNav";
 import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { listRoutes } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { mapApiRoute } from "@/lib/mappers";
@@ -38,19 +32,34 @@ export default function Home() {
   const routes = useMemo<SavedRoute[]>(() => (apiRoutes ?? []).map(mapApiRoute), [apiRoutes]);
   const activeRoutes = useMemo(() => routes.filter(r => r.isActive), [routes]);
 
-  const [selectedRouteId, setSelectedRouteId] = useState('');
+  const SELECTED_ROUTE_KEY = 'when_come:selectedRouteId';
+
+  const [selectedRouteId, setSelectedRouteId] = useState<string>(() => {
+    return localStorage.getItem(SELECTED_ROUTE_KEY) ?? '';
+  });
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const currentRoute = activeRoutes.find(r => r.id === selectedRouteId) ?? activeRoutes[0];
+  const resolvedRouteId = activeRoutes.find(r => r.id === selectedRouteId)
+    ? selectedRouteId
+    : activeRoutes[0]?.id ?? '';
+  const currentRoute = activeRoutes.find(r => r.id === resolvedRouteId) ?? activeRoutes[0];
+
+  const handleSelectRoute = (id: string) => {
+    setSelectedRouteId(id);
+    setCurrentSegmentIndex(0);
+    localStorage.setItem(SELECTED_ROUTE_KEY, id);
+  };
   const currentSegment = currentRoute?.segments[currentSegmentIndex];
   const nextSegment = currentRoute?.segments[currentSegmentIndex + 1];
 
   const { data: arrivalData, refetch: refetchArrival } = useQuery({
     queryKey: ['arrival', currentSegment?.stop.id, currentSegment?.stop.type, currentSegment?.stop.name],
     queryFn: () => fetchArrival(currentSegment!.stop),
-    // refetchInterval: 30_000, enabled: !!currentSegment, // 프로덕션 시 복원
-    enabled: false,
+    // refetchInterval: 30_000, // 프로덕션 시 복원
+    enabled: !!currentSegment,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
   });
 
   // 도착 데이터가 갱신될 때마다 기준 시각 기록
@@ -129,46 +138,10 @@ export default function Home() {
       {/* 헤더 */}
       <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          {activeRoutes.length > 1 ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-auto p-0 hover:bg-transparent font-normal">
-                  <div className="flex items-center gap-2">
-                    <Navigation className="w-4 h-4 text-[#6B7280]" strokeWidth={2} />
-                    <span className="text-[15px] text-[#111827] font-medium">{currentRoute.name}</span>
-                    <ChevronDown className="w-4 h-4 text-[#6B7280]" strokeWidth={2} />
-                  </div>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="rounded-xl border-black/5 min-w-[200px]">
-                {activeRoutes.map((route) => (
-                  <DropdownMenuItem
-                    key={route.id}
-                    onClick={() => {
-                      setSelectedRouteId(route.id);
-                      setCurrentSegmentIndex(0);
-                    }}
-                    className={`text-[14px] cursor-pointer ${route.id === (currentRoute?.id) ? 'bg-[#F9FAFB]' : ''}`}
-                  >
-                    <div className="flex items-center gap-2 w-full">
-                      <div className="flex-1">
-                        <div className="font-medium">{route.name}</div>
-                        <div className="text-[12px] text-[#6B7280]">{route.from} → {route.to}</div>
-                      </div>
-                      {route.id === currentRoute?.id && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#111827]" />
-                      )}
-                    </div>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Navigation className="w-4 h-4 text-[#6B7280]" strokeWidth={2} />
-              <span className="text-[15px] text-[#111827] font-medium">{currentRoute?.name ?? '내 경로'}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <Navigation className="w-4 h-4 text-[#6B7280]" strokeWidth={2} />
+            <span className="text-[15px] text-[#111827] font-medium">{currentRoute?.name ?? '내 경로'}</span>
+          </div>
 
           <div className="flex gap-1">
             <Button
@@ -191,20 +164,38 @@ export default function Home() {
         </div>
       </div>
 
+      {/* 활성 경로 탭 — 2개 이상일 때만 표시 */}
+      {activeRoutes.length > 1 && (
+        <div className="bg-white border-b border-black/5">
+          <div className="max-w-2xl mx-auto px-4 py-2 overflow-x-auto">
+            <div className="flex gap-2 w-max">
+              {activeRoutes.map((route) => {
+                const isSelected = route.id === currentRoute?.id;
+                return (
+                  <button
+                    key={route.id}
+                    onClick={() => handleSelectRoute(route.id)}
+                    className={`px-4 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors ${
+                      isSelected
+                        ? 'bg-[#111827] text-white'
+                        : 'bg-[#F1F3F5] text-[#6B7280] hover:bg-[#E5E7EB]'
+                    }`}
+                  >
+                    {route.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-2xl mx-auto px-4 pt-4 space-y-3">
-        {/* 목적지 & ETA 카드 */}
+        {/* 목적지 카드 */}
         <Card className="p-5 rounded-2xl border border-black/5 shadow-sm bg-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[13px] text-[#6B7280] mb-1">지금 출발하면</div>
-              <div className="text-[22px] font-semibold text-[#111827]">{currentRoute.to}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-[13px] text-[#6B7280] mb-1">도착</div>
-              <div className="text-[28px] font-bold text-[#111827] tracking-tight">
-                35<span className="text-[20px]">분</span>
-              </div>
-            </div>
+          <div className="flex items-center gap-2">
+            <div className="text-[13px] text-[#6B7280]">목적지</div>
+            <div className="text-[18px] font-semibold text-[#111827]">{currentRoute.to}</div>
           </div>
         </Card>
 
@@ -261,15 +252,11 @@ export default function Home() {
                   <h4 className="text-[18px] font-semibold text-[#111827] mb-1">
                     {currentSegment.stop.name}
                   </h4>
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
-                    <span className="text-[14px] text-[#6B7280]">도보 150m</span>
-                  </div>
                   {(currentSegment.stop.arsId || currentSegment.stop.odsayStopId) && (
                     <div className="text-[11px] text-[#9CA3AF] font-mono mt-1">
                       {currentSegment.stop.arsId
-                        ? `ARS: ${currentSegment.stop.arsId}`
-                        : `ODsay: ${currentSegment.stop.odsayStopId}`}
+                        ? currentSegment.stop.arsId
+                        : currentSegment.stop.odsayStopId}
                     </div>
                   )}
                 </div>
@@ -299,6 +286,13 @@ export default function Home() {
                   const isUrgent = remainSec !== null && remainSec < 180;
                   const noService = arrivalData !== undefined && arrivalText === '--';
 
+                  // T22: 지하철 방향 배지 — directionHeadsign이 있을 때만 표시
+                  const headsign = isSubway ? (currentSegment.stop.directionHeadsign ?? null) : null;
+                  // T23: 방향 정보 없음 안내 — 지하철이고 headsign/updn 둘 다 null일 때
+                  const showNoDirection = isSubway
+                    && !currentSegment.stop.directionHeadsign
+                    && !currentSegment.stop.directionUpdn;
+
                   return (
                     <div key={line} className="px-5 py-4 flex items-center justify-between hover:bg-[#F9FAFB] transition-colors">
                       <div className="flex items-center gap-3">
@@ -321,15 +315,24 @@ export default function Home() {
                           </div>
                         )}
                         <div>
-                          <div className="text-[15px] font-semibold text-[#111827]">
-                            {isSubway ? line : `${line}번`}
+                          {/* T22: 호선명 + 헤드사인 배지 */}
+                          <div className="flex items-center gap-1.5">
+                            <div className="text-[15px] font-semibold text-[#111827]">
+                              {isSubway ? line : `${line}번`}
+                            </div>
+                            {headsign && (
+                              <span className="text-[11px] px-1.5 py-0.5 rounded bg-[#F1F3F5] text-[#6B7280]">
+                                {headsign}
+                              </span>
+                            )}
                           </div>
                           <div className="text-[13px] text-[#6B7280]">
                             {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
                           </div>
-                          {!isSubway && stopRoute?.stId && (
-                            <div className="text-[11px] text-[#9CA3AF] font-mono">
-                              stId: {stopRoute.stId}
+                          {/* T23: 방향 정보 없음 안내 (지하철이고 방향 정보 미저장 시) */}
+                          {showNoDirection && (
+                            <div className="text-[11px] text-[#9CA3AF] mt-0.5">
+                              방향 정보 없음 — 경로를 다시 등록하면 더 정확해요
                             </div>
                           )}
                         </div>

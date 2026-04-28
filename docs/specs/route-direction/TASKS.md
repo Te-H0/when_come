@@ -1,6 +1,6 @@
 # TASKS — 경로 방향 정보 (route-direction)
 
-- **상태:** Phase 1 완료 (2026-04-28), Phase 2 완료 (2026-04-28), Phase 3~4 대기
+- **상태:** Phase 1 완료 (2026-04-28), Phase 2 완료 (2026-04-28), Phase 3 진행 중 (2026-04-28), Phase 4 대기
 - **선행 문서:** PRD.md, SDD.md, ADR-001
 - **승인 후 위임:** be-agent (T1~T8) → fe-agent (T9~T17) — be-agent 완료 후 순차
 
@@ -59,13 +59,13 @@
 
 ## Phase 3 — FE 도착 매칭·표시 (fe-agent, T17 후)
 
-- [ ] **T18.** `src/lib/arrival.ts`에 `mapsUpdnLineToCode(updnLine)` 헬퍼 추가
-- [ ] **T19.** `src/lib/arrival.ts`에 `matchSubwayItems(items, line, direction)` 추가 (매칭 0건 시 호선 일치 전체로 fallback)
-- [ ] **T20.** `getRawArrmsg`/`getArrivalDisplay`/`getArrivalDisplay2`/`getArrivalMin`이 stop의 `directionHeadsign`/`directionUpdn`을 읽어 `matchSubwayItems`에 전달하도록 수정
-- [ ] **T21.** 카드 표시 규칙 변경: 같은 item의 arrmsg1/arrmsg2 두 줄 → 상위 2개 매칭 item의 arrmsg1만 두 줄
-- [ ] **T22.** `Home.tsx` 호선 row에 `direction_headsign` 배지 추가 (지하철 only)
-- [ ] **T23.** `Home.tsx` — 매칭이 fallback(방향 NULL)으로 동작 중인 stop에 inline 안내 ("방향 정보 없음 — 경로를 다시 등록하면 더 정확해요")
-- [ ] **T24.** 수동 QA 시나리오:
+- [x] **T18.** `src/lib/arrival.ts`에 `mapsUpdnLineToCode(updnLine)` 헬퍼 추가 (완료일: 2026-04-28)
+- [x] **T19.** `src/lib/arrival.ts`에 `matchSubwayItems(items, line, direction)` 추가 (매칭 0건 시 호선 일치 전체로 fallback) (완료일: 2026-04-28)
+- [x] **T20.** `getRawArrmsg`/`getArrivalDisplay`/`getArrivalDisplay2`/`getArrivalMin`이 stop의 `directionHeadsign`/`directionUpdn`을 읽어 `matchSubwayItems`에 전달하도록 수정 (완료일: 2026-04-28)
+- [x] **T21.** 카드 표시 규칙 변경: 같은 item의 arrmsg1/arrmsg2 두 줄 → 상위 2개 매칭 item의 arrmsg1만 두 줄 (완료일: 2026-04-28)
+- [x] **T22.** `Home.tsx` 호선 row에 `direction_headsign` 배지 추가 (지하철 only) (완료일: 2026-04-28)
+- [x] **T23.** `Home.tsx` — 매칭이 fallback(방향 NULL)으로 동작 중인 stop에 inline 안내 ("방향 정보 없음 — 경로를 다시 등록하면 더 정확해요") (완료일: 2026-04-28)
+- [ ] **T24.** 수동 QA 시나리오 (dev 서버에서 직접 확인 필요):
   - (a) 석남 7호선 부평구청 방향 등록 → 도착 카드에 부평구청행만 (장암행 없음)
   - (b) 강남 2호선 외선(시계반대) 등록 → 외선 차량만
   - (c) 기존 저장 경로(방향 NULL) → 전체 표시 + 안내 노출
