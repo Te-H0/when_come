@@ -98,6 +98,8 @@ export interface OdsaySubPath {
   endName?: string
   endID?: number
   endArsID?: string
+  way?: string          // 노선 종점역명 (지하철 only)
+  wayCode?: number      // 1=상행/내선, 2=하행/외선 (지하철 only)
   lane?: OdsayLane[]
 }
 

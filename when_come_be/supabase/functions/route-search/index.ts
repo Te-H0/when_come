@@ -46,6 +46,8 @@ interface RouteSegment {
   endName: string
   endOdsayId: number | null
   endArsId: string | null
+  way: string | null        // 노선 종점역명 (지하철 only, 버스는 항상 null)
+  wayCode: 1 | 2 | null    // 1=상행/내선, 2=하행/외선 (지하철 only, 버스는 항상 null)
   lines: RouteSegmentLine[]
 }
 
@@ -83,22 +85,29 @@ export async function handler(req: Request): Promise<Response> {
       transferCount: path.info.transferCount,
       segments: path.subPath
         .filter((sub) => sub.trafficType !== 3)
-        .map((sub): RouteSegment => ({
-          type: sub.trafficType === 1 ? "subway" : "bus",
-          sectionMinutes: sub.sectionTime,
-          startName: sub.startName ?? "",
-          startOdsayId: sub.startID ?? null,
-          startArsId: sub.startArsID || null,
-          endName: sub.endName ?? "",
-          endOdsayId: sub.endID ?? null,
-          endArsId: sub.endArsID || null,
-          lines: sub.lane?.map((l): RouteSegmentLine => ({
-            routeName: l.name ?? l.busNo ?? "",
-            busRouteId: l.busLocalBlID ?? null,
-            busType: l.type ?? null,
-            subwayCode: toSeoulSubwayId(l.subwayCode),
-          })) ?? [],
-        })),
+        .map((sub): RouteSegment => {
+          const isSubway = sub.trafficType === 1
+          return {
+            type: isSubway ? "subway" : "bus",
+            sectionMinutes: sub.sectionTime,
+            startName: sub.startName ?? "",
+            startOdsayId: sub.startID ?? null,
+            startArsId: sub.startArsID || null,
+            endName: sub.endName ?? "",
+            endOdsayId: sub.endID ?? null,
+            endArsId: sub.endArsID || null,
+            way: isSubway ? (sub.way ?? null) : null,
+            wayCode: isSubway
+              ? (sub.wayCode === 1 || sub.wayCode === 2 ? sub.wayCode : null)
+              : null,
+            lines: sub.lane?.map((l): RouteSegmentLine => ({
+              routeName: l.name ?? l.busNo ?? "",
+              busRouteId: l.busLocalBlID ?? null,
+              busType: l.type ?? null,
+              subwayCode: toSeoulSubwayId(l.subwayCode),
+            })) ?? [],
+          }
+        }),
     }))
 
     return new Response(JSON.stringify(results), {

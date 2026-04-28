@@ -219,3 +219,101 @@ Deno.test("route-search — ODsay HTTP 오류는 502를 반환한다", async () 
     })
   )
 })
+
+// ─── T2: way/wayCode 매핑 ─────────────────────────────────────
+
+Deno.test("route-search — 지하철 subPath에 way+wayCode 있으면 segment에 그대로 매핑된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      odsayPathResponse([
+        {
+          pathType: 1,
+          info: { totalTime: 30, transferCount: 0 },
+          subPath: [
+            {
+              trafficType: 1, // 지하철
+              sectionTime: 30,
+              startName: "석남(거북시장)",
+              endName: "부평구청",
+              way: "장암",
+              wayCode: 1,
+              lane: [{ name: "7호선", subwayCode: 7 }],
+            },
+          ],
+        },
+      ]), async () => {
+      const res = await handler(makeRequest("POST", BASE, {
+        body: { startX: 126.84, startY: 37.51, endX: 126.72, endY: 37.51 },
+      }))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      const seg = body[0].segments[0]
+      assertEquals(seg.type, "subway")
+      assertEquals(seg.way, "장암")
+      assertEquals(seg.wayCode, 1)
+    })
+  )
+})
+
+Deno.test("route-search — 지하철 subPath에 way/wayCode 없으면 segment에 null로 매핑된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      odsayPathResponse([
+        {
+          pathType: 1,
+          info: { totalTime: 20, transferCount: 0 },
+          subPath: [
+            {
+              trafficType: 1, // 지하철 — way/wayCode 누락
+              sectionTime: 20,
+              startName: "강남",
+              endName: "홍대입구",
+              lane: [{ name: "2호선", subwayCode: 2 }],
+            },
+          ],
+        },
+      ]), async () => {
+      const res = await handler(makeRequest("POST", BASE, {
+        body: { startX: 127.02, startY: 37.49, endX: 126.92, endY: 37.55 },
+      }))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      const seg = body[0].segments[0]
+      assertEquals(seg.way, null)
+      assertEquals(seg.wayCode, null)
+    })
+  )
+})
+
+Deno.test("route-search — 버스 segment에서 way/wayCode는 항상 null이다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      odsayPathResponse([
+        {
+          pathType: 2,
+          info: { totalTime: 25, transferCount: 0 },
+          subPath: [
+            {
+              trafficType: 2, // 버스
+              sectionTime: 25,
+              startName: "강남역",
+              endName: "홍대입구",
+              way: "혹시라도들어온값",  // 버스는 ODsay가 way를 안 보내지만, 방어 테스트
+              wayCode: 99,
+              lane: [{ busNo: "273", busLocalBlID: "100100118", type: 1 }],
+            },
+          ],
+        },
+      ]), async () => {
+      const res = await handler(makeRequest("POST", BASE, {
+        body: { startX: 127.02, startY: 37.49, endX: 126.92, endY: 37.55 },
+      }))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      const seg = body[0].segments[0]
+      assertEquals(seg.type, "bus")
+      assertEquals(seg.way, null)
+      assertEquals(seg.wayCode, null)
+    })
+  )
+})
