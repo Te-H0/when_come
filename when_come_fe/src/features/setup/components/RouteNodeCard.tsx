@@ -19,6 +19,10 @@ export interface RouteNode {
   direction?: string;
   order: number;
   busRouteId?: string;   // deprecated: busLines 사용
+  // 지하철 방향 정보 (subway only)
+  way?: string | null;
+  wayCode?: 1 | 2 | null;
+  endName?: string | null;
 }
 
 interface RouteNodeCardProps {
@@ -92,7 +96,7 @@ export default function RouteNodeCard({
 
           {node.type === 'bus' && (node.arsId || node.stopId) && (
             <div className="text-[12px] text-[#9CA3AF] mb-2">
-              {node.arsId ? `ARS ${node.arsId}` : `ODsay ${node.stopId}`}
+              {node.arsId ? node.arsId : node.stopId}
             </div>
           )}
 

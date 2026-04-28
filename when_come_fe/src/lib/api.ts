@@ -85,6 +85,9 @@ export interface SaveRouteStop {
   stopType: 'bus' | 'subway'
   sequence: number
   arsId?: string
+  directionHeadsign?: string | null
+  directionUpdn?: 'up' | 'down' | null
+  directionNextStop?: string | null
   stopRoutes: Array<{
     odsayRouteId: string
     routeName: string

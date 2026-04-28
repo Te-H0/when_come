@@ -31,6 +31,9 @@ export function mapApiRoute(route: ApiRoute): SavedRoute {
             stationName: r.station_name,
             busType: r.bus_type,
           })),
+          directionHeadsign: stop.direction_headsign ?? null,
+          directionUpdn: stop.direction_updn ?? null,
+          directionNextStop: stop.direction_next_stop ?? null,
         },
       })),
   }

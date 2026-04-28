@@ -30,6 +30,8 @@ export interface ApiRouteSegment {
   endName: string
   endOdsayId?: number | null
   endArsId?: string | null
+  way?: string | null
+  wayCode?: 1 | 2 | null
   lines: ApiRouteLine[]
 }
 
@@ -64,6 +66,9 @@ export interface ApiRouteStop {
   stop_type: 'bus' | 'subway'
   sequence: number
   ars_id?: string | null
+  direction_headsign?: string | null
+  direction_updn?: 'up' | 'down' | null
+  direction_next_stop?: string | null
   stop_routes: ApiStopRoute[]
 }
 

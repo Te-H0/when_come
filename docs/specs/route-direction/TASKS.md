@@ -1,6 +1,6 @@
 # TASKS — 경로 방향 정보 (route-direction)
 
-- **상태:** Phase 1 완료 (2026-04-28), Phase 2~4 대기
+- **상태:** Phase 1 완료 (2026-04-28), Phase 2 완료 (2026-04-28), Phase 3~4 대기
 - **선행 문서:** PRD.md, SDD.md, ADR-001
 - **승인 후 위임:** be-agent (T1~T8) → fe-agent (T9~T17) — be-agent 완료 후 순차
 
@@ -38,19 +38,21 @@
 
 ## Phase 2 — FE 타입·저장 (fe-agent, BE 배포 후)
 
-- [ ] **T9.** `src/types/api.ts`:
+- [x] **T9.** `src/types/api.ts`:
   - `ApiRouteSegment`에 `way?: string \| null`, `wayCode?: 1 \| 2 \| null` 추가
   - `ApiRouteStop`에 `direction_headsign`/`direction_updn`/`direction_next_stop` 옵셔널 추가
-- [ ] **T10.** `src/lib/api.ts` `SaveRouteStop`에 `directionHeadsign`/`directionUpdn`/`directionNextStop` 옵셔널 추가
-- [ ] **T11.** `src/lib/mockData.ts` `TransitStop`에 동일 3 필드 옵셔널 추가
-- [ ] **T12.** `src/lib/mappers.ts` `mapApiRoute`가 direction_* 필드를 `TransitStop`에 보존
-- [ ] **T13.** `SearchResultNode`/`RouteNodeCard`의 `SearchNodeData`/`RouteNode` 타입에 `way`/`wayCode`/`endName` 옵셔널 추가
-- [ ] **T14.** `SetupRoute.apiRouteToSearchResult` — 지하철 segment의 `way`/`wayCode`/`endName`을 `SearchNodeData`에 실음
-- [ ] **T15.** `SetupRoute.handleAddNodeFromSearch` — `SearchNodeData`의 방향 필드를 `RouteNode`에 전파
-- [ ] **T16.** `SetupRoute.handleSave` — 지하철 stop 저장 시 다음 변환 적용:
+  (완료일: 2026-04-28)
+- [x] **T10.** `src/lib/api.ts` `SaveRouteStop`에 `directionHeadsign`/`directionUpdn`/`directionNextStop` 옵셔널 추가 (완료일: 2026-04-28)
+- [x] **T11.** `src/lib/mockData.ts` `TransitStop`에 동일 3 필드 옵셔널 추가 (완료일: 2026-04-28)
+- [x] **T12.** `src/lib/mappers.ts` `mapApiRoute`가 direction_* 필드를 `TransitStop`에 보존 (완료일: 2026-04-28)
+- [x] **T13.** `SearchResultNode`/`RouteNodeCard`의 `SearchNodeData`/`RouteNode` 타입에 `way`/`wayCode`/`endName` 옵셔널 추가 (완료일: 2026-04-28)
+- [x] **T14.** `SetupRoute.apiRouteToSearchResult` — 지하철 segment의 `way`/`wayCode`/`endName`을 `SearchNodeData`에 실음 (완료일: 2026-04-28)
+- [x] **T15.** `SetupRoute.handleAddNodeFromSearch` — `SearchNodeData`의 방향 필드를 `RouteNode`에 전파 (완료일: 2026-04-28)
+- [x] **T16.** `SetupRoute.handleSave` — 지하철 stop 저장 시 다음 변환 적용:
   - `directionHeadsign = node.way ? \`${node.way}행\` : null`
   - `directionUpdn = wayCodeToUpdn(node.wayCode)` (1→up, 2→down, else null)
   - `directionNextStop = node.endName ?? null`
+  (완료일: 2026-04-28)
 - [ ] **T17.** 수동 QA: 석남 7호선 부평구청 방향 + 강남 2호선 외선 — 저장 성공 확인 (DB row에 direction_* 채워졌는지 Supabase Studio에서 확인)
 
 ---

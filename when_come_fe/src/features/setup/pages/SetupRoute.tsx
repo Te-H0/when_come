@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Search, MapPin, ChevronDown, ChevronUp, Loader2,
@@ -21,6 +21,7 @@ import {
 import { searchStops, searchRoutes, saveRoute, getStopBuses } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { subwayApiCodeToLineName } from "@/utils/transitColors";
+import { wayCodeToUpdn } from "@/utils/transitDirection";
 import type { ApiPlace, ApiStop, ApiRouteOption } from "@/types/api";
 import { toast } from "sonner";
 
@@ -41,6 +42,9 @@ function apiRouteToSearchResult(route: ApiRouteOption): {
         stopId: seg.startOdsayId ? String(seg.startOdsayId) : undefined,
         subwayLine: lineName,
         direction: seg.endName,
+        way: seg.way ?? null,
+        wayCode: seg.wayCode ?? null,
+        endName: seg.endName ?? null,
       }
     }
     return {
@@ -60,13 +64,25 @@ function apiRouteToSearchResult(route: ApiRouteOption): {
   return { routeId: route.id, totalTime: route.totalMinutes, transferCount: route.transferCount, nodes }
 }
 
+interface ReverseOfState {
+  fromName: string;
+  toName: string;
+}
+
 export default function SetupRoute() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
+
+  const reverseOf = (location.state as { reverseOf?: ReverseOfState } | null)?.reverseOf ?? null;
 
   const [routeName, setRouteName] = useState('');
   const [startPlace, setStartPlace] = useState<ApiPlace | null>(null);
   const [endPlace, setEndPlace] = useState<ApiPlace | null>(null);
+
+  // reverseOf 프리필: 출발지/도착지 placeholder 힌트용 이름
+  const startPlaceholderHint = reverseOf?.fromName ?? '장소·주소 검색';
+  const endPlaceholderHint = reverseOf?.toName ?? '장소·주소 검색';
 
   const [nodes, setNodes] = useState<RouteNode[]>([]);
   const [searchResults, setSearchResults] = useState<ReturnType<typeof apiRouteToSearchResult>[]>([]);
@@ -141,6 +157,9 @@ export default function SetupRoute() {
       busLines: node.busLines,
       subwayLine: node.subwayLine,
       direction: node.direction,
+      way: node.way ?? null,
+      wayCode: node.wayCode ?? null,
+      endName: node.endName ?? null,
     };
     setNodes(prev => [...prev, newNode]);
 
@@ -218,6 +237,11 @@ export default function SetupRoute() {
         stopType: node.type,
         sequence: node.order,
         arsId: node.arsId,
+        ...(node.type === 'subway' && {
+          directionHeadsign: node.way ? `${node.way}행` : null,
+          directionUpdn: wayCodeToUpdn(node.wayCode),
+          directionNextStop: node.endName ?? null,
+        }),
         stopRoutes: node.type === 'subway'
           ? [{
               odsayRouteId: node.stopId ?? node.id,
@@ -235,17 +259,31 @@ export default function SetupRoute() {
             }),
       }));
 
+      const originName = startPlace?.name ?? '출발지';
+      const destinationName = endPlace?.name ?? '도착지';
+
       await saveRoute({
         name: routeName.trim(),
-        originName: startPlace?.name ?? '출발지',
-        destinationName: endPlace?.name ?? '도착지',
+        originName,
+        destinationName,
         originCoords: startPlace ? { lat: parseFloat(startPlace.y), lng: parseFloat(startPlace.x) } : undefined,
         destinationCoords: endPlace ? { lat: parseFloat(endPlace.y), lng: parseFloat(endPlace.x) } : undefined,
         stops,
       }, jwt);
 
       queryClient.invalidateQueries({ queryKey: ['routes'] });
-      toast.success('경로가 저장되었습니다');
+
+      const reverseState: ReverseOfState = { fromName: destinationName, toName: originName };
+      toast.success('경로가 저장되었습니다', {
+        description: '반대 방향 경로도 등록하시겠어요?',
+        action: {
+          label: '등록하기',
+          onClick: () => {
+            navigate('/setup', { state: { reverseOf: reverseState }, replace: false });
+          },
+        },
+        duration: 6000,
+      });
       navigate('/');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '저장에 실패했습니다');
@@ -262,7 +300,14 @@ export default function SetupRoute() {
           <Button variant="ghost" size="icon" onClick={() => navigate('/')} className="rounded-xl w-9 h-9">
             <ArrowLeft className="w-5 h-5" strokeWidth={2} />
           </Button>
-          <h1 className="text-[17px] font-semibold text-[#111827]">경로 등록</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[17px] font-semibold text-[#111827]">경로 등록</h1>
+            {reverseOf && (
+              <span className="px-2 py-0.5 rounded-md bg-[#EFF6FF] text-[#3B82F6] text-[12px] font-medium">
+                반대 방향 등록 중
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -285,13 +330,13 @@ export default function SetupRoute() {
           <div className="grid grid-cols-2 gap-3">
             <PlacePicker
               label="출발지"
-              placeholder="장소·주소 검색"
+              placeholder={startPlaceholderHint}
               value={startPlace}
               onChange={setStartPlace}
             />
             <PlacePicker
               label="도착지"
-              placeholder="장소·주소 검색"
+              placeholder={endPlaceholderHint}
               value={endPlace}
               onChange={setEndPlace}
             />

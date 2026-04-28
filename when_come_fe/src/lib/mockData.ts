@@ -18,6 +18,10 @@ export interface TransitStop {
   odsayStopId?: string;
   arsId?: string;
   stopRoutes?: StopRouteInfo[];
+  // 지하철 방향 정보 (subway stop만 사용)
+  directionHeadsign?: string | null;
+  directionUpdn?: 'up' | 'down' | null;
+  directionNextStop?: string | null;
 }
 
 export interface RouteSegment {
