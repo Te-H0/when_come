@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, MoreVertical, Pencil, Trash2, Bus, Train, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, MoreVertical, Trash2, Bus, Train, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -11,6 +11,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import BottomNav from "@/components/BottomNav";
 import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 import { listRoutes, deleteRoute, updateRoute } from "@/lib/api";
@@ -22,6 +32,7 @@ import { toast } from "sonner";
 export default function RouteManagement() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const { data: apiRoutes, isLoading, isError } = useQuery({
     queryKey: ['routes'],
@@ -43,16 +54,23 @@ export default function RouteManagement() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
+      console.log('[delete] start', id);
       const jwt = await getJwt();
       if (!jwt) throw new Error('로그인이 필요합니다');
-      return deleteRoute(id, jwt);
+      const result = await deleteRoute(id, jwt);
+      console.log('[delete] result', result);
+      return result;
     },
     onSuccess: () => {
+      console.log('[delete] success');
+      setPendingDeleteId(null);
       queryClient.invalidateQueries({ queryKey: ['routes'] });
       toast.success('경로가 삭제되었습니다');
     },
-    onError: () => {
-      toast.error('삭제에 실패했습니다');
+    onError: (err) => {
+      console.error('[delete] error', err);
+      setPendingDeleteId(null);
+      toast.error(`삭제 실패: ${(err as Error).message}`);
     },
   });
 
@@ -122,12 +140,12 @@ export default function RouteManagement() {
             <Card key={route.id} className="overflow-hidden rounded-2xl border border-black/5 shadow-sm bg-white">
               {/* 헤더 */}
               <div className="p-4 border-b border-black/5">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-[17px] font-semibold text-[#111827]">{route.name}</h3>
+                      <h3 className="text-[17px] font-semibold text-[#111827] truncate">{route.name}</h3>
                       {route.isActive && (
-                        <span className="px-2 py-0.5 rounded-md bg-[#111827] text-white text-[11px] font-medium">
+                        <span className="px-2 py-0.5 rounded-md bg-[#111827] text-white text-[11px] font-medium shrink-0">
                           활성
                         </span>
                       )}
@@ -137,36 +155,30 @@ export default function RouteManagement() {
                     </p>
                   </div>
 
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="rounded-xl w-8 h-8">
-                        <MoreVertical className="w-[18px] h-[18px] text-[#6B7280]" strokeWidth={2} />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="rounded-xl border-black/5">
-                      <DropdownMenuItem onClick={() => navigate('/setup')} className="text-[14px]">
-                        <Pencil className="w-4 h-4 mr-2" strokeWidth={2} />
-                        수정
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => deleteMutation.mutate(route.id)}
-                        className="text-[14px] text-[#DC2626]"
-                        disabled={deleteMutation.isPending}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" strokeWidth={2} />
-                        삭제
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-[14px] text-[#6B7280]">활성화</span>
-                  <Switch
-                    checked={route.isActive}
-                    onCheckedChange={() => toggleMutation.mutate(route)}
-                    disabled={toggleMutation.isPending}
-                  />
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Switch
+                      checked={route.isActive}
+                      onCheckedChange={() => toggleMutation.mutate(route)}
+                      disabled={toggleMutation.isPending}
+                    />
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="rounded-xl w-8 h-8">
+                          <MoreVertical className="w-[18px] h-[18px] text-[#6B7280]" strokeWidth={2} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="rounded-xl border-black/5">
+                        <DropdownMenuItem
+                          onClick={() => setPendingDeleteId(route.id)}
+                          className="text-[14px] text-[#DC2626]"
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" strokeWidth={2} />
+                          삭제
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               </div>
 
@@ -231,6 +243,37 @@ export default function RouteManagement() {
       </div>
 
       <BottomNav />
+
+      <AlertDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => { if (!open) setPendingDeleteId(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>경로를 삭제하시겠어요?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const target = routes.find((r) => r.id === pendingDeleteId);
+                return target
+                  ? `경로 '${target.name}'을(를) 삭제합니다. 이 작업은 되돌릴 수 없습니다.`
+                  : "이 작업은 되돌릴 수 없습니다.";
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDeleteId) deleteMutation.mutate(pendingDeleteId);
+              }}
+              disabled={deleteMutation.isPending}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white"
+            >
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
