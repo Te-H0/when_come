@@ -43,5 +43,5 @@ docs/
 | 테이블 | 설명 |
 |--------|------|
 | routes | 사용자 저장 출퇴근 경로 |
-| route_stops | 경로 내 정류장/역 (순서 있음) |
+| route_stops | 경로 내 정류장/역 (순서 있음). 지하철 stop은 방향 컬럼 3개 보유: `direction_headsign` (예: `"장암행"`), `direction_updn` (`up`/`down`, CHECK), `direction_next_stop` (ODsay `endName`, 디버그용). 모두 nullable — legacy/버스 row는 NULL. |
 | stop_routes | 정류장에서 탈 수 있는 노선 목록 |

@@ -82,3 +82,22 @@ fetchArrival(stop)
 - 버스 도착 조회는 반드시 `arsId` 필요 — 경로 저장 시 `route_stops.ars_id` 저장 필수
 - `subwayCode`는 서울 지하철 API 형식(`"1002"`) 사용 — arrival `lineName`과 직접 비교
 - 도착정보 자동 조회 비활성화 중 (`enabled: false`) — 새로고침 버튼으로만 조회 (개발 중 API 절약)
+
+### 지하철 방향 매칭 규칙 (2026-04-28~)
+
+저장된 stop의 `directionHeadsign` / `directionUpdn`을 사용해 도착 응답을 필터링한다.
+관련 설계: `docs/api/contracts/route-direction-design.md`, `docs/decisions/ADR-001-subway-direction-model.md`.
+
+```
+matchSubwayItems(items, line, { headsign, updn })
+  ├─ 1차: lineName === line (호선 일치)
+  ├─ 2차: directionUpdn 있으면 updnLine 정규화 비교
+  │       ("상행"|"내선" → up, "하행"|"외선" → down)
+  ├─ 3차: directionHeadsign 있으면 trainLineNm.startsWith(headsign)
+  └─ 매칭 0건 → 호선만 일치하는 전체로 fallback
+```
+
+- 두 방향 키 모두 있으면 둘 다 만족하는 item만, 한쪽만 있으면 그것만 적용
+- 매칭 0건이면 호선 일치 전체로 fallback — legacy 데이터(방향 NULL) 안전망
+- 방향 NULL인 지하철 stop에는 카드 헤더에 inline 안내 노출 ("방향 정보 없음 — 경로를 다시 등록하면 더 정확해요")
+- 카드 표시 규칙: 같은 item의 `arrmsg1`/`arrmsg2`를 두 줄로 보이던 방식 → **상위 2개 매칭 item의 `arrmsg1`만** 두 줄로 표시

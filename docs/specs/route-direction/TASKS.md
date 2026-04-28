@@ -1,6 +1,7 @@
 # TASKS — 경로 방향 정보 (route-direction)
 
-- **상태:** Phase 1 완료 (2026-04-28), Phase 2 완료 (2026-04-28), Phase 3 진행 중 (2026-04-28), Phase 4 대기
+- **상태:** 구현 완료 (2026-04-28). Phase 1·2·3·4 완료. T17/T24 수동 QA 및 T28 Open Questions는 `when_come_be/docs/tech-notes/route-direction-open-questions.md`에서 추후 채움
+- **최근 갱신:** 2026-04-28
 - **선행 문서:** PRD.md, SDD.md, ADR-001
 - **승인 후 위임:** be-agent (T1~T8) → fe-agent (T9~T17) — be-agent 완료 후 순차
 
@@ -53,7 +54,7 @@
   - `directionUpdn = wayCodeToUpdn(node.wayCode)` (1→up, 2→down, else null)
   - `directionNextStop = node.endName ?? null`
   (완료일: 2026-04-28)
-- [ ] **T17.** 수동 QA: 석남 7호선 부평구청 방향 + 강남 2호선 외선 — 저장 성공 확인 (DB row에 direction_* 채워졌는지 Supabase Studio에서 확인)
+- [ ] **T17.** 수동 QA: 석남 7호선 부평구청 방향 + 강남 2호선 외선 — 저장 성공 확인 (DB row에 direction_* 채워졌는지 Supabase Studio에서 확인) — _QA 후 보강 예정, 결과는 `when_come_be/docs/tech-notes/route-direction-open-questions.md` OQ1·OQ2에 기록_
 
 ---
 
@@ -65,7 +66,7 @@
 - [x] **T21.** 카드 표시 규칙 변경: 같은 item의 arrmsg1/arrmsg2 두 줄 → 상위 2개 매칭 item의 arrmsg1만 두 줄 (완료일: 2026-04-28)
 - [x] **T22.** `Home.tsx` 호선 row에 `direction_headsign` 배지 추가 (지하철 only) (완료일: 2026-04-28)
 - [x] **T23.** `Home.tsx` — 매칭이 fallback(방향 NULL)으로 동작 중인 stop에 inline 안내 ("방향 정보 없음 — 경로를 다시 등록하면 더 정확해요") (완료일: 2026-04-28)
-- [ ] **T24.** 수동 QA 시나리오 (dev 서버에서 직접 확인 필요):
+- [ ] **T24.** 수동 QA 시나리오 (dev 서버에서 직접 확인 필요) — _QA 후 보강 예정, 결과는 `when_come_be/docs/tech-notes/route-direction-open-questions.md` OQ1~OQ3에 기록_:
   - (a) 석남 7호선 부평구청 방향 등록 → 도착 카드에 부평구청행만 (장암행 없음)
   - (b) 강남 2호선 외선(시계반대) 등록 → 외선 차량만
   - (c) 기존 저장 경로(방향 NULL) → 전체 표시 + 안내 노출
@@ -76,11 +77,11 @@
 
 ## Phase 4 — 정리 / 문서
 
-- [ ] **T25.** `when_come_be/docs/architecture/overview.md` — DB 테이블 섹션에 `route_stops`의 방향 컬럼 언급 추가
-- [ ] **T26.** `when_come_fe/docs/architecture/overview.md` — "실시간 도착정보 조회 전략" 섹션에 매칭 규칙 추가
-- [ ] **T27.** `when_come_be/docs/external-apis/odsay.md` — `searchPubTransPathT` 응답 표에 `way`, `wayCode` 추가
-- [ ] **T28.** Open Question 검증 결과(2호선 wayCode 매핑, GTX updnLine 형태)를 `when_come_be/docs/tech-notes/`에 기록
-- [ ] **T29.** PRD/SDD 상태를 "완료"로 갱신
+- [x] **T25.** `when_come_be/docs/architecture/overview.md` — DB 테이블 섹션에 `route_stops`의 방향 컬럼 언급 추가 (완료일: 2026-04-28)
+- [x] **T26.** `when_come_fe/docs/architecture/overview.md` — "실시간 도착정보 조회 전략" 섹션에 매칭 규칙 추가 (완료일: 2026-04-28)
+- [x] **T27.** `when_come_be/docs/external-apis/odsay.md` — `searchPubTransPathT` 응답 표에 `way`, `wayCode` 추가 (완료일: 2026-04-28)
+- [x] **T28.** `when_come_be/docs/tech-notes/route-direction-open-questions.md` 신규 작성 — OQ1(7호선 분기), OQ2(2호선 외선), OQ3(미커버 노선 fallback) 검증 절차·기록 구조만 우선. 실제 결과는 _QA 후 보강 예정_ (완료일: 2026-04-28, 결과 보강 대기)
+- [x] **T29.** PRD/SDD/TASKS/ADR-001/route-direction-design.md 상태 메타 갱신 (완료일: 2026-04-28)
 
 ---
 
