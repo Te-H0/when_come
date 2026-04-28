@@ -70,8 +70,37 @@ function mockDbListRoutes() {
   ])
 }
 
+function mockDbListRoutesWithInactive() {
+  return jsonResponse([
+    {
+      id: ROUTE_ID,
+      name: "출근길",
+      origin_name: "집",
+      destination_name: "회사",
+      origin_coords: { lat: 37.49, lng: 127.02 },
+      destination_coords: { lat: 37.55, lng: 126.92 },
+      is_active: true,
+      created_at: "2026-04-20T00:00:00Z",
+      updated_at: "2026-04-20T00:00:00Z",
+      route_stops: [],
+    },
+    {
+      id: "inactive-route-id",
+      name: "퇴근길",
+      origin_name: "회사",
+      destination_name: "집",
+      origin_coords: null,
+      destination_coords: null,
+      is_active: false,
+      created_at: "2026-04-19T00:00:00Z",
+      updated_at: "2026-04-19T00:00:00Z",
+      route_stops: [],
+    },
+  ])
+}
+
 function mockDbDeleteRoute(found: boolean) {
-  // update().select("id") → 수정된 행 배열 반환
+  // delete().select("id") → 삭제된 행 배열 반환 (CASCADE로 route_stops·stop_routes 동시 삭제)
   return found ? jsonResponse([{ id: ROUTE_ID }]) : jsonResponse([])
 }
 
@@ -131,6 +160,25 @@ supabaseTest("routes GET — 내 경로 목록을 반환한다", async () => {
         assertEquals(body.length, 1)
         assertEquals(body[0].name, "출근길")
         assertEquals(body[0].origin_name, "집")
+      },
+    )
+  )
+})
+
+supabaseTest("routes GET — is_active=false 경로도 목록에 포함된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        { match: "/rest/v1/routes", response: () => mockDbListRoutesWithInactive() },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("GET"))
+        assertEquals(res.status, 200)
+        const body = await res.json()
+        assertEquals(body.length, 2)
+        const inactiveRoute = body.find((r: { id: string }) => r.id === "inactive-route-id")
+        assertEquals(inactiveRoute?.is_active, false)
       },
     )
   )
@@ -285,7 +333,7 @@ supabaseTest("routes POST — stopRoutes가 없어도 정상 저장된다", asyn
 
 // ─── DELETE /routes/:id ───────────────────────────────────────
 
-supabaseTest("routes DELETE — 경로를 soft delete하고 ok를 반환한다", async () => {
+supabaseTest("routes DELETE — 경로를 hard delete하고 ok를 반환한다", async () => {
   await withEnv(ENV, () =>
     withMockFetch(
       multiMockFetch([
@@ -356,5 +404,192 @@ supabaseTest("routes — 지원하지 않는 메서드(PUT)는 405를 반환한�
       const res = await handler(makeRouteRequest("PUT", "", { body: {} }))
       assertEquals(res.status, 405)
     })
+  )
+})
+
+// ─── T5: POST — direction_* 필드 저장 ─────────────────────────
+
+supabaseTest("routes POST — subway stop에 direction 3 필드 모두 전달하면 정상 저장된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        { match: "/rest/v1/routes", response: () => mockDbInsertRoute() },
+        { match: "route_stops", response: () => mockDbInsertStops() },
+        { match: "stop_routes", response: () => mockDbInsertStopRoutes() },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "출근길",
+            originName: "집",
+            destinationName: "회사",
+            stops: [{
+              odsayStopId: "200",
+              stopName: "석남(거북시장)",
+              stopType: "subway",
+              sequence: 1,
+              directionHeadsign: "장암행",
+              directionUpdn: "up",
+              directionNextStop: "부평구청",
+              stopRoutes: [{
+                odsayRouteId: "7",
+                routeName: "7호선",
+              }],
+            }],
+          },
+        }))
+        assertEquals(res.status, 201)
+        const body = await res.json()
+        assertEquals(typeof body.id, "string")
+      },
+    )
+  )
+})
+
+supabaseTest("routes POST — subway stop에 direction 일부 필드 누락 시 null로 저장된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        { match: "/rest/v1/routes", response: () => mockDbInsertRoute() },
+        { match: "route_stops", response: () => mockDbInsertStops() },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "출근길",
+            originName: "집",
+            destinationName: "회사",
+            stops: [{
+              odsayStopId: "200",
+              stopName: "강남",
+              stopType: "subway",
+              sequence: 1,
+              // directionHeadsign 미전송
+              directionUpdn: "down",
+              // directionNextStop 미전송
+              stopRoutes: [],
+            }],
+          },
+        }))
+        assertEquals(res.status, 201)
+      },
+    )
+  )
+})
+
+supabaseTest("routes POST — directionUpdn에 잘못된 값 전달 시 null로 저장(방어)된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        { match: "/rest/v1/routes", response: () => mockDbInsertRoute() },
+        { match: "route_stops", response: () => mockDbInsertStops() },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "출근길",
+            originName: "집",
+            destinationName: "회사",
+            stops: [{
+              odsayStopId: "200",
+              stopName: "강남",
+              stopType: "subway",
+              sequence: 1,
+              directionHeadsign: "어딘가행",
+              directionUpdn: "left",  // 잘못된 값 → null 저장
+              stopRoutes: [],
+            }],
+          },
+        }))
+        // 방어적 처리: 400이 아닌 201 (null로 저장)
+        assertEquals(res.status, 201)
+      },
+    )
+  )
+})
+
+supabaseTest("routes POST — bus stop에 direction 필드 미전송 시 모두 null로 저장된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        { match: "/rest/v1/routes", response: () => mockDbInsertRoute() },
+        { match: "route_stops", response: () => mockDbInsertStops() },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "출근길",
+            originName: "집",
+            destinationName: "회사",
+            stops: [{
+              odsayStopId: "300",
+              stopName: "강남역버스정류장",
+              stopType: "bus",
+              sequence: 1,
+              arsId: "22014",
+              // direction 필드 없음 — 버스는 미전송
+              stopRoutes: [],
+            }],
+          },
+        }))
+        assertEquals(res.status, 201)
+      },
+    )
+  )
+})
+
+// ─── T6: GET — direction_* 응답에 노출 ────────────────────────
+
+function mockDbListRoutesWithDirection() {
+  return jsonResponse([
+    {
+      id: ROUTE_ID,
+      name: "출근길",
+      origin_name: "집",
+      destination_name: "회사",
+      origin_coords: null,
+      destination_coords: null,
+      is_active: true,
+      created_at: "2026-04-28T00:00:00Z",
+      updated_at: "2026-04-28T00:00:00Z",
+      route_stops: [
+        {
+          id: "stop-uuid-1",
+          odsay_stop_id: "200",
+          stop_name: "석남(거북시장)",
+          stop_type: "subway",
+          sequence: 1,
+          ars_id: null,
+          direction_headsign: "장암행",
+          direction_updn: "up",
+          direction_next_stop: "부평구청",
+          stop_routes: [],
+        },
+      ],
+    },
+  ])
+}
+
+supabaseTest("routes GET — route_stops에 direction_* 있으면 응답 JSON에 노출된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        { match: "/rest/v1/routes", response: () => mockDbListRoutesWithDirection() },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("GET"))
+        assertEquals(res.status, 200)
+        const body = await res.json()
+        const stop = body[0].route_stops[0]
+        assertEquals(stop.direction_headsign, "장암행")
+        assertEquals(stop.direction_updn, "up")
+        assertEquals(stop.direction_next_stop, "부평구청")
+      },
+    )
   )
 })

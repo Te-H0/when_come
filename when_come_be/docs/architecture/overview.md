@@ -17,6 +17,7 @@ supabase/
 │   ├── search-stops/        ← 정류장 검색
 │   ├── arrival-info/        ← 실시간 도착정보
 │   ├── route-search/        ← 경로탐색
+│   ├── stop-routes/         ← 정류장 노선 목록 (서울 버스 API)
 │   └── routes/              ← 사용자 경로 CRUD
 ├── migrations/              ← DB 스키마
 └── seed.sql
@@ -33,11 +34,14 @@ docs/
 | 도메인 | Function | 설명 |
 |--------|----------|------|
 | stops | search-stops | 정류장/역 검색 (ODsay) |
-| arrival | arrival-info | 실시간 도착정보 (ODsay) |
+| stop-routes | stop-routes | 정류장 노선 목록 (서울 버스 API `getRouteByStation`) |
+| arrival | arrival-info | 실시간 도착정보 (서울 버스/지하철 API, ODsay fallback) |
 | route-search | route-search | 대중교통 경로탐색 (ODsay) |
 | routes | routes | 사용자 저장 경로 CRUD |
 
-## DB 테이블 (설계 예정)
-- users (Supabase Auth 관리)
-- routes (저장 경로)
-- stops (경로 내 정류장)
+## DB 테이블
+| 테이블 | 설명 |
+|--------|------|
+| routes | 사용자 저장 출퇴근 경로 |
+| route_stops | 경로 내 정류장/역 (순서 있음). 지하철 stop은 방향 컬럼 3개 보유: `direction_headsign` (예: `"장암행"`), `direction_updn` (`up`/`down`, CHECK), `direction_next_stop` (ODsay `endName`, 디버그용). 모두 nullable — legacy/버스 row는 NULL. |
+| stop_routes | 정류장에서 탈 수 있는 노선 목록 |

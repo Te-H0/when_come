@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useNavigate, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, Search, MapPin, ChevronDown, ChevronUp, Loader2,
+  ArrowLeft, Search, MapPin, ChevronDown, ChevronUp, Loader2, Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,61 +11,109 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RouteNodeCard, { RouteNode } from "../components/RouteNodeCard";
 import SearchResultNode, { SearchNodeData } from "../components/SearchResultNode";
-import StopPicker from "../components/StopPicker";
+import PlacePicker from "../components/PlacePicker";
 import BottomNav from "@/components/BottomNav";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { searchStops, searchRoutes, saveRoute } from "@/lib/api";
+import { searchStops, searchRoutes, saveRoute, getStopBuses } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
-import { subwayCodeToLineName } from "@/utils/transitColors";
-import type { ApiStop, ApiRouteOption } from "@/types/api";
+import { subwayApiCodeToLineName } from "@/utils/transitColors";
+import { wayCodeToUpdn } from "@/utils/transitDirection";
+import type { ApiPlace, ApiStop, ApiRouteOption } from "@/types/api";
 import { toast } from "sonner";
 
-function apiRouteToSearchResult(route: ApiRouteOption): {
+interface SearchRouteResult {
   routeId: string
   totalTime: number
   transferCount: number
   nodes: SearchNodeData[]
-} {
+  totalTransferCount: number | null
+  totalWalkMeters: number | null
+  paymentWon: number | null
+}
+
+function formatWalkDistance(meters: number | null): string | null {
+  if (meters === null) return null
+  if (meters < 1000) return `도보 ${meters}m`
+  return `도보 ${(meters / 1000).toFixed(1)}km`
+}
+
+function apiRouteToSearchResult(route: ApiRouteOption): SearchRouteResult {
   const nodes: SearchNodeData[] = route.segments.map((seg, idx) => {
     if (seg.type === 'subway') {
       const line = seg.lines[0]
-      const lineName = line ? subwayCodeToLineName(line.subwayCode) || line.routeName : ''
+      const lineName = line ? subwayApiCodeToLineName(line.subwayCode ?? '') || line.routeName : ''
       return {
         id: `${route.id}-${idx}`,
         name: seg.startName,
         type: 'subway',
+        stopId: seg.startOdsayId ? String(seg.startOdsayId) : undefined,
         subwayLine: lineName,
         direction: seg.endName,
+        way: seg.way ?? null,
+        wayCode: seg.wayCode ?? null,
+        endName: seg.endName ?? null,
       }
     }
     return {
       id: `${route.id}-${idx}`,
       name: seg.startName,
       type: 'bus',
+      stopId: seg.startArsId ?? undefined,
+      arsId: seg.startArsId ?? undefined,
       availableBuses: seg.lines.map(l => l.routeName),
-      busRouteId: seg.lines[0]?.busRouteId ?? undefined,
+      busLines: seg.lines.map(l => ({
+        routeName: l.routeName,
+        busRouteId: l.busRouteId ?? undefined,
+        busType: l.busType,
+      })),
     }
   })
-  return { routeId: route.id, totalTime: route.totalMinutes, transferCount: route.transferCount, nodes }
+  return {
+    routeId: route.id,
+    totalTime: route.totalMinutes,
+    transferCount: route.transferCount,
+    nodes,
+    totalTransferCount: route.totalTransferCount ?? null,
+    totalWalkMeters: route.totalWalkMeters ?? null,
+    paymentWon: route.paymentWon ?? null,
+  }
+}
+
+interface ReverseOfState {
+  fromName: string;
+  toName: string;
 }
 
 export default function SetupRoute() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
 
+  const reverseOf = (location.state as { reverseOf?: ReverseOfState } | null)?.reverseOf ?? null;
+
   const [routeName, setRouteName] = useState('');
-  const [startStop, setStartStop] = useState<ApiStop | null>(null);
-  const [endStop, setEndStop] = useState<ApiStop | null>(null);
+  const [startPlace, setStartPlace] = useState<ApiPlace | null>(null);
+  const [endPlace, setEndPlace] = useState<ApiPlace | null>(null);
+
+  // reverseOf 프리필: 출발지/도착지 placeholder 힌트용 이름
+  const startPlaceholderHint = reverseOf?.fromName ?? '장소·주소 검색';
+  const endPlaceholderHint = reverseOf?.toName ?? '장소·주소 검색';
 
   const [nodes, setNodes] = useState<RouteNode[]>([]);
-  const [searchResults, setSearchResults] = useState<ReturnType<typeof apiRouteToSearchResult>[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchRouteResult[]>([]);
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // 정렬 옵션
+  type SortKey = 'default' | 'time' | 'transfer' | 'walk'
+  const [sortKey, setSortKey] = useState<SortKey>('default');
+  // 더보기 (초기 3건 → 전체)
+  const [showAll, setShowAll] = useState(false);
 
   const [manualQuery, setManualQuery] = useState('');
   const [manualResults, setManualResults] = useState<ApiStop[]>([]);
@@ -96,12 +144,17 @@ export default function SetupRoute() {
   };
 
   const handleAutoSearch = async () => {
-    if (!startStop || !endStop) return;
+    if (!startPlace || !endPlace) return;
     setIsSearching(true);
     try {
-      const routes = await searchRoutes(startStop.lng, startStop.lat, endStop.lng, endStop.lat);
+      const routes = await searchRoutes(
+        parseFloat(startPlace.x), parseFloat(startPlace.y),
+        parseFloat(endPlace.x), parseFloat(endPlace.y),
+      );
       const results = routes.map(apiRouteToSearchResult);
       setSearchResults(results);
+      setSortKey('default');
+      setShowAll(false);
       if (results.length > 0) setExpandedRoutes(new Set([results[0].routeId]));
     } catch {
       toast.error('경로 검색에 실패했습니다');
@@ -116,30 +169,69 @@ export default function SetupRoute() {
     setExpandedRoutes(next);
   };
 
-  const handleAddNodeFromSearch = (node: SearchNodeData) => {
+  const handleAddNodeFromSearch = async (node: SearchNodeData) => {
+    const nodeId = `node-${Date.now()}`;
     const newNode: RouteNode = {
-      id: `node-${Date.now()}`,
+      id: nodeId,
       name: node.name,
       type: node.type,
       order: nodes.length + 1,
       stopId: node.stopId,
+      arsId: node.arsId,
       lat: node.lat,
       lng: node.lng,
       busNumbers: node.type === 'bus' ? (node.availableBuses ?? []) : undefined,
+      busLines: node.busLines,
       subwayLine: node.subwayLine,
       direction: node.direction,
-      busRouteId: node.busRouteId,
+      way: node.way ?? null,
+      wayCode: node.wayCode ?? null,
+      endName: node.endName ?? null,
     };
     setNodes(prev => [...prev, newNode]);
+
+    if (node.type === 'bus' && node.arsId) {
+      try {
+        const buses = await getStopBuses(node.arsId);
+        const stopBusLines = buses.map(b => ({ routeName: b.routeName, busRouteId: b.busRouteId, busType: b.busRouteType }));
+        setNodes(prev => prev.map(n => {
+          if (n.id !== nodeId) return n;
+          // 기존 busLines(route search busType 포함) + stop-buses 결과 merge, 중복은 기존 우선
+          const merged = [...(n.busLines ?? [])];
+          for (const sb of stopBusLines) {
+            if (!merged.some(l => l.routeName === sb.routeName)) merged.push(sb);
+          }
+          return { ...n, busLines: merged };
+        }));
+      } catch {
+        // 실패 시 기존 busLines 유지
+      }
+    }
   };
 
-  const handleAddNodeManual = (stop: ApiStop) => {
+  const handleAddAllNodes = async (route: SearchRouteResult) => {
+    // 이미 추가된 stopId 집합
+    const existingStopIds = new Set(nodes.map(n => n.stopId).filter(Boolean));
+    const newNodes = route.nodes.filter(n => !n.stopId || !existingStopIds.has(n.stopId));
+    if (newNodes.length === 0) {
+      toast.info('이미 모든 정류장이 추가되어 있습니다');
+      return;
+    }
+    for (const node of newNodes) {
+      await handleAddNodeFromSearch(node);
+    }
+    toast.success(`경로 ${newNodes.length}개 정류장이 추가되었습니다`);
+  };
+
+  const handleAddNodeManual = async (stop: ApiStop) => {
+    const nodeId = `node-${Date.now()}`;
     const newNode: RouteNode = {
-      id: `node-${Date.now()}`,
+      id: nodeId,
       name: stop.name,
       type: stop.type,
       order: nodes.length + 1,
       stopId: stop.id,
+      arsId: stop.arsId,
       lat: stop.lat,
       lng: stop.lng,
       busNumbers: stop.type === 'bus' ? [] : undefined,
@@ -147,6 +239,21 @@ export default function SetupRoute() {
     setNodes(prev => [...prev, newNode]);
     setManualQuery('');
     setManualResults([]);
+
+    if (stop.type === 'bus' && stop.arsId) {
+      try {
+        const buses = await getStopBuses(stop.arsId);
+        setNodes(prev => prev.map(n =>
+          n.id === nodeId ? { ...n, busLines: buses.map(b => ({
+            routeName: b.routeName,
+            busRouteId: b.busRouteId,
+            busType: b.busRouteType,
+          })) } : n
+        ));
+      } catch {
+        // 실패하면 수동 입력
+      }
+    }
   };
 
   const handleRemoveNode = (nodeId: string) => {
@@ -157,6 +264,28 @@ export default function SetupRoute() {
   const handleUpdateBusNumbers = (nodeId: string, busNumbers: string[]) => {
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, busNumbers } : n));
   };
+
+  const sortedResults = useMemo<SearchRouteResult[]>(() => {
+    if (sortKey === 'default') return searchResults;
+    return [...searchResults].sort((a, b) => {
+      if (sortKey === 'time') return a.totalTime - b.totalTime;
+      if (sortKey === 'transfer') {
+        const ta = a.totalTransferCount ?? Infinity;
+        const tb = b.totalTransferCount ?? Infinity;
+        return ta - tb;
+      }
+      if (sortKey === 'walk') {
+        const wa = a.totalWalkMeters ?? Infinity;
+        const wb = b.totalWalkMeters ?? Infinity;
+        return wa - wb;
+      }
+      return 0;
+    });
+  }, [searchResults, sortKey]);
+
+  const INITIAL_VISIBLE = 3;
+  const visibleResults = showAll ? sortedResults : sortedResults.slice(0, INITIAL_VISIBLE);
+  const remainingCount = sortedResults.length - INITIAL_VISIBLE;
 
   const handleSave = async () => {
     if (!routeName.trim() || nodes.length === 0) return;
@@ -170,30 +299,54 @@ export default function SetupRoute() {
         stopName: node.name,
         stopType: node.type,
         sequence: node.order,
+        arsId: node.arsId,
+        ...(node.type === 'subway' && {
+          directionHeadsign: node.way ? `${node.way}행` : null,
+          directionUpdn: wayCodeToUpdn(node.wayCode),
+          directionNextStop: node.endName ?? null,
+        }),
         stopRoutes: node.type === 'subway'
           ? [{
               odsayRouteId: node.stopId ?? node.id,
               routeName: node.subwayLine ?? '',
               stationName: node.name,
             }]
-          : (node.busNumbers ?? []).map(busNum => ({
-              odsayRouteId: node.busRouteId ?? busNum,
-              routeName: busNum,
-              busRouteId: node.busRouteId,
-            })),
+          : (node.busNumbers ?? []).map(busNum => {
+              const lineInfo = node.busLines?.find(l => l.routeName === busNum);
+              return {
+                odsayRouteId: lineInfo?.busRouteId ?? busNum,
+                routeName: busNum,
+                busRouteId: lineInfo?.busRouteId ?? node.busRouteId,
+                busType: lineInfo?.busType,
+              };
+            }),
       }));
+
+      const originName = startPlace?.name ?? '출발지';
+      const destinationName = endPlace?.name ?? '도착지';
 
       await saveRoute({
         name: routeName.trim(),
-        originName: startStop?.name ?? '출발지',
-        destinationName: endStop?.name ?? '도착지',
-        originCoords: startStop ? { lat: startStop.lat, lng: startStop.lng } : undefined,
-        destinationCoords: endStop ? { lat: endStop.lat, lng: endStop.lng } : undefined,
+        originName,
+        destinationName,
+        originCoords: startPlace ? { lat: parseFloat(startPlace.y), lng: parseFloat(startPlace.x) } : undefined,
+        destinationCoords: endPlace ? { lat: parseFloat(endPlace.y), lng: parseFloat(endPlace.x) } : undefined,
         stops,
       }, jwt);
 
       queryClient.invalidateQueries({ queryKey: ['routes'] });
-      toast.success('경로가 저장되었습니다');
+
+      const reverseState: ReverseOfState = { fromName: destinationName, toName: originName };
+      toast.success('경로가 저장되었습니다', {
+        description: '반대 방향 경로도 등록하시겠어요?',
+        action: {
+          label: '등록하기',
+          onClick: () => {
+            navigate('/setup', { state: { reverseOf: reverseState }, replace: false });
+          },
+        },
+        duration: 6000,
+      });
       navigate('/');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '저장에 실패했습니다');
@@ -203,14 +356,21 @@ export default function SetupRoute() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F7F9] pb-24">
+    <div className="min-h-screen bg-[#F6F7F9] pb-36">
       {/* 헤더 */}
       <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate('/')} className="rounded-xl w-9 h-9">
             <ArrowLeft className="w-5 h-5" strokeWidth={2} />
           </Button>
-          <h1 className="text-[17px] font-semibold text-[#111827]">경로 등록</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[17px] font-semibold text-[#111827]">경로 등록</h1>
+            {reverseOf && (
+              <span className="px-2 py-0.5 rounded-md bg-[#EFF6FF] text-[#3B82F6] text-[12px] font-medium">
+                반대 방향 등록 중
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -231,17 +391,17 @@ export default function SetupRoute() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <StopPicker
+            <PlacePicker
               label="출발지"
-              placeholder="정류장·역 검색"
-              value={startStop}
-              onChange={setStartStop}
+              placeholder={startPlaceholderHint}
+              value={startPlace}
+              onChange={setStartPlace}
             />
-            <StopPicker
+            <PlacePicker
               label="도착지"
-              placeholder="정류장·역 검색"
-              value={endStop}
-              onChange={setEndStop}
+              placeholder={endPlaceholderHint}
+              value={endPlace}
+              onChange={setEndPlace}
             />
           </div>
         </Card>
@@ -298,7 +458,7 @@ export default function SetupRoute() {
               <Button
                 onClick={handleAutoSearch}
                 className="w-full bg-[#111827] hover:bg-[#1F2937] rounded-xl h-11 text-[15px] font-medium"
-                disabled={!startStop || !endStop || isSearching}
+                disabled={!startPlace || !endPlace || isSearching}
               >
                 {isSearching ? (
                   <Loader2 className="w-[18px] h-[18px] mr-2 animate-spin" />
@@ -311,38 +471,83 @@ export default function SetupRoute() {
 
             {searchResults.length > 0 && (
               <div className="space-y-2">
-                {searchResults.map((route, routeIdx) => (
+                {/* 정렬 칩 */}
+                <div className="flex gap-2 flex-wrap">
+                  {([
+                    { key: 'default', label: '추천' },
+                    { key: 'time', label: '시간 짧은 순' },
+                    { key: 'transfer', label: '환승 적은 순' },
+                    { key: 'walk', label: '도보 적은 순' },
+                  ] as const).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => { setSortKey(key); setShowAll(false); }}
+                      className={`px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors ${
+                        sortKey === key
+                          ? 'bg-[#111827] text-white'
+                          : 'bg-[#F1F3F5] text-[#6B7280] hover:bg-[#E5E7EB]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {visibleResults.map((route, routeIdx) => (
                   <Card key={route.routeId} className="overflow-hidden rounded-2xl border border-black/5 shadow-sm bg-white">
                     <Collapsible
                       open={expandedRoutes.has(route.routeId)}
                       onOpenChange={() => toggleRoute(route.routeId)}
                     >
-                      <CollapsibleTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          className="w-full p-4 h-auto hover:bg-[#F9FAFB] transition-colors justify-between rounded-none"
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <div className="text-left">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-[15px] font-semibold text-[#111827]">경로 {routeIdx + 1}</span>
+                      <div className="px-4 pt-4 pb-0">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <CollapsibleTrigger asChild>
+                            <button className="flex-1 text-left group">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="text-[15px] font-semibold text-[#111827]">추천 {routeIdx + 1}</span>
+                                {expandedRoutes.has(route.routeId) ? (
+                                  <ChevronUp className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                )}
                               </div>
-                              <div className="flex items-center gap-3 text-[13px] text-[#6B7280]">
-                                <span>{route.totalTime}분</span>
-                                <span>환승 {route.transferCount}회</span>
+                              {/* 부가 정보 chip */}
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                  {route.totalTime}분
+                                </span>
+                                {route.totalTransferCount !== null && (
+                                  <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                    {route.totalTransferCount === 0 ? '직통' : `환승 ${route.totalTransferCount}회`}
+                                  </span>
+                                )}
+                                {route.totalWalkMeters !== null && (
+                                  <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                    {formatWalkDistance(route.totalWalkMeters)}
+                                  </span>
+                                )}
+                                {route.paymentWon !== null && (
+                                  <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                    {route.paymentWon.toLocaleString()}원
+                                  </span>
+                                )}
                               </div>
-                            </div>
-                            {expandedRoutes.has(route.routeId) ? (
-                              <ChevronUp className="w-5 h-5 text-[#6B7280] flex-shrink-0" strokeWidth={2} />
-                            ) : (
-                              <ChevronDown className="w-5 h-5 text-[#6B7280] flex-shrink-0" strokeWidth={2} />
-                            )}
-                          </div>
-                        </Button>
-                      </CollapsibleTrigger>
+                            </button>
+                          </CollapsibleTrigger>
+
+                          {/* 전체 경로 추가 버튼 */}
+                          <button
+                            onClick={() => handleAddAllNodes(route)}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#111827] hover:bg-[#1F2937] text-white text-[12px] font-medium transition-colors flex-shrink-0"
+                          >
+                            <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                            전체 추가
+                          </button>
+                        </div>
+                      </div>
 
                       <CollapsibleContent>
-                        <div className="p-3 space-y-2 border-t border-black/5">
+                        <div className="px-3 pb-3 pt-2 space-y-2 border-t border-black/5 mt-2">
                           {route.nodes.map((node) => (
                             <SearchResultNode
                               key={node.id}
@@ -356,6 +561,16 @@ export default function SetupRoute() {
                     </Collapsible>
                   </Card>
                 ))}
+
+                {/* 더보기 버튼 */}
+                {!showAll && remainingCount > 0 && (
+                  <button
+                    onClick={() => setShowAll(true)}
+                    className="w-full py-3 rounded-2xl border border-black/5 bg-white text-[14px] text-[#6B7280] font-medium hover:bg-[#F9FAFB] transition-colors"
+                  >
+                    더보기 (남은 {remainingCount}개)
+                  </button>
+                )}
               </div>
             )}
           </TabsContent>
@@ -405,23 +620,28 @@ export default function SetupRoute() {
           </TabsContent>
         </Tabs>
 
-        {/* 저장 */}
-        {nodes.length > 0 && (
-          <Button
-            onClick={handleSave}
-            className="w-full bg-[#111827] hover:bg-[#1F2937] rounded-xl h-12 text-[15px] font-medium shadow-sm"
-            size="lg"
-            disabled={!routeName.trim() || isSaving}
-          >
-            {isSaving ? (
-              <Loader2 className="w-[18px] h-[18px] mr-2 animate-spin" />
-            ) : (
-              <MapPin className="w-[18px] h-[18px] mr-2" strokeWidth={2} />
-            )}
-            경로 저장하기
-          </Button>
-        )}
       </div>
+
+      {/* Sticky 저장 버튼 — BottomNav(56px) 위에 고정 */}
+      {nodes.length > 0 && (
+        <div className="fixed bottom-14 left-0 right-0 z-20 px-4 pb-3 pt-2 bg-gradient-to-t from-[#F6F7F9] via-[#F6F7F9]/90 to-transparent">
+          <div className="max-w-2xl mx-auto">
+            <Button
+              onClick={handleSave}
+              className="w-full bg-[#111827] hover:bg-[#1F2937] rounded-xl h-12 text-[15px] font-medium shadow-lg"
+              size="lg"
+              disabled={!routeName.trim() || isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="w-[18px] h-[18px] mr-2 animate-spin" />
+              ) : (
+                <MapPin className="w-[18px] h-[18px] mr-2" strokeWidth={2} />
+              )}
+              경로 저장하기
+            </Button>
+          </div>
+        </div>
+      )}
 
       <BottomNav />
     </div>

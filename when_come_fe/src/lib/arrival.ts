@@ -1,10 +1,62 @@
-import { getSubwayArrival, getBusArrival } from '@/lib/api'
+import { getSubwayArrival, getBusArrival, getOdsayArrival } from '@/lib/api'
 import type { TransitStop } from '@/lib/mockData'
-import type { ApiSubwayArrivalItem, ApiBusArrival } from '@/types/api'
+import type { ApiSubwayArrivalItem, ApiBusArrival, ApiOdsayArrival } from '@/types/api'
 import { subwayApiCodeToLineName } from '@/utils/transitColors'
+
+// T18: 서울 지하철 API의 updnLine 값을 'up'/'down'으로 정규화
+// 상행/내선 → 'up', 하행/외선 → 'down', 그 외 → null
+function mapsUpdnLineToCode(updnLine: string): 'up' | 'down' | null {
+  if (updnLine === '상행' || updnLine === '내선') return 'up'
+  if (updnLine === '하행' || updnLine === '외선') return 'down'
+  return null
+}
+
+interface SubwayDirection {
+  headsign: string | null
+  updn: 'up' | 'down' | null
+}
+
+// T19: 지하철 도착 items에서 호선 + 방향으로 필터링
+// 매칭 0건 시 호선만 일치하는 전체로 fallback (legacy 호환)
+function matchSubwayItems(
+  items: ApiSubwayArrivalItem[],
+  line: string,
+  direction: SubwayDirection,
+): ApiSubwayArrivalItem[] {
+  const sameLine = items.filter(i => subwayApiCodeToLineName(i.lineName) === line)
+  if (sameLine.length === 0) return []
+
+  // 방향 정보가 없으면 전체 반환 (기존 경로 fallback)
+  if (!direction.headsign && !direction.updn) return sameLine
+
+  const filtered = sameLine.filter(i => {
+    const updnCode = mapsUpdnLineToCode(i.updnLine)
+    const okUpdn = !direction.updn ? true : updnCode === direction.updn
+    const okHead = !direction.headsign ? true : i.direction.startsWith(direction.headsign)
+    return okUpdn && okHead
+  })
+
+  // 매칭 0건 → 호선 일치 전체로 fallback
+  return filtered.length > 0 ? filtered : sameLine
+}
+
+// 지하철 매칭 item 전체를 외부에서 사용할 수 있도록 export
+export function getMatchedSubwayItems(
+  stop: TransitStop,
+  line: string,
+  arrival: ArrivalData,
+): ApiSubwayArrivalItem[] {
+  if (!arrival || arrival.type !== 'subway') return []
+  const direction: SubwayDirection = {
+    headsign: stop.directionHeadsign ?? null,
+    updn: stop.directionUpdn ?? null,
+  }
+  return matchSubwayItems(arrival.items, line, direction)
+}
 
 export type ArrivalData =
   | { type: 'subway'; items: ApiSubwayArrivalItem[] }
+  | { type: 'odsay'; items: ApiOdsayArrival[] }
   | { type: 'bus'; items: Array<ApiBusArrival | null> }
   | null
 
@@ -19,33 +71,86 @@ export function parseArrivalMin(arrmsg: string): number | null {
   return mins + (secs > 0 ? 1 : 0)
 }
 
-export function getArrivalDisplay(stop: TransitStop, line: string, idx: number, arrival: ArrivalData): string {
-  if (!arrival) return String(stop.arrivalTimes[idx] ?? '--')
+// arrmsg에 경과 시간을 반영해 카운트다운 ("5분26초후[2번째 전]" → "4분55초후[2번째 전]")
+export function applyCountdownToArrmsg(arrmsg: string, elapsedSec: number): string {
+  const minMatch = arrmsg.match(/(\d+)분/)
+  const secMatch = arrmsg.match(/(\d+)초/)
+  if (!minMatch && !secMatch) return arrmsg
+
+  const baseSec = (minMatch ? parseInt(minMatch[1]) * 60 : 0) + (secMatch ? parseInt(secMatch[1]) : 0)
+  const remainSec = Math.max(0, baseSec - elapsedSec)
+  const suffix = arrmsg.match(/(\[.*?\])/)?.[0] ?? ''
+
+  if (remainSec < 60) return `곧 도착${suffix ? ' ' + suffix : ''}`
+  const mins = Math.floor(remainSec / 60)
+  const secs = Math.floor(remainSec % 60)
+  const timeStr = secs > 0 ? `${mins}분${secs}초후` : `${mins}분후`
+  return `${timeStr}${suffix}`
+}
+
+// T20: stop의 방향 필드를 읽어 matchSubwayItems에 전달
+// T21: 같은 item의 arrmsg1/arrmsg2 대신, 상위 2개 매칭 item의 arrmsg1을 각각 사용
+function getRawArrmsg(stop: TransitStop, line: string, idx: number, arrival: ArrivalData, which: 1 | 2): string | null {
+  if (!arrival) return null
 
   if (arrival.type === 'subway') {
-    const match = arrival.items.find(
-      item => subwayApiCodeToLineName(item.lineName) === line
-    ) ?? arrival.items[idx]
-    if (match) return match.arrmsg1
+    const direction: SubwayDirection = {
+      headsign: stop.directionHeadsign ?? null,
+      updn: stop.directionUpdn ?? null,
+    }
+    const matched = matchSubwayItems(arrival.items, line, direction)
+    // which === 1 → 첫 번째 매칭 item의 arrmsg1
+    // which === 2 → 두 번째 매칭 item의 arrmsg1 (다음 차량)
+    const item = matched[which - 1]
+    return item ? item.arrmsg1 : null
+  }
+
+  if (arrival.type === 'odsay') {
+    const match = arrival.items.find(item => item.routeName === line) ?? arrival.items[idx]
+    if (!match) return null
+    const t = which === 1 ? match.arrivalTime1 : match.arrivalTime2
+    return t != null ? `${t}분` : null
   }
 
   if (arrival.type === 'bus') {
     const item = arrival.items[idx] ?? arrival.items[0]
-    if (item?.arrivalSec1 != null) return `${Math.ceil(item.arrivalSec1 / 60)}분`
-    if (item?.arrmsg1) return item.arrmsg1
+    if (!item) return null
+    if (which === 1) {
+      if (item.arrivalSec1 != null) return `${Math.ceil(item.arrivalSec1 / 60)}분후`
+      return item.arrmsg1 || null
+    } else {
+      if (item.arrivalSec2 != null) return `${Math.ceil(item.arrivalSec2 / 60)}분후`
+      return item.arrmsg2 || null
+    }
   }
 
-  return String(stop.arrivalTimes[idx] ?? '--')
+  return null
+}
+
+export function getArrivalDisplay(stop: TransitStop, line: string, idx: number, arrival: ArrivalData): string {
+  return getRawArrmsg(stop, line, idx, arrival, 1) ?? '--'
+}
+
+export function getArrivalDisplay2(stop: TransitStop, line: string, idx: number, arrival: ArrivalData): string | null {
+  return getRawArrmsg(stop, line, idx, arrival, 2)
 }
 
 export function getArrivalMin(stop: TransitStop, line: string, idx: number, arrival: ArrivalData): number | null {
-  if (!arrival) return stop.arrivalTimes[idx] ?? null
+  if (!arrival) return null
 
   if (arrival.type === 'subway') {
-    const match = arrival.items.find(
-      item => subwayApiCodeToLineName(item.lineName) === line
-    ) ?? arrival.items[idx]
-    return match ? parseArrivalMin(match.arrmsg1) : null
+    const direction: SubwayDirection = {
+      headsign: stop.directionHeadsign ?? null,
+      updn: stop.directionUpdn ?? null,
+    }
+    const matched = matchSubwayItems(arrival.items, line, direction)
+    const item = matched[0]
+    return item ? parseArrivalMin(item.arrmsg1) : null
+  }
+
+  if (arrival.type === 'odsay') {
+    const match = arrival.items.find(item => item.routeName === line) ?? arrival.items[idx]
+    return match?.arrivalTime1 ?? null
   }
 
   if (arrival.type === 'bus') {
@@ -54,7 +159,7 @@ export function getArrivalMin(stop: TransitStop, line: string, idx: number, arri
     if (item?.arrmsg1) return parseArrivalMin(item.arrmsg1)
   }
 
-  return stop.arrivalTimes[idx] ?? null
+  return null
 }
 
 export async function fetchArrival(stop: TransitStop): Promise<ArrivalData> {
@@ -63,13 +168,27 @@ export async function fetchArrival(stop: TransitStop): Promise<ArrivalData> {
     return { type: 'subway', items }
   }
 
+  // ODsay stationId가 있으면 ODsay 도착 API 우선 사용 (결과 있을 때만 반환)
+  if (stop.odsayStopId) {
+    try {
+      const items = await getOdsayArrival(stop.odsayStopId)
+      if (items.length > 0) return { type: 'odsay', items }
+    } catch {
+      // ODsay 실패 시 서울 버스 API로 fallback
+    }
+  }
+
+  // fallback: 서울 버스 API
   if (stop.stopRoutes) {
-    const busRoutes = stop.stopRoutes
-      .filter(r => r.stId && r.busRouteId && r.stationOrd != null)
+    const callableRoutes = stop.stopRoutes
+      .filter(r => r.busRouteId)
       .slice(0, MAX_BUS_ROUTES)
-    if (busRoutes.length > 0) {
+    if (callableRoutes.length > 0) {
+      if (!stop.arsId) return null
       const results = await Promise.all(
-        busRoutes.map(r => getBusArrival(r.stId!, r.busRouteId!, String(r.stationOrd!)))
+        callableRoutes.map(r =>
+          getBusArrival({ busRouteId: r.busRouteId!, arsId: stop.arsId! }).catch(() => null)
+        )
       )
       return { type: 'bus', items: results }
     }

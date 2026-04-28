@@ -1,23 +1,28 @@
-import { Bus, Train, GripVertical, X, Plus } from "lucide-react";
+import { Bus, Train, GripVertical, X, Plus, ChevronDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import { getBusType, getSubwayColor } from "@/utils/transitColors";
+import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 
 export interface RouteNode {
   id: string;
   name: string;
   type: 'bus' | 'subway';
-  stopId?: string;   // ODsay 정류장 ID
+  stopId?: string;   // 버스: ARS ID, 지하철: ODsay 정류장 ID
+  arsId?: string;
   lat?: number;
   lng?: number;
   busNumbers?: string[];
+  busLines?: { routeName: string; busRouteId?: string; busType?: number | null }[];
   subwayLine?: string;
   direction?: string;
   order: number;
-  // 버스 도착 API 호출에 필요 (route-search에서 채워짐)
-  busRouteId?: string;
+  busRouteId?: string;   // deprecated: busLines 사용
+  // 지하철 방향 정보 (subway only)
+  way?: string | null;
+  wayCode?: 1 | 2 | null;
+  endName?: string | null;
 }
 
 interface RouteNodeCardProps {
@@ -58,7 +63,8 @@ export default function RouteNodeCard({
       return getSubwayColor(node.subwayLine).color;
     }
     if (node.type === 'bus' && node.busNumbers && node.busNumbers.length > 0) {
-      return getBusType(node.busNumbers[0]).color;
+      const firstLine = node.busLines?.find(l => l.routeName === node.busNumbers![0]);
+      return getBusTypeByOdsay(firstLine?.busType, node.busNumbers[0]).color;
     }
     return '#6B7280'; // 기본 색상
   };
@@ -88,9 +94,9 @@ export default function RouteNodeCard({
             <span className="text-[12px] text-[#9CA3AF]">{node.order}번째</span>
           </div>
 
-          {node.type === 'bus' && node.stopId && (
+          {node.type === 'bus' && (node.arsId || node.stopId) && (
             <div className="text-[12px] text-[#9CA3AF] mb-2">
-              ID {node.stopId}
+              {node.arsId ? node.arsId : node.stopId}
             </div>
           )}
 
@@ -113,7 +119,8 @@ export default function RouteNodeCard({
             <div className="space-y-2">
               <div className="flex flex-wrap gap-1.5">
                 {node.busNumbers?.map((busNum) => {
-                  const busInfo = getBusType(busNum);
+                  const lineInfo = node.busLines?.find(l => l.routeName === busNum);
+                  const busInfo = getBusTypeByOdsay(lineInfo?.busType, busNum);
                   return (
                     <span
                       key={busNum}
@@ -133,34 +140,61 @@ export default function RouteNodeCard({
               </div>
 
               {isAddingBus ? (
-                <div className="flex gap-1.5">
-                  <Input
-                    placeholder="버스 번호"
-                    value={newBusNumber}
-                    onChange={(e) => setNewBusNumber(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddBusNumber()}
-                    className="h-9 text-[14px] rounded-lg border-black/5"
-                    autoFocus
-                  />
-                  <Button 
-                    size="sm" 
-                    onClick={handleAddBusNumber} 
-                    className="h-9 px-3 rounded-lg bg-[#111827] hover:bg-[#1F2937] text-[13px]"
-                  >
-                    추가
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={() => {
-                      setIsAddingBus(false);
-                      setNewBusNumber('');
-                    }}
-                    className="h-9 px-3 rounded-lg text-[13px]"
-                  >
-                    취소
-                  </Button>
-                </div>
+                node.busLines && node.busLines.length > 0 ? (
+                  <div className="rounded-lg border border-black/10 overflow-hidden">
+                    {node.busLines
+                      .filter(l => !node.busNumbers?.includes(l.routeName))
+                      .map(l => {
+                        const busInfo = getBusTypeByOdsay(l.busType, l.routeName);
+                        return (
+                          <button
+                            key={l.routeName}
+                            onClick={() => {
+                              onUpdateBusNumbers?.([...(node.busNumbers ?? []), l.routeName]);
+                              setIsAddingBus(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-[#F9FAFB] text-left transition-colors"
+                          >
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: busInfo.color }} />
+                            <span className="text-[14px] font-medium text-[#111827]">{l.routeName}번</span>
+                            <span className="text-[12px] text-[#9CA3AF]">{busInfo.label}버스</span>
+                          </button>
+                        );
+                      })}
+                    <button
+                      onClick={() => setIsAddingBus(false)}
+                      className="w-full px-3 py-2 text-[13px] text-[#9CA3AF] hover:bg-[#F9FAFB] border-t border-black/5 transition-colors"
+                    >
+                      취소
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <Input
+                      placeholder="버스 번호"
+                      value={newBusNumber}
+                      onChange={(e) => setNewBusNumber(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddBusNumber()}
+                      className="h-9 text-[14px] rounded-lg border-black/5"
+                      autoFocus
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleAddBusNumber}
+                      className="h-9 px-3 rounded-lg bg-[#111827] hover:bg-[#1F2937] text-[13px]"
+                    >
+                      추가
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => { setIsAddingBus(false); setNewBusNumber(''); }}
+                      className="h-9 px-3 rounded-lg text-[13px]"
+                    >
+                      취소
+                    </Button>
+                  </div>
+                )
               ) : (
                 <Button
                   variant="outline"
@@ -168,8 +202,10 @@ export default function RouteNodeCard({
                   onClick={() => setIsAddingBus(true)}
                   className="h-8 text-[13px] rounded-lg border-black/5 text-[#6B7280] hover:bg-[#F9FAFB] hover:text-[#111827]"
                 >
-                  <Plus className="w-3.5 h-3.5 mr-1" strokeWidth={2} />
-                  버스 번호 추가
+                  {node.busLines && node.busLines.length > 0
+                    ? <><ChevronDown className="w-3.5 h-3.5 mr-1" strokeWidth={2} />버스 선택</>
+                    : <><Plus className="w-3.5 h-3.5 mr-1" strokeWidth={2} />버스 번호 추가</>
+                  }
                 </Button>
               )}
             </div>

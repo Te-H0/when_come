@@ -1,18 +1,24 @@
 import { Bus, Train, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getBusType, getSubwayColor } from "@/utils/transitColors";
+import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 
 export interface SearchNodeData {
   id: string;
   name: string;
   type: 'bus' | 'subway';
-  stopId?: string;       // ODsay 정류장 ID
+  stopId?: string;       // 버스: ARS ID, 지하철: ODsay 정류장 ID
+  arsId?: string;
   lat?: number;
   lng?: number;
   availableBuses?: string[];
+  busLines?: { routeName: string; busRouteId?: string; busType?: number | null }[];
   subwayLine?: string;
   direction?: string;
-  busRouteId?: string;   // 버스 도착 API용 (route-search 결과에서 채워짐)
+  busRouteId?: string;   // deprecated: busLines 사용
+  // 지하철 방향 정보 (subway only)
+  way?: string | null;
+  wayCode?: 1 | 2 | null;
+  endName?: string | null;
 }
 
 interface SearchResultNodeProps {
@@ -23,11 +29,13 @@ interface SearchResultNodeProps {
 
 export default function SearchResultNode({ node, routeIndex, onAdd }: SearchResultNodeProps) {
   const isSubway = node.type === 'subway';
-  const nodeColor = isSubway && node.subwayLine 
-    ? getSubwayColor(node.subwayLine).color 
-    : node.availableBuses && node.availableBuses.length > 0
-      ? getBusType(node.availableBuses[0]).color
-      : '#6B7280';
+  const nodeColor = isSubway && node.subwayLine
+    ? getSubwayColor(node.subwayLine).color
+    : node.busLines && node.busLines.length > 0
+      ? getBusTypeByOdsay(node.busLines[0].busType, node.busLines[0].routeName).color
+      : node.availableBuses && node.availableBuses.length > 0
+        ? getBusTypeByOdsay(null, node.availableBuses[0]).color
+        : '#6B7280';
 
   return (
     <div className="p-3 rounded-xl hover:bg-[#F9FAFB] transition-colors border border-black/5">
@@ -47,9 +55,9 @@ export default function SearchResultNode({ node, routeIndex, onAdd }: SearchResu
             {node.name}
           </div>
 
-          {node.type === 'bus' && node.stopId && (
+          {node.type === 'bus' && (node.arsId || node.stopId) && (
             <div className="text-[12px] text-[#9CA3AF] mb-1.5">
-              ID {node.stopId}
+              {node.arsId ? node.arsId : node.stopId}
             </div>
           )}
 

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(supabase status *)",
+      "Bash(supabase --version)",
+      "Bash(supabase migration list*)",
+      "Bash(supabase functions list*)",
+      "Bash(supabase secrets list*)",
+      "Bash(supabase projects list*)",
+      "Bash(supabase db diff*)",
+      "Bash(npm run typecheck*)",
+      "Bash(npm run lint*)"
+    ]
+  }
+}

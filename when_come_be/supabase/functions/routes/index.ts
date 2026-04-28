@@ -7,6 +7,7 @@ import { AppError, errorResponse } from "../_shared/error.ts"
 interface StopRouteInput {
   odsayRouteId: string
   routeName: string
+  busType?: number | null
   stId?: string
   busRouteId?: string
   stationOrd?: number
@@ -18,6 +19,10 @@ interface RouteStopInput {
   stopName: string
   stopType: "bus" | "subway"
   sequence: number
+  arsId?: string
+  directionHeadsign?: string | null
+  directionUpdn?: string | null
+  directionNextStop?: string | null
   stopRoutes: StopRouteInput[]
 }
 
@@ -36,6 +41,10 @@ interface CreateRouteResponse {
 }
 
 interface DeleteRouteResponse {
+  ok: true
+}
+
+interface PatchRouteResponse {
   ok: true
 }
 
@@ -61,15 +70,15 @@ async function listRoutes(req: Request) {
       origin_coords, destination_coords, is_active,
       created_at, updated_at,
       route_stops (
-        id, odsay_stop_id, stop_name, stop_type, sequence,
+        id, odsay_stop_id, stop_name, stop_type, sequence, ars_id,
+        direction_headsign, direction_updn, direction_next_stop,
         stop_routes (
-          id, odsay_route_id, route_name,
+          id, odsay_route_id, route_name, bus_type,
           st_id, bus_route_id, station_ord, station_name
         )
       )
     `)
     .eq("user_id", user.id)
-    .eq("is_active", true)
     .order("created_at", { ascending: false })
     .limit(50) // 사용자당 최대 50개
 
@@ -134,6 +143,11 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
     stop_name: s.stopName,
     stop_type: s.stopType,
     sequence: s.sequence,
+    ars_id: s.arsId ?? null,
+    direction_headsign: s.directionHeadsign ?? null,
+    direction_updn:
+      s.directionUpdn === "up" || s.directionUpdn === "down" ? s.directionUpdn : null,
+    direction_next_stop: s.directionNextStop ?? null,
   }))
 
   const { data: insertedStops, error: stopsErr } = await db
@@ -150,6 +164,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
       stop_id: inserted.id,
       odsay_route_id: sr.odsayRouteId,
       route_name: sr.routeName,
+      bus_type: sr.busType ?? null,
       st_id: sr.stId ?? null,
       bus_route_id: sr.busRouteId ?? null,
       station_ord: sr.stationOrd ?? null,
@@ -165,19 +180,47 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
   return { id: route.id }
 }
 
-// ─── DELETE /routes/:id — 경로 삭제 (soft delete) ─────────────
+// ─── DELETE /routes/:id — 경로 영구 삭제 (route_stops, stop_routes는 ON DELETE CASCADE) ──
 async function deleteRoute(req: Request, id: string): Promise<DeleteRouteResponse> {
   const user = await authGuard(req)
   const db = supabaseClient(req.headers.get("Authorization")!)
 
   const { data, error } = await db
     .from("routes")
-    .update({ is_active: false })
+    .delete()
     .eq("id", id)
     .eq("user_id", user.id)
     .select("id")
 
   if (error) throw new AppError("경로 삭제 실패", 500)
+  if (!data || data.length === 0) throw new AppError("경로를 찾을 수 없습니다", 404)
+  return { ok: true }
+}
+
+// ─── PATCH /routes/:id — is_active 토글 ───────────────────────
+async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse> {
+  const user = await authGuard(req)
+  const db = supabaseClient(req.headers.get("Authorization")!)
+
+  let body: { is_active?: boolean }
+  try {
+    body = await req.json()
+  } catch {
+    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400)
+  }
+
+  if (typeof body.is_active !== "boolean") {
+    throw new AppError("is_active(boolean) 이 필요합니다", 400)
+  }
+
+  const { data, error } = await db
+    .from("routes")
+    .update({ is_active: body.is_active })
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .select("id")
+
+  if (error) throw new AppError("경로 수정 실패", 500)
   if (!data || data.length === 0) throw new AppError("경로를 찾을 수 없습니다", 404)
   return { ok: true }
 }
@@ -206,6 +249,13 @@ export async function handler(req: Request): Promise<Response> {
       const data = await createRoute(req)
       return new Response(JSON.stringify(data), {
         status: 201,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    if (req.method === "PATCH" && id) {
+      const data = await patchRoute(req, id)
+      return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
     }

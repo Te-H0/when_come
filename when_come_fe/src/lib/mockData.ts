@@ -5,6 +5,7 @@ export interface StopRouteInfo {
   busRouteId?: string | null
   stationOrd?: number | null
   stationName?: string | null
+  busType?: number | null
 }
 
 export interface TransitStop {
@@ -15,7 +16,12 @@ export interface TransitStop {
   arrivalTimes: number[]; // 분 단위
   // 실시간 API 호출에 필요한 메타데이터 (API 로드 시 채워짐)
   odsayStopId?: string;
+  arsId?: string;
   stopRoutes?: StopRouteInfo[];
+  // 지하철 방향 정보 (subway stop만 사용)
+  directionHeadsign?: string | null;
+  directionUpdn?: 'up' | 'down' | null;
+  directionNextStop?: string | null;
 }
 
 export interface RouteSegment {

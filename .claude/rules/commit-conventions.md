@@ -19,8 +19,8 @@ type(scope): 한글 설명
 | `feat` | 새 기능 | `feat(route): 경로 목록 페이지 구현` |
 | `fix` | 버그 수정 | `fix(home): 도착 시간 갱신 누락 수정` |
 | `refactor` | 리팩토링 (동작 변경 없음) | `refactor(setup): StopCard 컴포넌트 분리` |
-| `test` | 테스트 추가/수정 | `test(route): RouteCard 렌더링 테스트 추가` |
-| `docs` | 문서 변경 | `docs: 컴포넌트 구조 문서 업데이트` |
+| `test` | 테스트 추가/수정 | `test(arrival): arrival-info 인증 실패 케이스 추가` |
+| `docs` | 문서 변경 | `docs: collab-notes API 계약 업데이트` |
 | `chore` | 빌드, 설정, 의존성 등 | `chore: vitest 의존성 추가` |
 | `style` | 포맷팅, 세미콜론 등 | `style: prettier 적용` |
 | `perf` | 성능 개선 | `perf(home): 세그먼트 목록 가상화 적용` |

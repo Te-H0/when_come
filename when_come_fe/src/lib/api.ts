@@ -1,18 +1,24 @@
 import type {
+  ApiPlace,
   ApiStop,
   ApiRouteOption,
+  ApiOdsayArrival,
   ApiBusArrival,
   ApiSubwayArrivalItem,
   ApiRoute,
+  ApiStopBus,
 } from '@/types/api'
+import { getJwt } from './supabase'
 
-const BASE_URL = 'https://kifxccvqofsdyonbhmnc.supabase.co/functions/v1'
+const BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = await getJwt()
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
   })
@@ -21,6 +27,10 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error((error as { message?: string }).message ?? `HTTP ${res.status}`)
   }
   return res.json() as Promise<T>
+}
+
+export function searchPlaces(q: string): Promise<ApiPlace[]> {
+  return apiFetch<ApiPlace[]>(`/place-search?q=${encodeURIComponent(q)}`)
 }
 
 export function searchStops(q: string): Promise<ApiStop[]> {
@@ -39,14 +49,22 @@ export function searchRoutes(
   })
 }
 
-export function getBusArrival(
-  stId: string,
-  busRouteId: string,
-  ord: string,
-): Promise<ApiBusArrival | null> {
-  return apiFetch<ApiBusArrival | null>(
-    `/arrival-info?type=bus&stId=${stId}&busRouteId=${busRouteId}&ord=${ord}`,
+export function getStopBuses(arsId: string): Promise<ApiStopBus[]> {
+  return apiFetch<ApiStopBus[]>(`/stop-buses?arsId=${encodeURIComponent(arsId)}`)
+}
+
+export function getOdsayArrival(stationId: string): Promise<ApiOdsayArrival[]> {
+  return apiFetch<ApiOdsayArrival[]>(
+    `/arrival-info?type=odsay&stationId=${encodeURIComponent(stationId)}`,
   )
+}
+
+export function getBusArrival(params: {
+  busRouteId: string
+  arsId: string
+}): Promise<ApiBusArrival | null> {
+  const q = new URLSearchParams({ type: 'bus', busRouteId: params.busRouteId, arsId: params.arsId })
+  return apiFetch<ApiBusArrival | null>(`/arrival-info?${q.toString()}`)
 }
 
 export function getSubwayArrival(stationName: string): Promise<ApiSubwayArrivalItem[]> {
@@ -66,6 +84,10 @@ export interface SaveRouteStop {
   stopName: string
   stopType: 'bus' | 'subway'
   sequence: number
+  arsId?: string
+  directionHeadsign?: string | null
+  directionUpdn?: 'up' | 'down' | null
+  directionNextStop?: string | null
   stopRoutes: Array<{
     odsayRouteId: string
     routeName: string
@@ -73,6 +95,7 @@ export interface SaveRouteStop {
     busRouteId?: string
     stationOrd?: number
     stationName?: string
+    busType?: number | null
   }>
 }
 
@@ -91,6 +114,13 @@ export function saveRoute(data: SaveRouteRequest, jwt: string): Promise<{ id: st
     headers: { Authorization: `Bearer ${jwt}` },
     body: JSON.stringify(data),
   })
+}
+
+export function updateRoute(id: string, data: { is_active: boolean }): Promise<void> {
+  return apiFetch<{ ok: boolean }>(`/routes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  }).then(() => undefined)
 }
 
 export function deleteRoute(id: string, jwt: string): Promise<void> {
