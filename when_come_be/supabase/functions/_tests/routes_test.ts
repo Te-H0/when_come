@@ -100,7 +100,7 @@ function mockDbListRoutesWithInactive() {
 }
 
 function mockDbDeleteRoute(found: boolean) {
-  // update().select("id") → 수정된 행 배열 반환
+  // delete().select("id") → 삭제된 행 배열 반환 (CASCADE로 route_stops·stop_routes 동시 삭제)
   return found ? jsonResponse([{ id: ROUTE_ID }]) : jsonResponse([])
 }
 
@@ -333,7 +333,7 @@ supabaseTest("routes POST — stopRoutes가 없어도 정상 저장된다", asyn
 
 // ─── DELETE /routes/:id ───────────────────────────────────────
 
-supabaseTest("routes DELETE — 경로를 soft delete하고 ok를 반환한다", async () => {
+supabaseTest("routes DELETE — 경로를 hard delete하고 ok를 반환한다", async () => {
   await withEnv(ENV, () =>
     withMockFetch(
       multiMockFetch([

@@ -180,14 +180,14 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
   return { id: route.id }
 }
 
-// ─── DELETE /routes/:id — 경로 삭제 (soft delete) ─────────────
+// ─── DELETE /routes/:id — 경로 영구 삭제 (route_stops, stop_routes는 ON DELETE CASCADE) ──
 async function deleteRoute(req: Request, id: string): Promise<DeleteRouteResponse> {
   const user = await authGuard(req)
   const db = supabaseClient(req.headers.get("Authorization")!)
 
   const { data, error } = await db
     .from("routes")
-    .update({ is_active: false })
+    .delete()
     .eq("id", id)
     .eq("user_id", user.id)
     .select("id")
