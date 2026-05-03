@@ -86,7 +86,12 @@ fetchArrival(stop)
 - **신 경로(2026-05-02~):** `stop.id`(= `route_stops.id`) 하나만 전달 — FE는 provider를 모름. BE 미배포 시 자동으로 legacy fallback.
 - `provider === 'odsay_fallback'`인 stop 카드에 inline 안내 노출: "도착 정보가 부정확할 수 있어요 (제휴 데이터 사용)"
 - `subwayCode`는 서울 지하철 API 형식(`"1002"`) 사용 — arrival `lineName`과 직접 비교
-- 도착정보 자동 조회 비활성화 중 (`enabled: false`) — 새로고침 버튼으로만 조회 (개발 중 API 절약)
+- **도착정보 조회 범위 (2026-05-03~):** 현재 + 이후 모든 스텝(non-past)을 동시 조회
+  - `nonPastSegments = groupedSegments.slice(currentGroupIndex).flat()`
+  - `useQueries`로 per-stop 독립 쿼리, `arrivalByStopId: Map<stopId, {data, isLoading}>` 맵으로 참조
+  - 현재 스텝: 도착 상세 카드 (노선별 전체 표시)
+  - 다음 스텝들: 미니 카드 (가장 빠른 버스 `getFastestArrivalText`) + accordion 상세 펼침
+  - 새로고침: `allArrivalResults.map(r => r.refetch())` — 전체 동시 갱신
 
 ### 지하철 방향 매칭 규칙 (2026-04-28~)
 
@@ -106,3 +111,18 @@ matchSubwayItems(items, line, { headsign, updn })
 - 매칭 0건이면 호선 일치 전체로 fallback — legacy 데이터(방향 NULL) 안전망
 - 방향 NULL인 지하철 stop에는 카드 헤더에 inline 안내 노출 ("방향 정보 없음 — 경로를 다시 등록하면 더 정확해요")
 - 카드 표시 규칙: 같은 item의 `arrmsg1`/`arrmsg2`를 두 줄로 보이던 방식 → **상위 2개 매칭 item의 `arrmsg1`만** 두 줄로 표시
+
+### step_group — 한 스텝에 정류장 최대 2개 그룹핑 (2026-05-03~)
+
+`route_stops.step_group` (1-based 정수)으로 같은 논리 스텝의 정류장을 묶는다.
+
+```
+groupedSegments: Map<stepGroup, RouteSegment[]>
+  - Home: 같은 그룹 → 현재 스텝이면 카드 stack + 파란 left border
+  - Setup: "대안 정류장 추가" 버튼으로 같은 stepGroup에 두 번째 stop 추가
+  - 저장: node.stepGroup → BE routes POST body `stepGroup` 필드
+```
+
+- 한 그룹 최대 2개, 같은 stopType 강제 (BE 검증)
+- `handleRemoveNode`: 제거 후 stepGroup 번호 연속 재정렬
+- 버스 노선 선택: 사용자가 드롭다운에서 직접 선택 (자동 선택 없음)
