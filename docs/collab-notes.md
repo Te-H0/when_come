@@ -264,3 +264,27 @@ arsId로 정류장 노선 목록 조회.
 
 ### 2026-04-19 | POST /route-search | `busType` 필드 추가
 `segments[].lines[]`에 `busType: number | null` 추가.
+
+---
+
+## 2026-05-03 — step_group · 홈 타임라인 전면 개편
+
+### [NEW] route_stops.step_group
+
+`routes` POST body에 `stepGroup: number` 필드 추가됨.
+- 1-based 정수, 같은 논리 스텝의 대안 정류장을 묶는 키
+- (route_id, step_group, sequence) unique constraint
+- 한 그룹 최대 2개, 같은 stopType 강제
+- `GET /routes` 응답 `route_stops[].step_group` 포함
+
+### [NEW] stop-buses startStation / endStation
+
+`GET /stop-buses?arsId=` 응답에 `startStation`, `endStation` 필드 추가.
+영향: SetupRoute 버스 드롭다운에 종점 표시.
+
+### [CHANGE] 홈 타임라인 도착 조회 범위 확장
+
+- 기존: 현재 스텝만 `useQueries`
+- 변경: `nonPastSegments` (현재+이후 전체) 동시 조회
+- 다음 스텝 카드: 최소 도착 시간 표시 + accordion 상세
+- 영향 컴포넌트: `Home.tsx`
