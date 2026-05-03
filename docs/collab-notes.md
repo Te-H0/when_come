@@ -128,6 +128,57 @@ arsId로 해당 정류장에 오는 버스 노선 목록 조회.
 
 ## 변경 이력
 
+### 2026-05-02 | multi-region-bus-arrival v2 — 캐싱 패턴 도입 (설계 갱신)
+
+GBIS API 명세 확정 후 발견 — (1) 정류소 검색 API 부재, (2) 정류소→노선 detail API 부재. 매번 매핑 시 외부 API 페이징 다운로드는 비현실적 → **경기도 정류소 자체 캐시(`gbis_stations`) + 일 1회 cron** 패턴으로 전환. 상세: `docs/specs/multi-region-bus-arrival/SDD.md`(v2), `docs/decisions/ADR-003-gbis-station-caching.md`, `docs/api/contracts/sync-gbis-stations.md`, `when_come_be/docs/external-apis/gyeonggi-bus.md`(v2).
+
+**핵심 변경:**
+1. **신규 테이블 `gbis_stations`** — 경기 OpenAPI에서 31개 시군 정류소를 일 1회 캐시. PK `station_id`, 인덱스: `ars_no`/`(lat,lng)`/`sigun_nm`.
+2. **신규 Edge Function `POST /sync-gbis-stations`** — Service Role 인증, GitHub Actions cron(`0 19 * * *` UTC = 04:00 KST)이 호출. 시군별 페이징 다운로드 + upsert.
+3. **신규 GitHub Actions 워크플로** `.github/workflows/sync-gbis-stations.yml` — 사용자 액션: GitHub Secrets에 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` 등록.
+4. **매핑 알고리즘 갱신** — `findGbisStation` 외부 API 호출 → `findGbisStationFromDB` 자체 DB 검색으로 교체. ARS 1차 매칭 + 좌표/이름 보조(Haversine 200m + Levenshtein 0.7).
+5. **노선 매핑 알고리즘 신규** — `getBusRouteListv2(keyword=routeName)` + `getBusRouteStationListv2(routeId)` 조합으로 우회. 정류소→노선 detail API 부재 보완. 5분 캐시.
+6. **`getGbisStationDetail` 폐기** — v1 SDD가 가정한 API가 GBIS에 존재하지 않음.
+
+**API 계약 영향: 없음 (BE 내부 변경).** `arrival-info`/`routes` 외부 계약은 v1 그대로.
+
+**환경변수 추가:** `GYEONGGI_OPENAPI_KEY` (경기도 자체 OpenAPI, 공공데이터포털 키와 별도 시스템). 기존 `GYEONGGI_BUS_API_KEY`는 도착·노선조회에 그대로 사용.
+
+**FE 영향: 없음.** v1 Phase 3에서 적용한 stopId 기반 호출 + fallback 안내 그대로 유효.
+
+**사용자 액션 (배포 전 필수):**
+1. 공공데이터포털 데이터셋 ID `15080662` (경기도 시내버스 노선 정보) 활용 신청 (기존 `GYEONGGI_BUS_API_KEY` 동일 키)
+2. **경기도 자체 OpenAPI 인증키 발급** (`https://openapi.gg.go.kr` — 별도 시스템) → `GYEONGGI_OPENAPI_KEY`로 등록
+3. GitHub Secrets 등록: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+4. 첫 배포 후 `workflow_dispatch`로 수동 1회 실행 → `gbis_stations` row > 30,000 확인 후 트래픽 활성화
+
+**구현 진행:** SDD v2 / TASKS v2(T21~T26) / ADR-003 / 신규 계약서 작성 완료. 사용자 승인 + OpenAPI 키 발급 후 BE Phase 5 착수 예정.
+
+---
+
+### 2026-05-02 | multi-region-bus-arrival 설계 합의 (구현 대기)
+경기도 정류장(광명·시흥 등) 도착정보 미동작 이슈 해결을 위한 멀티-지역 Provider 아키텍처 도입. 상세 설계: `docs/specs/multi-region-bus-arrival/`, `docs/decisions/ADR-002-multi-region-arrival-provider.md`, `docs/api/contracts/arrival-info.md`, `docs/api/contracts/routes.md`.
+
+핵심 결정 — (1) `ArrivalProvider` 인터페이스 + `SeoulBusProvider` / `GyeonggiBusProvider` / `OdsayBusProvider` 3 구현, (2) `arrival-info`는 `?stopId={uuid}` 입력으로 BE가 DB의 `route_stops.provider`로 분기, (3) 저장 시 ODsay 좌표(`x`/`y`) bounding box로 지역 판별 후 GBIS 정류소·노선 검색으로 매핑, (4) 매핑 직후 1회 검증(운행 노선 50% 교집합) 실패 시 `provider='odsay_fallback'`로 격하.
+
+**API 계약 변경 (모두 additive — Breaking 없음, legacy 한 사이클 호환):**
+
+1. **GET `/arrival-info`** — `?stopId={uuid}` 입력 추가 (인증 필수). 응답에 `provider`, `fetchedAt` 추가. 버스 items에 `remainSeatCnt`/`crowded`/`lowPlate` 옵셔널 추가 (GBIS 한정). 기존 `?type=bus&arsId&busRouteId`는 한 사이클 호환 후 제거 예고.
+
+2. **POST `/routes`** — stops[]에 `lat`/`lng` 추가 권장 (BE 매핑 입력). `provider`/`gbisStationId` 옵셔널 (FE 힌트). stopRoutes[]에 `gbisRouteId`/`gbisStaOrder` 옵셔널.
+
+3. **GET `/routes` 응답** — route_stops[]에 `provider`(필수), `gbis_station_id`(옵셔널). stop_routes[]에 `gbis_route_id`/`gbis_sta_order` 옵셔널.
+
+**DB 마이그레이션:** `route_stops`에 `provider text CHECK`, `gbis_station_id text` 추가. `stop_routes`에 `gbis_route_id text`, `gbis_sta_order int` 추가. 기존 row는 `provider='seoul'`로 일괄 백필. 마이그레이션 파일(예정): `20260502000000_add_provider_to_route_stops.sql`.
+
+**FE 영향:** `lib/api.ts`에 `fetchArrivalByStopId(stopId)` 추가, 기존 호출은 한 사이클 유지. 도착 카드에 `provider==='odsay_fallback'` 시 inline 안내 1행 추가. 그 외 UI 변경 없음.
+
+**사용자 액션 (배포 전 필수):** 공공데이터포털에서 `경기도_시내버스 정류소 정보조회`, `경기도_시내버스 노선 정보조회` 데이터셋 활용 신청·승인 (인증키는 기존 `GYEONGGI_BUS_API_KEY` 동일 키 사용 가능).
+
+**구현 진행:** PRD/SDD/TASKS 작성 완료 (2026-05-02). 사용자 승인 + 데이터셋 승인 후 BE Phase 1 착수 예정.
+
+---
+
 ### 2026-04-28 | route-direction 설계 합의 → 구현 완료
 지하철 양방향 도착 정보 분리를 위한 방향 모델 추가. 상세: `docs/api/contracts/route-direction-design.md`, `docs/decisions/ADR-001-subway-direction-model.md`.
 

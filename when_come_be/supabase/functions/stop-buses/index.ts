@@ -12,6 +12,8 @@ interface SeoulBusRouteItem {
   busRouteAbrv: string
   busRouteNm: string
   busRouteType: string
+  stBegin: string
+  stEnd: string
 }
 
 interface SeoulBusRouteResponse {
@@ -22,6 +24,8 @@ export interface StopBus {
   routeName: string
   busRouteId: string
   busRouteType: number | null
+  startStation: string | null
+  endStation: string | null
 }
 
 export async function handler(req: Request): Promise<Response> {
@@ -42,11 +46,20 @@ export async function handler(req: Request): Promise<Response> {
     const data: SeoulBusRouteResponse = await res.json()
     const items = data?.msgBody?.itemList ?? []
 
-    const buses: StopBus[] = items.map((item) => ({
-      routeName: item.busRouteAbrv || item.busRouteNm,
-      busRouteId: item.busRouteId,
-      busRouteType: item.busRouteType ? Number(item.busRouteType) : null,
-    }))
+    const seen = new Set<string>()
+    const buses: StopBus[] = items
+      .map((item) => ({
+        routeName: item.busRouteAbrv || item.busRouteNm,
+        busRouteId: item.busRouteId,
+        busRouteType: item.busRouteType ? Number(item.busRouteType) : null,
+        startStation: item.stBegin || null,
+        endStation: item.stEnd || null,
+      }))
+      .filter((b) => {
+        if (seen.has(b.busRouteId)) return false
+        seen.add(b.busRouteId)
+        return true
+      })
 
     return new Response(JSON.stringify(buses), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

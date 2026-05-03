@@ -1,0 +1,21 @@
+name: Sync GBIS stations
+
+on:
+  schedule:
+    - cron: '0 19 * * *'   # UTC 19:00 = KST 04:00
+  workflow_dispatch:        # 수동 트리거 (디버그, 부트스트랩용)
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invoke sync-gbis-stations Edge Function
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -fsS -X POST "$SUPABASE_URL/functions/v1/sync-gbis-stations" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 300
