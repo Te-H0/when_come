@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/collapsible";
 import { searchStops, searchRoutes, saveRoute, getStopBuses } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
-import { subwayApiCodeToLineName } from "@/utils/transitColors";
+import { subwayApiCodeToLineName, seoulBisTypeToOdsayBusType } from "@/utils/transitColors";
 import { wayCodeToUpdn } from "@/utils/transitDirection";
 import type { ApiPlace, ApiStop, ApiRouteOption } from "@/types/api";
 import { toast } from "sonner";
@@ -88,6 +88,12 @@ interface ReverseOfState {
   toName: string;
 }
 
+/** nodes 배열에서 다음 신규 stepGroup 번호를 계산 */
+function nextStepGroupOf(nodes: RouteNode[]): number {
+  if (nodes.length === 0) return 1
+  return Math.max(...nodes.map(n => n.stepGroup)) + 1
+}
+
 export default function SetupRoute() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -108,6 +114,9 @@ export default function SetupRoute() {
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // 대안 정류장 추가 모드: 어떤 stepGroup에 추가할지 (null = 일반 추가 모드)
+  const [addingAlternativeToStep, setAddingAlternativeToStep] = useState<number | null>(null);
 
   // 정렬 옵션
   type SortKey = 'default' | 'time' | 'transfer' | 'walk'
@@ -169,13 +178,24 @@ export default function SetupRoute() {
     setExpandedRoutes(next);
   };
 
-  const handleAddNodeFromSearch = async (node: SearchNodeData) => {
+  /**
+   * 검색 결과 노드를 경로에 추가.
+   * targetStepGroup 이 있으면 해당 스텝의 대안 정류장으로, 없으면 새 스텝으로 추가.
+   */
+  const handleAddNodeFromSearch = async (node: SearchNodeData, targetStepGroup?: number) => {
     const nodeId = `node-${Date.now()}`;
-    const newNode: RouteNode = {
+    const isAlternative = targetStepGroup !== undefined;
+    const stepGroup = isAlternative ? targetStepGroup : nextStepGroupOf(nodes);
+    const orderInGroup = isAlternative
+      ? nodes.filter(n => n.stepGroup === stepGroup).length + 1
+      : 1;
+
+    const baseNode: RouteNode = {
       id: nodeId,
       name: node.name,
       type: node.type,
-      order: nodes.length + 1,
+      stepGroup,
+      order: orderInGroup,
       stopId: node.stopId,
       arsId: node.arsId,
       lat: node.lat,
@@ -188,12 +208,12 @@ export default function SetupRoute() {
       wayCode: node.wayCode ?? null,
       endName: node.endName ?? null,
     };
-    setNodes(prev => [...prev, newNode]);
+    setNodes(prev => [...prev, baseNode]);
 
     if (node.type === 'bus' && node.arsId) {
       try {
         const buses = await getStopBuses(node.arsId);
-        const stopBusLines = buses.map(b => ({ routeName: b.routeName, busRouteId: b.busRouteId, busType: b.busRouteType }));
+        const stopBusLines = buses.map(b => ({ routeName: b.routeName, busRouteId: b.busRouteId, busType: seoulBisTypeToOdsayBusType(b.busRouteType), startStation: b.startStation, endStation: b.endStation }));
         setNodes(prev => prev.map(n => {
           if (n.id !== nodeId) return n;
           // 기존 busLines(route search busType 포함) + stop-buses 결과 merge, 중복은 기존 우선
@@ -223,13 +243,24 @@ export default function SetupRoute() {
     toast.success(`경로 ${newNodes.length}개 정류장이 추가되었습니다`);
   };
 
-  const handleAddNodeManual = async (stop: ApiStop) => {
+  /**
+   * 수동 검색으로 정류장 추가.
+   * targetStepGroup 이 있으면 해당 스텝의 대안 정류장으로, 없으면 새 스텝으로 추가.
+   */
+  const handleAddNodeManual = async (stop: ApiStop, targetStepGroup?: number) => {
     const nodeId = `node-${Date.now()}`;
+    const isAlternative = targetStepGroup !== undefined;
+    const stepGroup = isAlternative ? targetStepGroup : nextStepGroupOf(nodes);
+    const orderInGroup = isAlternative
+      ? nodes.filter(n => n.stepGroup === stepGroup).length + 1
+      : 1;
+
     const newNode: RouteNode = {
       id: nodeId,
       name: stop.name,
       type: stop.type,
-      order: nodes.length + 1,
+      stepGroup,
+      order: orderInGroup,
       stopId: stop.id,
       arsId: stop.arsId,
       lat: stop.lat,
@@ -239,16 +270,20 @@ export default function SetupRoute() {
     setNodes(prev => [...prev, newNode]);
     setManualQuery('');
     setManualResults([]);
+    setAddingAlternativeToStep(null);
 
     if (stop.type === 'bus' && stop.arsId) {
       try {
         const buses = await getStopBuses(stop.arsId);
+        const mappedLines = buses.map(b => ({
+          routeName: b.routeName,
+          busRouteId: b.busRouteId,
+          busType: seoulBisTypeToOdsayBusType(b.busRouteType),
+          startStation: b.startStation,
+          endStation: b.endStation,
+        }));
         setNodes(prev => prev.map(n =>
-          n.id === nodeId ? { ...n, busLines: buses.map(b => ({
-            routeName: b.routeName,
-            busRouteId: b.busRouteId,
-            busType: b.busRouteType,
-          })) } : n
+          n.id === nodeId ? { ...n, busLines: mappedLines } : n
         ));
       } catch {
         // 실패하면 수동 입력
@@ -256,9 +291,24 @@ export default function SetupRoute() {
     }
   };
 
+  /**
+   * 노드 제거 후 stepGroup 번호를 연속적으로 재정렬.
+   * 같은 stepGroup 내 order도 재정렬.
+   */
   const handleRemoveNode = (nodeId: string) => {
-    const filtered = nodes.filter(n => n.id !== nodeId);
-    setNodes(filtered.map((n, idx) => ({ ...n, order: idx + 1 })));
+    setNodes(prev => {
+      const filtered = prev.filter(n => n.id !== nodeId);
+      const uniqueGroups = [...new Set(filtered.map(n => n.stepGroup))].sort((a, b) => a - b);
+      const groupMap = new Map(uniqueGroups.map((g, i) => [g, i + 1]));
+      const result: RouteNode[] = [];
+      for (const oldGroup of uniqueGroups) {
+        const newGroup = groupMap.get(oldGroup)!;
+        filtered
+          .filter(n => n.stepGroup === oldGroup)
+          .forEach((n, idx) => result.push({ ...n, stepGroup: newGroup, order: idx + 1 }));
+      }
+      return result;
+    });
   };
 
   const handleUpdateBusNumbers = (nodeId: string, busNumbers: string[]) => {
@@ -287,6 +337,16 @@ export default function SetupRoute() {
   const visibleResults = showAll ? sortedResults : sortedResults.slice(0, INITIAL_VISIBLE);
   const remainingCount = sortedResults.length - INITIAL_VISIBLE;
 
+  /** nodes를 stepGroup으로 묶어 정렬된 배열로 반환 */
+  const groupedNodes = useMemo(() => {
+    const groups = new Map<number, RouteNode[]>()
+    for (const n of nodes) {
+      if (!groups.has(n.stepGroup)) groups.set(n.stepGroup, [])
+      groups.get(n.stepGroup)!.push(n)
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => a - b)
+  }, [nodes])
+
   const handleSave = async () => {
     if (!routeName.trim() || nodes.length === 0) return;
     setIsSaving(true);
@@ -299,7 +359,10 @@ export default function SetupRoute() {
         stopName: node.name,
         stopType: node.type,
         sequence: node.order,
+        stepGroup: node.stepGroup,
         arsId: node.arsId,
+        lat: node.lat,
+        lng: node.lng,
         ...(node.type === 'subway' && {
           directionHeadsign: node.way ? `${node.way}행` : null,
           directionUpdn: wayCodeToUpdn(node.wayCode),
@@ -406,30 +469,76 @@ export default function SetupRoute() {
           </div>
         </Card>
 
-        {/* 추가된 노드 */}
+        {/* 추가된 노드 — stepGroup 단위 렌더링 */}
         {nodes.length > 0 && (
           <Card className="p-4 rounded-2xl border border-black/5 shadow-sm bg-white">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[15px] font-semibold text-[#111827]">내 경로 ({nodes.length})</h3>
+              <h3 className="text-[15px] font-semibold text-[#111827]">
+                내 경로 ({groupedNodes.length}스텝 / {nodes.length}개 정류장)
+              </h3>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setNodes([])}
+                onClick={() => { setNodes([]); setAddingAlternativeToStep(null); }}
                 className="text-[13px] h-auto p-0 text-[#6B7280] hover:text-[#111827]"
               >
                 전체 삭제
               </Button>
             </div>
-            <div className="space-y-2">
-              {nodes.map((node) => (
-                <RouteNodeCard
-                  key={node.id}
-                  node={node}
-                  onRemove={() => handleRemoveNode(node.id)}
-                  onUpdateBusNumbers={(busNumbers) => handleUpdateBusNumbers(node.id, busNumbers)}
-                />
+            <div className="space-y-3">
+              {groupedNodes.map(([stepGroup, groupNodes]) => (
+                <div key={stepGroup} className="relative">
+                  {/* 스텝 레이블 (그룹이 2개 이상인 경우 시각 구분) */}
+                  {groupNodes.length > 1 && (
+                    <div className="text-[11px] text-[#9CA3AF] font-medium mb-1 px-1">
+                      스텝 {stepGroup} — 빠른 버스 탑승
+                    </div>
+                  )}
+                  <div className={`space-y-1.5 ${groupNodes.length > 1 ? 'pl-2 border-l-2 border-[#DBEAFE]' : ''}`}>
+                    {groupNodes.map(node => (
+                      <RouteNodeCard
+                        key={node.id}
+                        node={node}
+                        onRemove={() => handleRemoveNode(node.id)}
+                        onUpdateBusNumbers={(busNumbers) => handleUpdateBusNumbers(node.id, busNumbers)}
+                        showGrip={groupNodes.length === 1}
+                      />
+                    ))}
+                  </div>
+
+                  {/* 대안 추가 버튼: 같은 스텝에 bus가 1개일 때만 노출 */}
+                  {groupNodes.length < 2 && groupNodes[0]?.type === 'bus' && (
+                    addingAlternativeToStep === stepGroup ? (
+                      <button
+                        onClick={() => setAddingAlternativeToStep(null)}
+                        className="w-full mt-1.5 py-1.5 text-[13px] text-[#3B82F6] border border-dashed border-[#93C5FD] rounded-xl bg-[#EFF6FF] transition-colors"
+                      >
+                        대안 추가 취소
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setAddingAlternativeToStep(stepGroup)}
+                        className="w-full mt-1.5 py-1.5 text-[13px] text-[#6B7280] border border-dashed border-[#D1D5DB] rounded-xl hover:bg-[#F9FAFB] transition-colors"
+                      >
+                        + 대안 정류장 추가
+                      </button>
+                    )
+                  )}
+                </div>
               ))}
             </div>
+
+            {/* 대안 추가 모드 안내 */}
+            {addingAlternativeToStep !== null && (
+              <div className="mt-3 px-3 py-2.5 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE]">
+                <p className="text-[13px] text-[#1D4ED8] font-medium">
+                  스텝 {addingAlternativeToStep}의 대안 정류장을 추가하세요
+                </p>
+                <p className="text-[12px] text-[#3B82F6] mt-0.5">
+                  아래 수동 등록 탭에서 정류장을 선택하거나, 자동 검색 결과에서 추가하세요
+                </p>
+              </div>
+            )}
           </Card>
         )}
 
@@ -553,7 +662,7 @@ export default function SetupRoute() {
                               key={node.id}
                               node={node}
                               routeIndex={routeIdx}
-                              onAdd={handleAddNodeFromSearch}
+                              onAdd={(n) => handleAddNodeFromSearch(n, addingAlternativeToStep ?? undefined)}
                             />
                           ))}
                         </div>
@@ -578,7 +687,9 @@ export default function SetupRoute() {
           <TabsContent value="manual" className="space-y-3 mt-3">
             <Card className="p-4 rounded-2xl border border-black/5 shadow-sm bg-white">
               <Label htmlFor="manualSearch" className="text-[14px] font-medium text-[#111827] mb-2 block">
-                정류장/역 검색
+                {addingAlternativeToStep !== null
+                  ? `스텝 ${addingAlternativeToStep} 대안 정류장 검색`
+                  : '정류장/역 검색'}
               </Label>
               <div className="relative">
                 <Input
@@ -599,13 +710,14 @@ export default function SetupRoute() {
                     <div
                       key={stop.id}
                       className="p-3 rounded-xl hover:bg-[#F9FAFB] cursor-pointer transition-colors border border-black/5"
-                      onClick={() => handleAddNodeManual(stop)}
+                      onClick={() => handleAddNodeManual(stop, addingAlternativeToStep ?? undefined)}
                     >
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-[15px] font-medium text-[#111827]">{stop.name}</div>
                           <div className="text-[13px] text-[#6B7280] mt-0.5">
                             {stop.type === 'bus' ? '버스 정류장' : '지하철역'}
+                            {stop.arsId && <span className="ml-1.5 text-[#9CA3AF]">· {stop.arsId}</span>}
                           </div>
                         </div>
                         <div className="px-2 py-1 rounded-lg bg-[#F1F3F5] text-[12px] font-medium text-[#6B7280]">

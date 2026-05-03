@@ -4,6 +4,7 @@ import type {
   ApiRouteOption,
   ApiOdsayArrival,
   ApiBusArrival,
+  ApiBusArrivalByStopId,
   ApiSubwayArrivalItem,
   ApiRoute,
   ApiStopBus,
@@ -11,6 +12,20 @@ import type {
 import { getJwt } from './supabase'
 
 const BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+function isErrorPayload(val: unknown): val is { error?: string; message?: string } {
+  return typeof val === 'object' && val !== null
+}
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = await getJwt()
@@ -23,8 +38,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     },
   })
   if (!res.ok) {
-    const error = await res.json().catch(() => ({}))
-    throw new Error((error as { message?: string }).message ?? `HTTP ${res.status}`)
+    const body = await res.json().catch(() => ({}))
+    const msg = isErrorPayload(body)
+      ? (body.message ?? body.error ?? `HTTP ${res.status}`)
+      : `HTTP ${res.status}`
+    throw new ApiError(msg, res.status)
   }
   return res.json() as Promise<T>
 }
@@ -67,6 +85,13 @@ export function getBusArrival(params: {
   return apiFetch<ApiBusArrival | null>(`/arrival-info?${q.toString()}`)
 }
 
+/** 신 경로: stopId(route_stops.id) 기반 버스 도착 조회 — BE가 provider 자동 분기 */
+export function getArrivalByStopId(stopId: string): Promise<ApiBusArrivalByStopId> {
+  return apiFetch<ApiBusArrivalByStopId>(
+    `/arrival-info?stopId=${encodeURIComponent(stopId)}`,
+  )
+}
+
 export function getSubwayArrival(stationName: string): Promise<ApiSubwayArrivalItem[]> {
   return apiFetch<ApiSubwayArrivalItem[]>(
     `/arrival-info?type=subway&stationName=${encodeURIComponent(stationName)}`,
@@ -84,10 +109,14 @@ export interface SaveRouteStop {
   stopName: string
   stopType: 'bus' | 'subway'
   sequence: number
+  stepGroup: number
   arsId?: string
   directionHeadsign?: string | null
   directionUpdn?: 'up' | 'down' | null
   directionNextStop?: string | null
+  // multi-region: 좌표를 보내면 BE가 provider 자동 판별 (권장)
+  lat?: number
+  lng?: number
   stopRoutes: Array<{
     odsayRouteId: string
     routeName: string

@@ -9,15 +9,16 @@ export interface RouteNode {
   id: string;
   name: string;
   type: 'bus' | 'subway';
+  stepGroup: number;     // 1-based. 같은 stepGroup = 같은 스텝의 대안 정류장
+  order: number;         // stepGroup 내 순서 (1-based)
   stopId?: string;   // 버스: ARS ID, 지하철: ODsay 정류장 ID
   arsId?: string;
   lat?: number;
   lng?: number;
   busNumbers?: string[];
-  busLines?: { routeName: string; busRouteId?: string; busType?: number | null }[];
+  busLines?: { routeName: string; busRouteId?: string; busType?: number | null; startStation?: string | null; endStation?: string | null }[];
   subwayLine?: string;
   direction?: string;
-  order: number;
   busRouteId?: string;   // deprecated: busLines 사용
   // 지하철 방향 정보 (subway only)
   way?: string | null;
@@ -91,7 +92,11 @@ export default function RouteNodeCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[15px] font-semibold text-[#111827]">{node.name}</span>
-            <span className="text-[12px] text-[#9CA3AF]">{node.order}번째</span>
+            {node.order > 1 && (
+              <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[#EFF6FF] text-[#3B82F6] font-medium">
+                대안
+              </span>
+            )}
           </div>
 
           {node.type === 'bus' && (node.arsId || node.stopId) && (
@@ -156,8 +161,17 @@ export default function RouteNodeCard({
                             className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-[#F9FAFB] text-left transition-colors"
                           >
                             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: busInfo.color }} />
-                            <span className="text-[14px] font-medium text-[#111827]">{l.routeName}번</span>
-                            <span className="text-[12px] text-[#9CA3AF]">{busInfo.label}버스</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[14px] font-medium text-[#111827]">{l.routeName}번</span>
+                                <span className="text-[12px] text-[#9CA3AF]">{busInfo.label}버스</span>
+                              </div>
+                              {(l.startStation || l.endStation) && (
+                                <div className="text-[11px] text-[#9CA3AF] truncate">
+                                  {l.startStation}{l.startStation && l.endStation ? ' ~ ' : ''}{l.endStation}
+                                </div>
+                              )}
+                            </div>
                           </button>
                         );
                       })}

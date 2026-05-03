@@ -22,12 +22,15 @@ export interface TransitStop {
   directionHeadsign?: string | null;
   directionUpdn?: 'up' | 'down' | null;
   directionNextStop?: string | null;
+  // multi-region: BE에서 결정된 도착 조회 provider
+  provider?: 'seoul' | 'gyeonggi' | 'odsay_fallback' | null;
 }
 
 export interface RouteSegment {
   id: string;
   stop: TransitStop;
   order: number;
+  stepGroup: number;
 }
 
 export interface SavedRoute {
@@ -51,6 +54,7 @@ export const mockRoutes: SavedRoute[] = [
       {
         id: "seg-1",
         order: 1,
+        stepGroup: 1,
         stop: {
           id: "stop-1",
           name: "신림역 3번출구",
@@ -62,6 +66,7 @@ export const mockRoutes: SavedRoute[] = [
       {
         id: "seg-2",
         order: 2,
+        stepGroup: 2,
         stop: {
           id: "stop-2",
           name: "신림역",
@@ -73,6 +78,7 @@ export const mockRoutes: SavedRoute[] = [
       {
         id: "seg-3",
         order: 3,
+        stepGroup: 3,
         stop: {
           id: "stop-3",
           name: "강남역 5번출구",
@@ -93,6 +99,7 @@ export const mockRoutes: SavedRoute[] = [
       {
         id: "seg-4",
         order: 1,
+        stepGroup: 1,
         stop: {
           id: "stop-4",
           name: "강남역 12번출구",
@@ -104,6 +111,7 @@ export const mockRoutes: SavedRoute[] = [
       {
         id: "seg-5",
         order: 2,
+        stepGroup: 2,
         stop: {
           id: "stop-5",
           name: "강남역",
@@ -115,6 +123,7 @@ export const mockRoutes: SavedRoute[] = [
       {
         id: "seg-6",
         order: 3,
+        stepGroup: 3,
         stop: {
           id: "stop-6",
           name: "신림역 1번출구",

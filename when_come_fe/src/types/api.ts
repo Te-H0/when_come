@@ -39,6 +39,8 @@ export interface ApiStopBus {
   routeName: string
   busRouteId: string
   busRouteType: number | null
+  startStation: string | null
+  endStation: string | null
 }
 
 export interface ApiRouteOption {
@@ -65,6 +67,9 @@ export interface ApiStopRoute {
   station_ord: number | null
   station_name: string | null
   bus_type: number | null
+  // multi-region (신규)
+  gbis_route_id?: string | null
+  gbis_sta_order?: number | null
 }
 
 export interface ApiRouteStop {
@@ -73,10 +78,14 @@ export interface ApiRouteStop {
   stop_name: string
   stop_type: 'bus' | 'subway'
   sequence: number
+  step_group?: number | null
   ars_id?: string | null
   direction_headsign?: string | null
   direction_updn?: 'up' | 'down' | null
   direction_next_stop?: string | null
+  // multi-region (신규)
+  provider?: 'seoul' | 'gyeonggi' | 'odsay_fallback' | null
+  gbis_station_id?: string | null
   stop_routes: ApiStopRoute[]
 }
 
@@ -90,6 +99,30 @@ export interface ApiRoute {
   is_active: boolean
   created_at: string
   route_stops: ApiRouteStop[]
+}
+
+/** GET /arrival-info?stopId={uuid} 응답 — BusArrivalResponse (SDD §2.1) */
+export interface ApiBusArrivalItem {
+  busRouteId: string
+  busRouteAbrv: string
+  arrmsg1: string
+  arrmsg2: string | null
+  traTime1: number | null
+  traTime2: number | null
+  busType: number | null
+  // 옵셔널 (GBIS 한정)
+  remainSeatCnt1?: number | null
+  remainSeatCnt2?: number | null
+  crowded1?: 1 | 2 | 3 | 4 | null
+  crowded2?: 1 | 2 | 3 | 4 | null
+  lowPlate1?: 0 | 1 | 2 | null
+  lowPlate2?: 0 | 1 | 2 | null
+}
+
+export interface ApiBusArrivalByStopId {
+  items: ApiBusArrivalItem[]
+  provider: 'seoul' | 'gyeonggi' | 'odsay_fallback'
+  fetchedAt: string
 }
 
 export interface ApiOdsayArrival {

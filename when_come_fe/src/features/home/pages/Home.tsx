@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   MapPin, Settings, RefreshCw, Navigation,
-  ChevronRight, ChevronDown, ChevronUp, Clock, Loader2,
+  ChevronDown, ChevronUp, Clock, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,9 +13,44 @@ import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 import { listRoutes } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { mapApiRoute } from "@/lib/mappers";
-import type { SavedRoute } from "@/lib/mockData";
+import type { TransitStop, SavedRoute } from "@/lib/mockData";
 import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg, getMatchedSubwayItems } from "@/lib/arrival";
 import type { ArrivalData } from "@/lib/arrival";
+
+const SELECTED_ROUTE_KEY = 'when_come:selectedRouteId';
+
+function getFastestArrivalText(stop: TransitStop, arrival: ArrivalData, elapsedSec: number): string {
+  if (!arrival) return '--'
+  if (arrival.type === 'subway') {
+    const item = arrival.items[0]
+    if (!item) return '--'
+    return applyCountdownToArrmsg(item.arrmsg1, elapsedSec)
+  }
+  if (arrival.type === 'bus_by_stopid') {
+    const items = arrival.data.items
+    if (items.length === 0) return '--'
+    let minSec = Infinity
+    let minMsg = '--'
+    for (const item of items) {
+      const t = item.traTime1 ?? null
+      if (t !== null && t < minSec) { minSec = t; minMsg = item.arrmsg1 }
+      else if (minMsg === '--' && item.arrmsg1) minMsg = item.arrmsg1
+    }
+    return applyCountdownToArrmsg(minMsg, elapsedSec)
+  }
+  if (arrival.type === 'odsay') {
+    const item = arrival.items[0]
+    if (!item) return '--'
+    return item.arrivalTime1 != null ? `${item.arrivalTime1}분` : '--'
+  }
+  if (arrival.type === 'bus') {
+    const item = arrival.items[0]
+    if (!item) return '--'
+    if (item.arrivalSec1 != null) return applyCountdownToArrmsg(`${Math.ceil(item.arrivalSec1 / 60)}분후`, elapsedSec)
+    return item.arrmsg1 ? applyCountdownToArrmsg(item.arrmsg1, elapsedSec) : '--'
+  }
+  return '--'
+}
 
 export default function Home() {
   const navigate = useNavigate();
@@ -33,8 +68,6 @@ export default function Home() {
   const routes = useMemo<SavedRoute[]>(() => (apiRoutes ?? []).map(mapApiRoute), [apiRoutes]);
   const activeRoutes = useMemo(() => routes.filter(r => r.isActive), [routes]);
 
-  const SELECTED_ROUTE_KEY = 'when_come:selectedRouteId';
-
   const [selectedRouteId, setSelectedRouteId] = useState<string>(() => {
     return localStorage.getItem(SELECTED_ROUTE_KEY) ?? '';
   });
@@ -42,6 +75,8 @@ export default function Home() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   // 호선별 도착 정보 펼침 상태 (key = line 이름)
   const [expandedLines, setExpandedLines] = useState<Record<string, boolean>>({});
+  // 펼쳐진 upcoming 그룹 인덱스 집합
+  const [expandedUpcoming, setExpandedUpcoming] = useState<Set<number>>(new Set())
 
   const resolvedRouteId = activeRoutes.find(r => r.id === selectedRouteId)
     ? selectedRouteId
@@ -54,27 +89,73 @@ export default function Home() {
     localStorage.setItem(SELECTED_ROUTE_KEY, id);
   };
   const currentSegment = currentRoute?.segments[currentSegmentIndex];
-  const nextSegment = currentRoute?.segments[currentSegmentIndex + 1];
 
-  const { data: arrivalData, refetch: refetchArrival } = useQuery({
-    queryKey: ['arrival', currentSegment?.stop.id, currentSegment?.stop.type, currentSegment?.stop.name],
-    queryFn: () => fetchArrival(currentSegment!.stop),
-    // refetchInterval: 30_000, // 프로덕션 시 복원
-    enabled: !!currentSegment,
-    refetchOnWindowFocus: false,
-    staleTime: Infinity,
+  // stepGroup 기준으로 그룹핑된 세그먼트 배열
+  const groupedSegments = useMemo(() => {
+    if (!currentRoute) return [];
+    const groups = new Map<number, typeof currentRoute.segments>()
+    for (const seg of currentRoute.segments) {
+      const g = seg.stepGroup ?? seg.order
+      if (!groups.has(g)) groups.set(g, [])
+      groups.get(g)!.push(seg)
+    }
+    return Array.from(groups.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([, segs]) => segs)
+  }, [currentRoute])
+
+  // 현재 세그먼트가 속한 그룹 인덱스
+  const currentGroupIndex = useMemo(() => {
+    if (!currentSegment) return 0
+    return groupedSegments.findIndex(group =>
+      group.some(seg => seg.id === currentSegment.id)
+    )
+  }, [groupedSegments, currentSegment])
+
+  // 현재 + 이후 모든 세그먼트 (past 제외)
+  const nonPastSegments = useMemo(() => {
+    return groupedSegments.slice(currentGroupIndex).flat()
+  }, [groupedSegments, currentGroupIndex])
+
+  const allArrivalResults = useQueries({
+    queries: nonPastSegments.map(seg => ({
+      queryKey: ['arrival', seg.stop.id, seg.stop.type, seg.stop.name],
+      queryFn: () => fetchArrival(seg.stop),
+      enabled: !!seg.stop.id,
+      refetchOnWindowFocus: false,
+      staleTime: Infinity,
+    })),
   });
+
+  // stop.id → { data, isLoading } 맵
+  const arrivalByStopId = useMemo(() => {
+    const map = new Map<string, { data: ArrivalData; isLoading: boolean }>()
+    nonPastSegments.forEach((seg, idx) => {
+      map.set(seg.stop.id, {
+        data: allArrivalResults[idx]?.data ?? null,
+        isLoading: allArrivalResults[idx]?.isLoading ?? false,
+      })
+    })
+    return map
+  }, [nonPastSegments, allArrivalResults])
 
   // 도착 데이터가 갱신될 때마다 기준 시각 기록
   const fetchedAtRef = useRef(Date.now());
+  const arrivalDataKey = allArrivalResults.map(r => r.dataUpdatedAt).join(',');
   useEffect(() => {
     fetchedAtRef.current = Date.now();
-  }, [arrivalData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivalDataKey]);
 
   // 세그먼트가 바뀌면 펼침 상태 초기화
   useEffect(() => {
     setExpandedLines({});
   }, [currentSegmentIndex]);
+
+  // currentGroupIndex 바뀔 때 upcoming 펼침 상태 초기화
+  useEffect(() => {
+    setExpandedUpcoming(new Set())
+  }, [currentGroupIndex])
 
   // 1초마다 리렌더링 → 카운트다운 효과
   const [, forceUpdate] = useState(0);
@@ -85,14 +166,20 @@ export default function Home() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([refetch(), refetchArrival()]);
+    await Promise.all([refetch(), ...allArrivalResults.map(r => r.refetch())]);
     setIsRefreshing(false);
   };
 
   function handleBoardingComplete() {
-    if (!currentRoute || currentSegmentIndex >= currentRoute.segments.length - 1) return;
+    if (!currentRoute || currentGroupIndex >= groupedSegments.length - 1) return;
+    // 다음 그룹의 첫 세그먼트 인덱스를 찾아서 이동
+    const nextGroupFirstSeg = groupedSegments[currentGroupIndex + 1]?.[0]
+    if (!nextGroupFirstSeg) return
+    const nextIdx = currentRoute.segments.findIndex(s => s.id === nextGroupFirstSeg.id)
+    if (nextIdx === -1) return
     const prevIndex = currentSegmentIndex;
-    setCurrentSegmentIndex(prevIndex + 1);
+    setCurrentSegmentIndex(nextIdx);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     toast.success('탑승 완료', {
       duration: 5000,
       action: {
@@ -217,285 +304,377 @@ export default function Home() {
       )}
 
       <div className="max-w-2xl mx-auto px-4 pt-4 space-y-3">
-        {/* 경로 타임라인 */}
-        <Card className="p-4 rounded-2xl border border-black/5 shadow-sm bg-white">
-          <div className="flex items-center gap-2 overflow-x-auto">
-            {currentRoute.segments.map((segment, idx) => {
-              const isPassed = segment.order < currentSegment.order;
-              const isCurrent = segment.id === currentSegment.id;
-              const firstLine = segment.stop.lines[0] ?? null;
-              const isSubwaySeg = segment.stop.type === 'subway';
-              const subwayInfo = isSubwaySeg && firstLine ? getSubwayColor(firstLine) : null;
-              const busInfo = !isSubwaySeg && firstLine
-                ? getBusTypeByOdsay(segment.stop.stopRoutes?.find(r => r.routeName === firstLine)?.busType, firstLine)
-                : null;
+        {/* 전체 스텝 세로 타임라인 */}
+        <div className="space-y-3">
+          {groupedSegments.map((group, groupIdx) => {
+            const isCurrent = groupIdx === currentGroupIndex;
+            const isPast = groupIdx < currentGroupIndex;
 
-              const chipLabel = firstLine
-                ? (isSubwaySeg ? firstLine : `${firstLine}번`)
-                : (isSubwaySeg ? '전철' : '버스');
-
-              let chipStyle: React.CSSProperties = {};
-              let chipClassName = `px-3 py-1.5 rounded-lg text-[13px] font-medium`;
-
-              if (isCurrent) {
-                chipClassName += ' bg-[#111827] text-white';
-              } else if (isPassed) {
-                chipClassName += ' bg-[#F1F3F5] text-[#6B7280]';
-              } else if (subwayInfo && firstLine) {
-                chipStyle = { backgroundColor: subwayInfo.bgColor, color: subwayInfo.textColor };
-              } else if (busInfo && firstLine) {
-                chipStyle = { backgroundColor: busInfo.bgColor, color: busInfo.color };
-              } else {
-                chipClassName += ' bg-[#F9FAFB] text-[#9CA3AF]';
-              }
-
+            if (isPast) {
+              // 완료된 스텝: 컴팩트 카드
               return (
-                <div key={segment.id} className="flex items-center gap-2 flex-shrink-0">
-                  <div className={chipClassName} style={chipStyle}>
-                    {chipLabel}
+                <div key={groupIdx} className="flex items-center gap-3 px-1">
+                  {/* 체크 아이콘 */}
+                  <div className="w-6 h-6 rounded-full bg-[#111827] flex items-center justify-center flex-shrink-0">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </div>
-                  {idx < currentRoute.segments.length - 1 && (
-                    <ChevronRight className="w-4 h-4 text-[#D1D5DB]" strokeWidth={2} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-
-        {/* 현재 타야할 교통수단 */}
-        <div className="space-y-2">
-          <div className="px-1 flex items-center justify-between">
-            <h3 className="text-[15px] font-semibold text-[#111827]">지금 타야할 교통수단</h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-[13px] text-[#6B7280] hover:text-[#111827] h-auto p-0 font-medium"
-              onClick={handleBoardingComplete}
-            >
-              탑승 완료
-            </Button>
-          </div>
-
-          <Card className="rounded-2xl border border-black/5 shadow-sm bg-white overflow-hidden">
-            {/* 정류장 정보 */}
-            <div className="p-5 border-b border-black/5">
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1">
-                  <h4 className="text-[18px] font-semibold text-[#111827] mb-1">
-                    {currentSegment.stop.name}
-                  </h4>
-                  {currentSegment.stop.type === 'bus' && currentSegment.stop.arsId && (
-                    <div className="text-[11px] text-[#9CA3AF] font-mono mt-1">
-                      ARS {currentSegment.stop.arsId}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 버스/전철 도착 정보 */}
-            <div className="divide-y divide-black/5">
-              {currentSegment.stop.lines.length === 0 ? (
-                <div className="px-5 py-4 text-[14px] text-[#9CA3AF]">
-                  노선 정보 없음
-                </div>
-              ) : (
-                currentSegment.stop.lines.map((line, idx) => {
-                  const isSubway = currentSegment.stop.type === 'subway';
-                  const stopRoute = currentSegment.stop.stopRoutes?.find(r => r.routeName === line);
-                  const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null;
-                  const subwayColorInfo = isSubway ? getSubwayColor(line) : null;
-
-                  const elapsedSec = (Date.now() - fetchedAtRef.current) / 1000;
-                  const rawMsg1 = getArrivalDisplay(currentSegment.stop, line, idx, arrivalData ?? null);
-                  const rawMsg2 = getArrivalDisplay2(currentSegment.stop, line, idx, arrivalData ?? null);
-                  const arrivalText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec) : '--';
-                  const arrivalText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec) : null;
-                  const baseMin = getArrivalMin(currentSegment.stop, line, idx, arrivalData ?? null);
-                  const remainSec = baseMin !== null ? Math.max(0, baseMin * 60 - elapsedSec) : null;
-                  const isUrgent = remainSec !== null && remainSec < 180;
-                  const noService = arrivalData !== undefined && arrivalText === '--';
-
-                  // T22: 지하철 방향 배지 — directionHeadsign이 있을 때만 표시
-                  const headsign = isSubway ? (currentSegment.stop.directionHeadsign ?? null) : null;
-                  // T23: 방향 정보 없음 안내 — 지하철이고 headsign/updn 둘 다 null일 때
-                  const showNoDirection = isSubway
-                    && !currentSegment.stop.directionHeadsign
-                    && !currentSegment.stop.directionUpdn;
-
-                  // 지하철: 매칭된 모든 item (3건 이상이면 토글 버튼 노출)
-                  const matchedSubwayItems = isSubway
-                    ? getMatchedSubwayItems(currentSegment.stop, line, arrivalData ?? null)
-                    : [];
-                  const hasMoreItems = isSubway && matchedSubwayItems.length > 2;
-                  const isLineExpanded = expandedLines[line] ?? false;
-
-                  // 펼침 시 보여줄 추가 항목 (3번째 이후)
-                  const extraItems = hasMoreItems && isLineExpanded
-                    ? matchedSubwayItems.slice(2)
-                    : [];
-
-                  function handleToggleLine() {
-                    setExpandedLines(prev => ({ ...prev, [line]: !prev[line] }));
-                  }
-
-                  return (
-                    <div key={line} className="px-5 py-4 hover:bg-[#F9FAFB] transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          {isSubway ? (
-                            <div className="w-10 h-10 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
-                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M12 12h0"/><path d="M9.75 9.75h4.5"/><path d="M7 15h10"/>
-                                <rect x="5" y="4" width="14" height="16" rx="2"/>
-                                <path d="M8 20l-2 2"/><path d="M16 20l2 2"/>
-                              </svg>
-                            </div>
-                          ) : (
-                            <div className="w-10 h-10 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
-                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={busTypeInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/>
-                                <path d="m18 18 3-3-3-3"/>
-                                <path d="M3 6h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2"/>
-                                <circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/>
-                              </svg>
-                            </div>
-                          )}
-                          <div>
-                            {/* T22: 호선명 + 헤드사인 배지 */}
-                            <div className="flex items-center gap-1.5">
-                              <div className="text-[15px] font-semibold text-[#111827]">
-                                {isSubway ? line : `${line}번`}
-                              </div>
-                              {headsign && (
-                                <span
-                                  className="text-[12px] font-medium px-2 py-0.5 rounded-md border"
-                                  style={subwayColorInfo
-                                    ? { backgroundColor: subwayColorInfo.bgColor, color: subwayColorInfo.textColor, borderColor: `${subwayColorInfo.color}33` }
-                                    : { backgroundColor: '#F1F3F5', color: '#6B7280', borderColor: '#E5E7EB' }
-                                  }
-                                >
-                                  {headsign}방향
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[13px] text-[#6B7280]">
-                              {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
-                            </div>
-                            {/* T23: 방향 정보 없음 안내 (지하철이고 방향 정보 미저장 시) */}
-                            {showNoDirection && (
-                              <div className="text-[11px] text-[#9CA3AF] mt-0.5">
-                                방향 정보 없음 — 경로를 다시 등록하면 더 정확해요
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-start gap-2">
-                          <div className="text-right space-y-1">
-                            <div>
-                              <div className="text-[11px] text-[#9CA3AF] text-right leading-none mb-0.5">이번 차</div>
-                              <div className="flex items-center gap-2 justify-end">
-                                <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
-                                <span className={`text-[18px] font-bold tabular-nums leading-tight ${isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
-                                  {noService ? '운행 없음' : arrivalText}
-                                </span>
-                              </div>
-                            </div>
-                            {arrivalText2 && (
-                              <div>
-                                <div className="text-[11px] text-[#9CA3AF] text-right leading-none mb-0.5">다음 차</div>
-                                <div className="text-[12px] text-[#9CA3AF] tabular-nums text-right">
-                                  {arrivalText2}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                          {/* 지하철 3건 이상일 때 토글 버튼 */}
-                          {hasMoreItems && (
-                            <button
-                              onClick={handleToggleLine}
-                              className="mt-1 p-1 rounded-lg hover:bg-[#F1F3F5] transition-colors flex-shrink-0"
-                              aria-label={isLineExpanded ? '접기' : '더 보기'}
-                            >
-                              {isLineExpanded ? (
-                                <ChevronUp className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
-                              ) : (
-                                <ChevronDown className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
-                              )}
-                            </button>
-                          )}
+                  {/* 정류장명 + 노선 */}
+                  <div className="flex-1 min-w-0 bg-white rounded-2xl border border-black/5 px-4 py-3">
+                    {group.map((seg) => (
+                      <div key={seg.id} className="flex items-center justify-between gap-2">
+                        <span className="text-[14px] font-medium text-[#6B7280] truncate">{seg.stop.name}</span>
+                        <div className="flex gap-1 flex-shrink-0">
+                          {seg.stop.lines.slice(0, 2).map(line => (
+                            <span key={line} className="text-[12px] px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[#9CA3AF]">
+                              {seg.stop.type === 'subway' ? line : `${line}번`}
+                            </span>
+                          ))}
                         </div>
                       </div>
-
-                      {/* 펼침 시 추가 항목 */}
-                      {extraItems.length > 0 && (
-                        <div className="mt-2 ml-[52px] space-y-1">
-                          {extraItems.map((item, extraIdx) => {
-                            const label = extraIdx === 0 ? '3번째' : `${extraIdx + 3}번째`;
-                            const msg = applyCountdownToArrmsg(item.arrmsg1, elapsedSec);
-                            return (
-                              <div key={`${line}-extra-${extraIdx}`} className="flex items-center justify-between">
-                                <div className="text-[11px] text-[#9CA3AF]">{label}</div>
-                                <div className="text-[12px] text-[#9CA3AF] tabular-nums">{msg}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </Card>
-        </div>
-
-        {/* 다음 교통수단 */}
-        {nextSegment && (
-          <div className="space-y-2">
-            <h3 className="text-[15px] font-semibold text-[#111827] px-1">다음 교통수단</h3>
-            <Card className="p-4 rounded-2xl border border-black/5 shadow-sm bg-white">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="text-[15px] font-medium text-[#111827] mb-2">
-                    {nextSegment.stop.name}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {nextSegment.stop.lines.slice(0, 3).map(line => {
-                      const isSubway = nextSegment.stop.type === 'subway';
-                      return (
-                        <span
-                          key={line}
-                          className="text-[13px] px-2 py-1 rounded-md font-medium text-[#6B7280] bg-[#F1F3F5]"
-                        >
-                          {isSubway ? line : `${line}번`}
-                        </span>
-                      );
-                    })}
-                    {nextSegment.stop.lines.length > 3 && (
-                      <span className="text-[13px] px-2 py-1 text-[#9CA3AF]">
-                        외 {nextSegment.stop.lines.length - 3}개
-                      </span>
-                    )}
+                    ))}
                   </div>
                 </div>
-              </div>
-            </Card>
-          </div>
-        )}
+              );
+            }
 
-        {/* 경로 완료 */}
-        {currentSegmentIndex === currentRoute.segments.length - 1 && (
-          <Card className="p-6 text-center rounded-2xl border border-black/5 shadow-sm bg-white">
-            <div className="w-12 h-12 bg-[#111827] rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <MapPin className="w-6 h-6 text-white" strokeWidth={2} />
-            </div>
-            <h3 className="text-[17px] font-semibold text-[#111827] mb-1">마지막 구간입니다</h3>
-            <p className="text-[14px] text-[#6B7280]">곧 목적지에 도착합니다</p>
-          </Card>
-        )}
+            if (isCurrent) {
+              // 현재 스텝: 도착 정보 포함 강조 카드
+              return (
+                <div key={groupIdx}>
+                  <div className="px-1 flex items-center justify-between mb-2">
+                    <h3 className="text-[15px] font-semibold text-[#111827]">지금 타야할 교통수단</h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-[13px] text-[#6B7280] hover:text-[#111827] h-auto p-0 font-medium"
+                      onClick={handleBoardingComplete}
+                    >
+                      탑승 완료
+                    </Button>
+                  </div>
+                  <div className={group.length > 1 ? "space-y-2 border-l-2 border-[#3B82F6] pl-3" : ""}>
+                    {group.map((seg) => {
+                      const segArrivalResult = arrivalByStopId.get(seg.stop.id)
+                      const segArrivalData = segArrivalResult?.data ?? null;
+                      const isArrivalLoading = segArrivalResult?.isLoading ?? false;
+                      const elapsedSec = (Date.now() - fetchedAtRef.current) / 1000;
+
+                      return (
+                        <Card
+                          key={seg.id}
+                          className="rounded-2xl border border-black/5 shadow-sm bg-white overflow-hidden"
+                        >
+                          {/* 정류장 정보 */}
+                          <div className="p-5 border-b border-black/5">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1 min-w-0">
+                                <h4 className="text-[18px] font-semibold text-[#111827] mb-1">
+                                  {seg.stop.name}
+                                </h4>
+                                {seg.stop.type === 'bus' && seg.stop.arsId && (
+                                  <div className="text-[11px] text-[#9CA3AF] font-mono mt-1">
+                                    ARS {seg.stop.arsId}
+                                  </div>
+                                )}
+                                {/* T14: fallback 안내 */}
+                                {seg.stop.type === 'bus'
+                                  && segArrivalData?.type === 'bus_by_stopid'
+                                  && segArrivalData.data.provider === 'odsay_fallback' && (
+                                  <div className="text-[11px] text-[#9CA3AF] mt-1">
+                                    도착 정보가 부정확할 수 있어요 (제휴 데이터 사용)
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 버스/전철 도착 정보 */}
+                          <div className="divide-y divide-black/5">
+                            {seg.stop.lines.length === 0 ? (
+                              <div className="px-5 py-4 text-[14px] text-[#9CA3AF]">
+                                노선 정보 없음
+                              </div>
+                            ) : (
+                              seg.stop.lines.map((line, idx) => {
+                                const isSubway = seg.stop.type === 'subway';
+                                const stopRoute = seg.stop.stopRoutes?.find(r => r.routeName === line);
+                                const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null;
+                                const subwayColorInfo = isSubway ? getSubwayColor(line) : null;
+
+                                const rawMsg1 = getArrivalDisplay(seg.stop, line, idx, segArrivalData);
+                                const rawMsg2 = getArrivalDisplay2(seg.stop, line, idx, segArrivalData);
+                                const arrivalText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec) : '--';
+                                const arrivalText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec) : null;
+                                const baseMin = getArrivalMin(seg.stop, line, idx, segArrivalData);
+                                const remainSec = baseMin !== null ? Math.max(0, baseMin * 60 - elapsedSec) : null;
+                                const isUrgent = remainSec !== null && remainSec < 180;
+                                const noService = segArrivalData !== undefined && arrivalText === '--';
+
+                                // T22: 지하철 방향 배지
+                                const headsign = isSubway ? (seg.stop.directionHeadsign ?? null) : null;
+                                // T23: 방향 정보 없음 안내
+                                const showNoDirection = isSubway
+                                  && !seg.stop.directionHeadsign
+                                  && !seg.stop.directionUpdn;
+
+                                // 지하철: 매칭된 모든 item
+                                const matchedSubwayItems = isSubway
+                                  ? getMatchedSubwayItems(seg.stop, line, segArrivalData)
+                                  : [];
+                                const hasMoreItems = isSubway && matchedSubwayItems.length > 2;
+                                const lineKey = `${seg.id}-${line}`;
+                                const isLineExpanded = expandedLines[lineKey] ?? false;
+
+                                // 펼침 시 보여줄 추가 항목 (3번째 이후)
+                                const extraItems = hasMoreItems && isLineExpanded
+                                  ? matchedSubwayItems.slice(2)
+                                  : [];
+
+                                return (
+                                  <div key={line} className="px-5 py-4 hover:bg-[#F9FAFB] transition-colors">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        {isSubway ? (
+                                          <div className="w-10 h-10 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                              <path d="M12 12h0"/><path d="M9.75 9.75h4.5"/><path d="M7 15h10"/>
+                                              <rect x="5" y="4" width="14" height="16" rx="2"/>
+                                              <path d="M8 20l-2 2"/><path d="M16 20l2 2"/>
+                                            </svg>
+                                          </div>
+                                        ) : (
+                                          <div className="w-10 h-10 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={busTypeInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                              <path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/>
+                                              <path d="m18 18 3-3-3-3"/>
+                                              <path d="M3 6h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2"/>
+                                              <circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/>
+                                            </svg>
+                                          </div>
+                                        )}
+                                        <div className="min-w-0">
+                                          {/* T22: 호선명 + 헤드사인 배지 */}
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <div className="text-[15px] font-semibold text-[#111827]">
+                                              {isSubway ? line : `${line}번`}
+                                            </div>
+                                            {headsign && (
+                                              <span
+                                                className="text-[12px] font-medium px-2 py-0.5 rounded-md border"
+                                                style={subwayColorInfo
+                                                  ? { backgroundColor: subwayColorInfo.bgColor, color: subwayColorInfo.textColor, borderColor: `${subwayColorInfo.color}33` }
+                                                  : { backgroundColor: '#F1F3F5', color: '#6B7280', borderColor: '#E5E7EB' }
+                                                }
+                                              >
+                                                {headsign}방향
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="text-[13px] text-[#6B7280]">
+                                            {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
+                                          </div>
+                                          {/* T23: 방향 정보 없음 안내 */}
+                                          {showNoDirection && (
+                                            <div className="text-[11px] text-[#9CA3AF] mt-0.5">
+                                              방향 정보 없음 — 경로를 다시 등록하면 더 정확해요
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-start gap-2 flex-shrink-0">
+                                        <div className="text-right space-y-1">
+                                          <div>
+                                            <div className="text-[11px] text-[#9CA3AF] text-right leading-none mb-0.5">이번 차</div>
+                                            <div className="flex items-center gap-2 justify-end">
+                                              {isArrivalLoading ? (
+                                                <Loader2 className="w-[14px] h-[14px] text-[#9CA3AF] animate-spin" strokeWidth={2} />
+                                              ) : (
+                                                <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
+                                              )}
+                                              <span className={`font-bold tabular-nums leading-tight text-[18px] ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
+                                                {isArrivalLoading ? '조회 중...' : noService ? '운행 없음' : arrivalText}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          {arrivalText2 && (
+                                            <div>
+                                              <div className="text-[11px] text-[#9CA3AF] text-right leading-none mb-0.5">다음 차</div>
+                                              <div className="text-[12px] text-[#9CA3AF] tabular-nums text-right">
+                                                {arrivalText2}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                        {/* 지하철 3건 이상일 때 토글 버튼 */}
+                                        {hasMoreItems && (
+                                          <button
+                                            onClick={() => setExpandedLines(prev => ({ ...prev, [lineKey]: !prev[lineKey] }))}
+                                            className="mt-1 p-1 rounded-lg hover:bg-[#F1F3F5] transition-colors flex-shrink-0"
+                                            aria-label={isLineExpanded ? '접기' : '더 보기'}
+                                          >
+                                            {isLineExpanded ? (
+                                              <ChevronUp className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                            ) : (
+                                              <ChevronDown className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                            )}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* 펼침 시 추가 항목 */}
+                                    {extraItems.length > 0 && (
+                                      <div className="mt-2 ml-[52px] space-y-1">
+                                        {extraItems.map((item, extraIdx) => {
+                                          const label = extraIdx === 0 ? '3번째' : `${extraIdx + 3}번째`;
+                                          const msg = applyCountdownToArrmsg(item.arrmsg1, elapsedSec);
+                                          return (
+                                            <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between">
+                                              <div className="text-[11px] text-[#9CA3AF]">{label}</div>
+                                              <div className="text-[12px] text-[#9CA3AF] tabular-nums">{msg}</div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+
+            // 다음 스텝들: 미니 도착 카드 (accordion)
+            return (
+              <div key={groupIdx} className={group.length > 1 ? "space-y-1.5 border-l-2 border-[#E5E7EB] pl-3" : ""}>
+                {group.map((seg) => {
+                  const arrResult = arrivalByStopId.get(seg.stop.id)
+                  const arrData = arrResult?.data ?? null
+                  const isLoading = arrResult?.isLoading ?? false
+                  const isExpanded = expandedUpcoming.has(groupIdx)
+                  const elapsedSec = (Date.now() - fetchedAtRef.current) / 1000;
+
+                  // 가장 빠른 도착 시간 계산
+                  const fastestText = getFastestArrivalText(seg.stop, arrData, elapsedSec)
+
+                  return (
+                    <div key={seg.id}>
+                      {/* 미니 카드 헤더 (항상 보임) */}
+                      <Card
+                        className="rounded-2xl border border-black/5 bg-white overflow-hidden cursor-pointer"
+                        onClick={() => setExpandedUpcoming(prev => {
+                          const next = new Set(prev)
+                          next.has(groupIdx) ? next.delete(groupIdx) : next.add(groupIdx)
+                          return next
+                        })}
+                      >
+                        <div className="px-4 py-3 flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[14px] font-medium text-[#374151] truncate">{seg.stop.name}</div>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {seg.stop.lines.slice(0, 3).map(line => (
+                                <span key={line} className="text-[11px] px-1.5 py-0.5 rounded-md bg-[#F1F3F5] text-[#9CA3AF]">
+                                  {seg.stop.type === 'subway' ? line : `${line}번`}
+                                </span>
+                              ))}
+                              {seg.stop.lines.length > 3 && (
+                                <span className="text-[11px] text-[#9CA3AF]">+{seg.stop.lines.length - 3}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                            {isLoading ? (
+                              <Loader2 className="w-3.5 h-3.5 text-[#9CA3AF] animate-spin" strokeWidth={2} />
+                            ) : (
+                              <span className={`text-[14px] font-semibold tabular-nums ${fastestText === '--' ? 'text-[#D1D5DB]' : 'text-[#374151]'}`}>
+                                {fastestText}
+                              </span>
+                            )}
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 펼쳐지면 노선별 도착 상세 */}
+                        {isExpanded && (
+                          <div className="border-t border-black/5 divide-y divide-black/5">
+                            {seg.stop.lines.length === 0 ? (
+                              <div className="px-4 py-3 text-[13px] text-[#9CA3AF]">노선 정보 없음</div>
+                            ) : (
+                              seg.stop.lines.map((line, idx) => {
+                                const isSubway = seg.stop.type === 'subway'
+                                const stopRoute = seg.stop.stopRoutes?.find(r => r.routeName === line)
+                                const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null
+                                const subwayColorInfo = isSubway ? getSubwayColor(line) : null
+                                const rawMsg1 = getArrivalDisplay(seg.stop, line, idx, arrData)
+                                const rawMsg2 = getArrivalDisplay2(seg.stop, line, idx, arrData)
+                                const arrText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec) : '--'
+                                const arrText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec) : null
+                                const noSvc = arrData !== null && arrText === '--'
+                                return (
+                                  <div key={line} className="px-4 py-3 flex items-center justify-between">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: isSubway ? subwayColorInfo?.color : busTypeInfo?.color ?? '#9CA3AF' }} />
+                                      <div className="min-w-0">
+                                        <div className="text-[13px] font-medium text-[#374151]">
+                                          {isSubway ? line : `${line}번`}
+                                        </div>
+                                        <div className="text-[11px] text-[#9CA3AF]">
+                                          {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="text-right flex-shrink-0 ml-2">
+                                      {isLoading ? (
+                                        <div className="text-[12px] text-[#9CA3AF]">조회 중...</div>
+                                      ) : (
+                                        <>
+                                          <div className={`text-[13px] font-semibold tabular-nums ${noSvc ? 'text-[#D1D5DB]' : 'text-[#374151]'}`}>
+                                            {noSvc ? '운행 없음' : arrText}
+                                          </div>
+                                          {arrText2 && (
+                                            <div className="text-[11px] text-[#9CA3AF] tabular-nums">{arrText2}</div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+                        )}
+                      </Card>
+                    </div>
+                  )
+                })}
+              </div>
+            );
+          })}
+
+          {/* 경로 완료 */}
+          {currentGroupIndex === groupedSegments.length - 1 && (
+            <Card className="p-6 text-center rounded-2xl border border-black/5 shadow-sm bg-white">
+              <div className="w-12 h-12 bg-[#111827] rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <MapPin className="w-6 h-6 text-white" strokeWidth={2} />
+              </div>
+              <h3 className="text-[17px] font-semibold text-[#111827] mb-1">마지막 구간입니다</h3>
+              <p className="text-[14px] text-[#6B7280]">곧 목적지에 도착합니다</p>
+            </Card>
+          )}
+        </div>
       </div>
 
       <BottomNav />

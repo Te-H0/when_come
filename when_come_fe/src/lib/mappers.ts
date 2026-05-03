@@ -10,10 +10,11 @@ export function mapApiRoute(route: ApiRoute): SavedRoute {
     isActive: route.is_active,
     segments: route.route_stops
       .slice()
-      .sort((a, b) => a.sequence - b.sequence)
-      .map(stop => ({
+      .sort((a, b) => (a.step_group ?? 0) - (b.step_group ?? 0) || a.sequence - b.sequence)
+      .map((stop, idx) => ({
         id: stop.id,
         order: stop.sequence,
+        stepGroup: stop.step_group ?? idx + 1,
         stop: {
           id: stop.id,
           name: stop.stop_name,
@@ -34,6 +35,7 @@ export function mapApiRoute(route: ApiRoute): SavedRoute {
           directionHeadsign: stop.direction_headsign ?? null,
           directionUpdn: stop.direction_updn ?? null,
           directionNextStop: stop.direction_next_stop ?? null,
+          provider: stop.provider ?? null,
         },
       })),
   }
