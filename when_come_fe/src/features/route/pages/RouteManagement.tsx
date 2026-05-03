@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, Fragment } from "react";
 import { useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, MoreVertical, Trash2, Bus, Train, Loader2 } from "lucide-react";
@@ -182,61 +182,86 @@ export default function RouteManagement() {
                 </div>
               </div>
 
-              {/* 경로 상세 */}
-              <div className="p-4 space-y-3">
-                <h4 className="text-[13px] font-medium text-[#6B7280]">
-                  경로 ({route.segments.length}단계)
-                </h4>
+              {/* 경로 상세 — stepGroup 단위 */}
+              {(() => {
+                // stepGroup으로 그룹핑
+                const groups = new Map<number, typeof route.segments>()
+                for (const seg of route.segments) {
+                  const g = seg.stepGroup ?? seg.order
+                  if (!groups.has(g)) groups.set(g, [])
+                  groups.get(g)!.push(seg)
+                }
+                const groupedSegs = Array.from(groups.entries())
+                  .sort(([a], [b]) => a - b)
+                  .map(([, segs]) => segs)
 
-                {route.segments.map((segment, idx) => {
-                  const isSubway = segment.stop.type === 'subway';
-                  const firstStopRoute = segment.stop.stopRoutes?.[0];
-                  const nodeColor = isSubway && segment.stop.lines.length > 0
-                    ? getSubwayColor(segment.stop.lines[0]).color
-                    : !isSubway && segment.stop.lines.length > 0
-                      ? getBusTypeByOdsay(firstStopRoute?.busType, segment.stop.lines[0]).color
-                      : '#6B7280';
+                return (
+                  <div className="p-4 space-y-3">
+                    <h4 className="text-[13px] font-medium text-[#6B7280]">
+                      경로 ({groupedSegs.length}단계 / {route.segments.length}개 정류장)
+                    </h4>
 
-                  return (
-                    <div key={segment.id}>
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
-                          {segment.stop.type === 'bus' ? (
-                            <Bus className="w-[18px] h-[18px]" strokeWidth={2} style={{ color: nodeColor }} />
-                          ) : (
-                            <Train className="w-[18px] h-[18px]" strokeWidth={2} style={{ color: nodeColor }} />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[15px] font-medium text-[#111827]">
-                              {segment.stop.name}
-                            </span>
-                            <span className="text-[12px] text-[#9CA3AF]">
-                              {segment.order}단계
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {segment.stop.lines.map(line => (
-                              <span
-                                key={line}
-                                className="text-[12px] px-1.5 py-0.5 rounded bg-[#F1F3F5] text-[#6B7280] font-medium"
+                    {groupedSegs.map((group, groupIdx) => (
+                      <Fragment key={groupIdx}>
+                        {/* 그룹: 1개면 기존 그대로, 2개면 flex로 나란히 */}
+                        <div className={group.length > 1 ? "flex gap-2" : ""}>
+                          {group.map((segment) => {
+                            const isSubway = segment.stop.type === 'subway';
+                            const firstStopRoute = segment.stop.stopRoutes?.[0];
+                            const nodeColor = isSubway && segment.stop.lines.length > 0
+                              ? getSubwayColor(segment.stop.lines[0]).color
+                              : !isSubway && segment.stop.lines.length > 0
+                                ? getBusTypeByOdsay(firstStopRoute?.busType, segment.stop.lines[0]).color
+                                : '#6B7280';
+
+                            return (
+                              <div
+                                key={segment.id}
+                                className={`flex items-start gap-3 ${group.length > 1 ? 'flex-1 min-w-0 p-2 rounded-xl bg-[#F9FAFB] border border-[#DBEAFE]' : ''}`}
                               >
-                                {isSubway ? line : `${line}번`}
-                              </span>
-                            ))}
+                                <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0">
+                                  {segment.stop.type === 'bus' ? (
+                                    <Bus className="w-[18px] h-[18px]" strokeWidth={2} style={{ color: nodeColor }} />
+                                  ) : (
+                                    <Train className="w-[18px] h-[18px]" strokeWidth={2} style={{ color: nodeColor }} />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                    <span className="text-[15px] font-medium text-[#111827] truncate">
+                                      {segment.stop.name}
+                                    </span>
+                                    {group.length === 1 && (
+                                      <span className="text-[12px] text-[#9CA3AF] flex-shrink-0">
+                                        {segment.order}단계
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {segment.stop.lines.map(line => (
+                                      <span
+                                        key={line}
+                                        className="text-[12px] px-1.5 py-0.5 rounded bg-[#F1F3F5] text-[#6B7280] font-medium"
+                                      >
+                                        {isSubway ? line : `${line}번`}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {groupIdx < groupedSegs.length - 1 && (
+                          <div className="flex justify-center my-2 ml-5">
+                            <div className="w-px h-4 bg-[#E5E7EB]" />
                           </div>
-                        </div>
-                      </div>
-                      {idx < route.segments.length - 1 && (
-                        <div className="flex justify-center my-2 ml-5">
-                          <div className="w-px h-4 bg-[#E5E7EB]" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        )}
+                      </Fragment>
+                    ))}
+                  </div>
+                );
+              })()}
             </Card>
           ))
         )}

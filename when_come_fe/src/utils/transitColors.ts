@@ -9,6 +9,25 @@ export const subwayApiCodeToLineName = (lineName: string): string => {
   return map[lineName] ?? lineName
 }
 
+// 서울 BIS busRouteType → ODsay busType 코드로 변환 (코드 체계가 다름)
+export function seoulBisTypeToOdsayBusType(t: number | null | undefined): number | null {
+  if (t == null) return null
+  const map: Record<number, number> = {
+    1: 5,   // 공항 → 공항
+    2: 3,   // 마을버스 → 마을
+    3: 11,  // 간선버스 → 간선
+    4: 12,  // 지선버스 → 지선
+    5: 13,  // 순환버스 → 순환
+    6: 14,  // 광역버스 → 광역
+    7: 10,  // 인천버스 → 외곽
+    8: 8,   // 경기버스 → 경기
+    11: 2,  // 좌석버스 → 좌석
+    12: 1,  // 일반버스 → 일반
+    13: 4,  // 직행좌석 → 직행
+  }
+  return map[t] ?? null
+}
+
 // ODsay busType 코드 → 색상 (busType이 null이면 번호 기반 추론으로 fallback)
 export const getBusTypeByOdsay = (
   busType: number | null | undefined,
@@ -21,6 +40,7 @@ export const getBusTypeByOdsay = (
     4:  { type: 'express',   color: '#DC2626', bgColor: '#FEE2E2', label: '직행' },
     5:  { type: 'airport',   color: '#4B5563', bgColor: '#F3F4F6', label: '공항' },
     6:  { type: 'trunk-exp', color: '#1D4ED8', bgColor: '#DBEAFE', label: '간선급행' },
+    8:  { type: 'gyeonggi',  color: '#0891B2', bgColor: '#CFFAFE', label: '경기' },
     10: { type: 'outer',     color: '#6B7280', bgColor: '#F3F4F6', label: '외곽' },
     11: { type: 'trunk',     color: '#2563EB', bgColor: '#DBEAFE', label: '간선' },
     12: { type: 'branch',    color: '#16A34A', bgColor: '#DCFCE7', label: '지선' },

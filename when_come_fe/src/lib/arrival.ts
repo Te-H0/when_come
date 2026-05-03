@@ -1,6 +1,6 @@
-import { getSubwayArrival, getBusArrival, getOdsayArrival } from '@/lib/api'
+import { getSubwayArrival, getBusArrival, getOdsayArrival, getArrivalByStopId, ApiError } from '@/lib/api'
 import type { TransitStop } from '@/lib/mockData'
-import type { ApiSubwayArrivalItem, ApiBusArrival, ApiOdsayArrival } from '@/types/api'
+import type { ApiSubwayArrivalItem, ApiBusArrival, ApiOdsayArrival, ApiBusArrivalByStopId } from '@/types/api'
 import { subwayApiCodeToLineName } from '@/utils/transitColors'
 
 // T18: 서울 지하철 API의 updnLine 값을 'up'/'down'으로 정규화
@@ -58,6 +58,8 @@ export type ArrivalData =
   | { type: 'subway'; items: ApiSubwayArrivalItem[] }
   | { type: 'odsay'; items: ApiOdsayArrival[] }
   | { type: 'bus'; items: Array<ApiBusArrival | null> }
+  /** 신 경로: stopId 기반 도착 응답 — provider 포함 */
+  | { type: 'bus_by_stopid'; data: ApiBusArrivalByStopId }
   | null
 
 const MAX_BUS_ROUTES = 3
@@ -124,6 +126,13 @@ function getRawArrmsg(stop: TransitStop, line: string, idx: number, arrival: Arr
     }
   }
 
+  if (arrival.type === 'bus_by_stopid') {
+    const item = arrival.data.items[idx] ?? arrival.data.items[0]
+    if (!item) return null
+    if (which === 1) return item.arrmsg1 || null
+    return item.arrmsg2 || null
+  }
+
   return null
 }
 
@@ -159,6 +168,12 @@ export function getArrivalMin(stop: TransitStop, line: string, idx: number, arri
     if (item?.arrmsg1) return parseArrivalMin(item.arrmsg1)
   }
 
+  if (arrival.type === 'bus_by_stopid') {
+    const item = arrival.data.items[idx] ?? arrival.data.items[0]
+    if (item?.traTime1 != null) return Math.ceil(item.traTime1 / 60)
+    if (item?.arrmsg1) return parseArrivalMin(item.arrmsg1)
+  }
+
   return null
 }
 
@@ -168,7 +183,25 @@ export async function fetchArrival(stop: TransitStop): Promise<ArrivalData> {
     return { type: 'subway', items }
   }
 
-  // ODsay stationId가 있으면 ODsay 도착 API 우선 사용 (결과 있을 때만 반환)
+  // 신 경로: stopId 기반 도착 조회 — BE가 provider 자동 분기 (서울/경기/ODsay-fallback)
+  // stop.id는 route_stops.id(uuid). BE가 배포됐을 때만 동작하며 실패 시 legacy로 fallback.
+  try {
+    const data = await getArrivalByStopId(stop.id)
+    return { type: 'bus_by_stopid', data }
+  } catch (err) {
+    // 401(인증 만료), 5xx(서버 오류), 네트워크 오류는 legacy로 누수시키지 않고 그대로 throw
+    // 404/400/405 등 "신 경로 미지원" 신호만 legacy fallback 허용
+    if (err instanceof ApiError && err.status !== 404 && err.status !== 400 && err.status !== 405) {
+      throw err
+    }
+    if (!(err instanceof ApiError)) {
+      // 네트워크 오류(TypeError 등)도 throw
+      throw err
+    }
+    // 404 / 400 / 405 → BE 미지원 신호 → legacy fallback (한 사이클 호환)
+  }
+
+  // legacy fallback: ODsay 도착 API
   if (stop.odsayStopId) {
     try {
       const items = await getOdsayArrival(stop.odsayStopId)
@@ -178,7 +211,7 @@ export async function fetchArrival(stop: TransitStop): Promise<ArrivalData> {
     }
   }
 
-  // fallback: 서울 버스 API
+  // legacy fallback: 서울 버스 API
   if (stop.stopRoutes) {
     const callableRoutes = stop.stopRoutes
       .filter(r => r.busRouteId)

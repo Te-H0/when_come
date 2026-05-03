@@ -73,13 +73,18 @@ src/
 
 ```
 fetchArrival(stop)
-  ├─ subway → GET /arrival-info?type=subway&stationName=...
+  ├─ subway → GET /arrival-info?type=subway&stationName=...  (변경 없음)
   └─ bus
-      ├─ arsId 있음 → GET /arrival-info?type=bus&busRouteId=...&arsId=...  (1회)
-      └─ arsId 없음 → null (운행 없음 표시)
+      ├─ 신 경로 → GET /arrival-info?stopId={route_stops.id}
+      │             BE가 route_stops.provider로 자동 분기 (서울/경기/ODsay-fallback)
+      │             응답: BusArrivalResponse { items, provider, fetchedAt }
+      └─ legacy fallback (신 경로 실패 시, 한 사이클 호환)
+          ├─ ODsay stationId 있음 → GET /arrival-info?type=odsay&stationId=...
+          └─ arsId 있음 → GET /arrival-info?type=bus&busRouteId=...&arsId=...
 ```
 
-- 버스 도착 조회는 반드시 `arsId` 필요 — 경로 저장 시 `route_stops.ars_id` 저장 필수
+- **신 경로(2026-05-02~):** `stop.id`(= `route_stops.id`) 하나만 전달 — FE는 provider를 모름. BE 미배포 시 자동으로 legacy fallback.
+- `provider === 'odsay_fallback'`인 stop 카드에 inline 안내 노출: "도착 정보가 부정확할 수 있어요 (제휴 데이터 사용)"
 - `subwayCode`는 서울 지하철 API 형식(`"1002"`) 사용 — arrival `lineName`과 직접 비교
 - 도착정보 자동 조회 비활성화 중 (`enabled: false`) — 새로고침 버튼으로만 조회 (개발 중 API 절약)
 
