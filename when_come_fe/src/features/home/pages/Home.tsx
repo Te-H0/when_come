@@ -570,8 +570,8 @@ export default function Home() {
 
                                 return (
                                   <div key={line} className={`${isGrouped ? 'px-3 py-3' : 'px-5 py-4'} hover:bg-[#F9FAFB] transition-colors`}>
-                                    <div className="flex items-center justify-between">
-                                      <div className={`flex items-center ${isGrouped ? 'gap-2' : 'gap-3'} min-w-0 overflow-hidden`}>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className={`flex items-center ${isGrouped ? 'gap-2' : 'gap-3'} min-w-0 flex-1`}>
                                         {isSubway ? (
                                           <div className={`${isGrouped ? 'w-8 h-8' : 'w-10 h-10'} rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0`}>
                                             <svg width={isGrouped ? "18" : "24"} height={isGrouped ? "18" : "24"} viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -593,12 +593,12 @@ export default function Home() {
                                         <div className="min-w-0 overflow-hidden">
                                           {/* T22: 호선명 + 헤드사인 배지 */}
                                           <div className="flex items-center gap-1.5 flex-wrap">
-                                            <div className={`${isGrouped ? 'text-[13px]' : 'text-[15px]'} font-semibold text-[#111827] whitespace-nowrap`}>
+                                            <div className={`${isGrouped ? 'text-[13px]' : 'text-[15px]'} font-semibold text-[#111827] truncate max-w-[80px]`}>
                                               {isSubway ? line : `${line}번`}
                                             </div>
                                             {headsign && (
                                               <span
-                                                className="text-[12px] font-medium px-2 py-0.5 rounded-md border"
+                                                className="text-[12px] font-medium px-2 py-0.5 rounded-md border whitespace-nowrap"
                                                 style={subwayColorInfo
                                                   ? { backgroundColor: subwayColorInfo.bgColor, color: subwayColorInfo.textColor, borderColor: `${subwayColorInfo.color}33` }
                                                   : { backgroundColor: '#F1F3F5', color: '#6B7280', borderColor: '#E5E7EB' }
@@ -630,7 +630,7 @@ export default function Home() {
                                               ) : (
                                                 <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
                                               )}
-                                              <span className={`font-bold tabular-nums leading-tight ${isGrouped ? 'text-[14px]' : 'text-[18px]'} ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
+                                              <span className={`font-bold tabular-nums leading-tight whitespace-nowrap ${isGrouped ? 'text-[14px]' : 'text-[18px]'} ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
                                                 {isArrivalLoading ? '조회 중...' : noService ? '운행 없음' : arrivalText}
                                               </span>
                                             </div>
@@ -638,7 +638,7 @@ export default function Home() {
                                           {arrivalText2 && (
                                             <div>
                                               <div className="text-[11px] text-[#9CA3AF] text-right leading-none mb-0.5">다음 차</div>
-                                              <div className="text-[12px] text-[#9CA3AF] tabular-nums text-right">
+                                              <div className="text-[12px] text-[#9CA3AF] tabular-nums text-right whitespace-nowrap">
                                                 {arrivalText2}
                                               </div>
                                             </div>
