@@ -63,11 +63,41 @@ interface PatchRouteResponse {
 /**
  * ODsay 노선 ID 첫 자리로 provider를 결정한다.
  * 관찰 기반 패턴: 1xxx... → 서울, 2xxx... → 경기(GBIS), 그 외 → ODsay fallback.
+ *
+ * 한계: 경기도 일부 노선(마을버스, 일반버스)은 ODsay에서 3xxx, 5xxx 등의 ID를 가질 수 있다.
+ * 이 경우 stopProvider(정류장 단위 provider)를 우선 참고해야 한다.
+ * resolveStopRouteProvider() 참조.
  */
 function routeIdToProvider(id: string): "seoul" | "gyeonggi" | "odsay_fallback" {
   if (id.startsWith("1")) return "seoul"
   if (id.startsWith("2")) return "gyeonggi"
   return "odsay_fallback"
+}
+
+/**
+ * stop_routes.provider 최종 결정.
+ * routeIdToProvider()가 odsay_fallback을 반환하더라도
+ * 정류장 자체가 gyeonggi provider로 확정된 경우 해당 노선도 gyeonggi로 처리한다.
+ * (광명사거리 등 경기 경계 지역 마을/일반버스 — ODsay ID가 2xxx 아닌 경우 커버)
+ *
+ * ADR-002 D3-supplement: busType===6(경기버스)이면 route ID prefix보다 busType 우선 — 무조건 gyeonggi.
+ */
+function resolveStopRouteProviderOnSave(
+  odsayRouteId: string,
+  stopProvider: "seoul" | "gyeonggi" | "odsay_fallback",
+  busType?: number | null,
+): "seoul" | "gyeonggi" | "odsay_fallback" {
+  // busType===6(경기버스): route ID 패턴보다 우선 → 무조건 gyeonggi
+  if (busType === 6) return "gyeonggi"
+
+  const byRouteId = routeIdToProvider(odsayRouteId)
+  // 1xxx → 서울: route ID 기반 결과 사용 (경기 정류장에 서울버스 공존 가능)
+  if (byRouteId === "seoul") return "seoul"
+  // 2xxx → 경기: route ID 기반 결과 사용
+  if (byRouteId === "gyeonggi") return "gyeonggi"
+  // 그 외(3xxx~): stopProvider가 gyeonggi면 경기로 승격
+  if (stopProvider === "gyeonggi") return "gyeonggi"
+  return byRouteId
 }
 
 // ─── 환경변수 lazy 읽기 ───────────────────────────────────────────────────────
@@ -98,6 +128,7 @@ async function resolveStopWithProvider(
   stop: RouteStopInput,
 ): Promise<{
   provider: "seoul" | "gyeonggi" | "odsay_fallback"
+  fallbackReason?: "unsupported_region" | "mapping_failed" | "verify_failed" | null
   arsId: string | null
   gbisStationId: string | null
   gbisStationSigunNm: string | null
@@ -107,6 +138,7 @@ async function resolveStopWithProvider(
   if (stop.lat == null || stop.lng == null) {
     return {
       provider: "seoul",
+      fallbackReason: null,
       arsId: stop.arsId ?? null,
       gbisStationId: null,
       gbisStationSigunNm: null,
@@ -246,6 +278,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
           stop: s,
           resolved: {
             provider: "seoul" as const,
+            fallbackReason: null,
             arsId: s.arsId ?? null,
             gbisStationId: null,
             gbisStationSigunNm: null,
@@ -271,6 +304,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
     direction_next_stop: stop.directionNextStop ?? null,
     provider: resolved.provider,
     gbis_station_id: resolved.gbisStationId,
+    provider_fallback_reason: resolved.fallbackReason ?? null,
   }))
 
   const { data: insertedStops, error: stopsErr } = await db
@@ -331,7 +365,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
         station_name: sr.stationName ?? null,
         gbis_route_id: sr.gbisRouteId ?? null,
         gbis_sta_order: sr.gbisStaOrder ?? null,
-        provider: routeIdToProvider(sr.odsayRouteId),
+        provider: resolveStopRouteProviderOnSave(sr.odsayRouteId, resolved.provider, sr.busType),
       }))
     }),
   )

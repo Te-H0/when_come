@@ -31,8 +31,11 @@ export interface StopRouteForMapping {
   gbisStaOrder?: number | null
 }
 
+export type ProviderFallbackReason = "unsupported_region" | "mapping_failed" | "verify_failed"
+
 export interface ResolvedStopProvider {
   provider: "seoul" | "gyeonggi" | "odsay_fallback"
+  fallbackReason?: ProviderFallbackReason | null
   arsId: string | null
   gbisStationId: string | null
   gbisStationSigunNm: string | null   // mapGbisRoutes의 regionName 필터에 사용
@@ -317,10 +320,10 @@ export async function resolveStopProvider(
 
   const region = detectRegion({ lng: odsayStop.x, lat: odsayStop.y })
 
-  // 경기 노선 힌트: expectedRoutes 중 ODsay ID 2xxx → 서울 bbox이더라도 경기 정류소일 수 있음
-  // (광명시 등 서울 bbox와 겹치는 경기도 경계 지역)
+  // 경기 노선 힌트: ODsay ID 2xxx 또는 busType===6(경기버스)이면
+  // 서울 bbox이더라도 경기 정류소일 수 있음 (ADR-002 D3-supplement, 2026-05-05)
   const hasGyeonggiRouteHint = expectedRoutes.some(
-    (r) => String(r.odsayRouteId ?? "").startsWith("2"),
+    (r) => String(r.odsayRouteId ?? "").startsWith("2") || r.busType === 6,
   )
 
   if (region === "seoul" && !hasGyeonggiRouteHint) {
@@ -359,6 +362,7 @@ export async function resolveStopProvider(
       )
       return {
         provider: fallbackProvider,
+        fallbackReason: fallbackProvider === "odsay_fallback" ? "mapping_failed" : null,
         arsId: odsayStop.arsID ?? null,
         gbisStationId: null,
         gbisStationSigunNm: null,
@@ -386,6 +390,7 @@ export async function resolveStopProvider(
       )
       return {
         provider: "odsay_fallback",
+        fallbackReason: "verify_failed",
         arsId: null,
         gbisStationId: null,
         gbisStationSigunNm: null,
@@ -424,6 +429,7 @@ export async function resolveStopProvider(
   )
   return {
     provider: "odsay_fallback",
+    fallbackReason: "unsupported_region",
     arsId: null,
     gbisStationId: null,
     gbisStationSigunNm: null,

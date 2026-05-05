@@ -237,7 +237,7 @@ supabaseTest("findGbisStationFromDB — DB 빈 테이블 → null", async () => 
 
 // ─── mapGbisRoutes ──────────────────────────────────────────────────────────
 
-Deno.test("mapGbisRoutes — 노선 1개 정상 매핑 → gbisRouteId/staOrder 채워짐", async () => {
+Deno.test({ name: "mapGbisRoutes — 노선 1개 정상 매핑 → gbisRouteId/staOrder 채워짐", sanitizeOps: false, sanitizeResources: false, fn: async () => {
   clearRouteStationCache()
   await withEnv(GBIS_ENV, () =>
     withMockFetch(
@@ -286,9 +286,9 @@ Deno.test("mapGbisRoutes — 노선 1개 정상 매핑 → gbisRouteId/staOrder 
       },
     )
   )
-})
+}})
 
-Deno.test("mapGbisRoutes — 부분 매핑 실패 (배열 일부 null OK)", async () => {
+Deno.test({ name: "mapGbisRoutes — 부분 매핑 실패 (배열 일부 null OK)", sanitizeOps: false, sanitizeResources: false, fn: async () => {
   clearRouteStationCache()
   await withEnv(GBIS_ENV, () =>
     withMockFetch(
@@ -316,7 +316,7 @@ Deno.test("mapGbisRoutes — 부분 매핑 실패 (배열 일부 null OK)", asyn
       },
     )
   )
-})
+}})
 
 // ─── verifyGbisMapping ───────────────────────────────────────────────────────
 
@@ -356,14 +356,14 @@ Deno.test("verifyGbisMapping — routeId 교집합 50% 미만 시 false", async 
   )
 })
 
-Deno.test("verifyGbisMapping — GBIS API 오류 시 true 반환 (장애 시 매핑 유지)", async () => {
+Deno.test({ name: "verifyGbisMapping — GBIS API 오류 시 true 반환 (장애 시 매핑 유지)", sanitizeOps: false, sanitizeResources: false, fn: async () => {
   await withEnv(GBIS_ENV, () =>
     withMockFetch(async () => new Response("", { status: 503 }), async () => {
       const result = await verifyGbisMapping("200000177", ["234000016"])
       assertEquals(result, true)
     })
   )
-})
+}})
 
 supabaseTest("verifyGbisMapping — 기대 routeId 빈 배열이면 true", async () => {
   const result = await verifyGbisMapping("200000177", [])
@@ -488,7 +488,7 @@ supabaseTest("resolveStopProvider — 경기 좌표 + DB 검색 성공 + 검증 
   )
 })
 
-supabaseTest("resolveStopProvider — 경기 좌표 + DB 검색 0건 → provider='odsay_fallback'", async () => {
+supabaseTest("resolveStopProvider — 경기 좌표 + DB 검색 0건 → provider='odsay_fallback' + fallbackReason='mapping_failed'", async () => {
   const db = makeDbClient()
   await withMockFetch(
     async () => jsonResponse([]), // 모든 DB 조회 빈 결과
@@ -506,12 +506,13 @@ supabaseTest("resolveStopProvider — 경기 좌표 + DB 검색 0건 → provide
         [],
       )
       assertEquals(result.provider, "odsay_fallback")
+      assertEquals(result.fallbackReason, "mapping_failed")
       assertEquals(result.gbisStationId, null)
     },
   )
 })
 
-supabaseTest("resolveStopProvider — unknown 지역(부산) → provider='odsay_fallback'", async () => {
+supabaseTest("resolveStopProvider — unknown 지역(부산) → provider='odsay_fallback' + fallbackReason='unsupported_region'", async () => {
   const db = makeDbClient()
   const result = await resolveStopProvider(
     db,
@@ -526,6 +527,7 @@ supabaseTest("resolveStopProvider — unknown 지역(부산) → provider='odsay
     [],
   )
   assertEquals(result.provider, "odsay_fallback")
+  assertEquals(result.fallbackReason, "unsupported_region")
 })
 
 supabaseTest("resolveStopProvider — 좌표 없으면 서울 가정 provider='seoul'", async () => {
@@ -590,7 +592,113 @@ supabaseTest("resolveStopProvider — 검증 실패 → provider='odsay_fallback
   )
 })
 
-supabaseTest("resolveStopProvider — 검증 실패(실제 routeId 불일치) → provider='odsay_fallback'", async () => {
+// ─── D3-supplement: busType===6 보조 신호 ────────────────────────────────────
+
+supabaseTest("resolveStopProvider — 서울 bbox이지만 busType===6 → GBIS 매핑 시도 후 gyeonggi", async () => {
+  const db = makeDbClient()
+  clearRouteStationCache()
+  // SEOUL_COORDS(127.028, 37.498) 근처에 경기도 정류소가 있는 시나리오
+  // mock 정류소 좌표를 SEOUL_COORDS와 100m 이내로 설정
+  const NEAR_SEOUL = { lng: 127.028, lat: 37.4985 }  // ~55m
+  await withEnv(GBIS_ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        // ARS 검색 빈 결과
+        { match: "eq=ars_no", response: () => jsonResponse([]) },
+        // bbox 검색 → SEOUL_COORDS 근처에 경기 정류소 반환
+        {
+          match: "gbis_stations",
+          response: () =>
+            jsonResponse([
+              { station_id: "200000177", station_name: "경계정류소", lng: NEAR_SEOUL.lng, lat: NEAR_SEOUL.lat, ars_no: null, sigun_nm: "광명시" },
+            ]),
+        },
+        // getBusRouteListv2
+        {
+          match: "getBusRouteListv2",
+          response: () =>
+            jsonResponse({
+              msgHeader: { resultCode: 0 },
+              msgBody: {
+                busRouteList: [
+                  { routeId: "234000016", routeName: "11", regionName: "광명", districtCd: "41210" },
+                ],
+              },
+            }),
+        },
+        // getBusRouteStationListv2
+        {
+          match: "getBusRouteStationListv2",
+          response: () =>
+            jsonResponse({
+              msgHeader: { resultCode: 0 },
+              msgBody: {
+                busRouteStationList: [
+                  { stationId: "200000177", stationName: "광명사거리역", stationSeq: 12 },
+                ],
+              },
+            }),
+        },
+        // 검증 통과
+        {
+          match: "getBusArrivalListv2",
+          response: () =>
+            jsonResponse({
+              msgHeader: { resultCode: 0 },
+              msgBody: {
+                busArrivalList: [
+                  { routeId: 234000016, routeName: "11", flag: "RUN", staOrder: 12, stationId: 200000177, predictTimeSec1: 120, predictTimeSec2: null, locationNo1: 1, locationNo2: null, stateCd1: 0, stateCd2: null, remainSeatCnt1: null, remainSeatCnt2: null, crowded1: null, crowded2: null, lowPlate1: null, lowPlate2: null, routeTypeCd: 13, predictTime1: 2, predictTime2: null, plateNo1: null, plateNo2: null, routeDestId: null, routeDestName: null, vehId1: null, vehId2: null, taglessCd1: null, taglessCd2: null, turnSeq: null },
+                ],
+              },
+            }),
+        },
+      ]),
+      async () => {
+        // SEOUL_COORDS 사용 (서울 bbox 안)이지만 busType===6 노선이 있어 GBIS 시도
+        const result = await resolveStopProvider(
+          db,
+          {
+            stationID: "999003",
+            stationName: "경계정류소",
+            x: SEOUL_COORDS.lng,
+            y: SEOUL_COORDS.lat,
+            arsID: null,
+            stopType: "bus",
+          },
+          [{ odsayRouteId: "r1", routeName: "11", busType: 6 }],
+        )
+        assertEquals(result.provider, "gyeonggi")
+        assertEquals(result.gbisStationId, "200000177")
+      },
+    )
+  )
+})
+
+supabaseTest("resolveStopProvider — 서울 bbox + busType===6이지만 GBIS 매핑 실패 → seoul fallback", async () => {
+  const db = makeDbClient()
+  await withMockFetch(
+    async () => jsonResponse([]),  // 모든 DB 조회 빈 결과 → station not found
+    async () => {
+      const result = await resolveStopProvider(
+        db,
+        {
+          stationID: "999004",
+          stationName: "없는정류소",
+          x: SEOUL_COORDS.lng,
+          y: SEOUL_COORDS.lat,
+          arsID: null,
+          stopType: "bus",
+        },
+        [{ odsayRouteId: "r1", routeName: "없는노선", busType: 6 }],
+      )
+      // 서울 bbox + GBIS 매핑 실패 → region="seoul"이므로 seoul fallback
+      assertEquals(result.provider, "seoul")
+      assertEquals(result.gbisStationId, null)
+    },
+  )
+})
+
+supabaseTest("resolveStopProvider — 검증 실패(실제 routeId 불일치) → provider='odsay_fallback' + fallbackReason='verify_failed'", async () => {
   const db = makeDbClient()
   clearRouteStationCache()
   await withEnv(GBIS_ENV, () =>
@@ -660,6 +768,7 @@ supabaseTest("resolveStopProvider — 검증 실패(실제 routeId 불일치) �
           [{ odsayRouteId: "r1", routeName: "11" }],
         )
         assertEquals(result.provider, "odsay_fallback")
+        assertEquals(result.fallbackReason, "verify_failed")
         assertEquals(result.gbisStationId, null)
       },
     )

@@ -1,4 +1,4 @@
-import { AppError } from "./error.ts"
+import { AppError, type ArrivalErrorCode } from "./error.ts"
 import { realtimeStation, OdsayArrival } from "./odsayClient.ts"
 import { getGbisBusArrivalList, GbisArrivalRaw } from "./gbisClient.ts"
 
@@ -127,10 +127,20 @@ export class SeoulBusProvider implements ArrivalProvider {
       `?ServiceKey=${seoulBusApiKey()}&arsId=${ctx.arsId}&resultType=json`
 
     const res = await fetch(url)
-    if (!res.ok) throw new AppError("서울 버스 API 정류장 조회 실패", 502)
+    if (!res.ok) throw new AppError(
+      "잠시 후 다시 시도해 주세요.",
+      502,
+      "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+      `seoul-bus getStationByUid HTTP ${res.status}`,
+    )
 
     const data: unknown = await res.json()
-    if (!isSeoulBusResponse(data)) throw new AppError("서울 버스 API 응답 형식 오류", 502)
+    if (!isSeoulBusResponse(data)) throw new AppError(
+      "잠시 후 다시 시도해 주세요.",
+      502,
+      "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+      "seoul-bus getStationByUid 응답 형식 오류",
+    )
 
     const items = data.msgBody?.itemList ?? []
     return {
@@ -174,6 +184,34 @@ function normalizeLowPlate(val: number | null | undefined): 0 | 1 | 2 | null {
   return null
 }
 
+/**
+ * GBIS routeTypeCd → ODsay busType 코드 변환.
+ * 두 시스템의 코드 체계가 달라 FE getBusTypeByOdsay()와 호환되려면 변환이 필요하다.
+ *
+ * GBIS routeTypeCd 코드표 (경기도 버스정보시스템):
+ *   1: 일반버스, 2: 좌석버스, 3: 직행좌석, 4: 일반형시외(폐지), 5: 농어촌버스,
+ *   6: 마을버스, 7: 시외버스, 10: 시외직행, 11: 시외고속, 12: 공항버스,
+ *   13: 심야버스, 23: 경기순환버스
+ *
+ * ODsay busType 코드표 (FE getBusTypeByOdsay 기준):
+ *   1: 일반, 2: 좌석, 3: 마을, 4: 직행좌석, 5: 공항, 8: 경기, 11: 간선,
+ *   12: 지선, 13: 순환, 14: 광역, 20: 농어촌
+ */
+function gbisTypeCdToOdsayBusType(routeTypeCd: number | null | undefined): number | null {
+  if (routeTypeCd == null) return null
+  const map: Record<number, number> = {
+    1:  1,   // 일반버스 → 일반
+    2:  2,   // 좌석버스 → 좌석
+    3:  4,   // 직행좌석 → 직행좌석
+    5:  20,  // 농어촌버스 → 농어촌
+    6:  3,   // 마을버스 → 마을
+    12: 5,   // 공항버스 → 공항
+    13: 15,  // 심야버스 → 급행(근사값)
+    23: 13,  // 경기순환버스 → 순환
+  }
+  return map[routeTypeCd] ?? 8  // 그 외 경기 노선은 busType=8(경기)로 fallback
+}
+
 function toGyeonggiUnifiedItem(raw: GbisArrivalRaw): BusArrivalItem {
   return {
     busRouteId: String(raw.routeId),
@@ -184,7 +222,7 @@ function toGyeonggiUnifiedItem(raw: GbisArrivalRaw): BusArrivalItem {
       : null,
     traTime1: raw.predictTimeSec1 ?? null,
     traTime2: raw.predictTimeSec2 ?? null,
-    busType: raw.routeTypeCd ?? null,
+    busType: gbisTypeCdToOdsayBusType(raw.routeTypeCd),
     remainSeatCnt1: raw.remainSeatCnt1 === -1 ? null : (raw.remainSeatCnt1 ?? null),
     remainSeatCnt2: raw.remainSeatCnt2 === -1 ? null : (raw.remainSeatCnt2 ?? null),
     crowded1: normalizeCrowded(raw.crowded1),
@@ -204,7 +242,21 @@ export class GyeonggiBusProvider implements ArrivalProvider {
   async fetchArrivals(ctx: ArrivalQueryContext): Promise<BusArrivalResponse> {
     if (!ctx.gbisStationId) throw new AppError("GyeonggiBusProvider: gbisStationId 필요", 400)
 
-    const rawList = await getGbisBusArrivalList(ctx.gbisStationId)
+    let rawList: GbisArrivalRaw[]
+    try {
+      rawList = await getGbisBusArrivalList(ctx.gbisStationId)
+    } catch (e) {
+      // 이미 ARRIVAL_PROVIDER_ERROR 코드가 있는 AppError는 그대로 re-throw
+      if (e instanceof AppError && e.code) throw e
+      const detail = e instanceof Error ? e.message : String(e)
+      throw new AppError(
+        "잠시 후 다시 시도해 주세요.",
+        502,
+        "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+        `gyeonggi-bus getBusArrivalListv2: ${detail}`,
+      )
+    }
+
     const allItems = rawList.map(toGyeonggiUnifiedItem)
 
     // gbisRouteId 있으면 해당 노선만 필터 (SDD §6.2)
@@ -244,7 +296,21 @@ export class OdsayBusProvider implements ArrivalProvider {
   async fetchArrivals(ctx: ArrivalQueryContext): Promise<BusArrivalResponse> {
     if (!ctx.odsayStopId) throw new AppError("OdsayBusProvider: odsayStopId 필요", 400)
 
-    const arrivals = await realtimeStation(ctx.odsayStopId)
+    let arrivals: OdsayArrival[]
+    try {
+      arrivals = await realtimeStation(ctx.odsayStopId)
+    } catch (e) {
+      // 이미 ARRIVAL_PROVIDER_ERROR 코드가 있는 AppError는 그대로 re-throw
+      if (e instanceof AppError && e.code) throw e
+      const detail = e instanceof Error ? e.message : String(e)
+      throw new AppError(
+        "잠시 후 다시 시도해 주세요.",
+        502,
+        "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+        `odsay realtimeStation: ${detail}`,
+      )
+    }
+
     return {
       items: arrivals.map(toOdsayUnifiedItem),
       provider: "odsay_fallback",

@@ -347,8 +347,14 @@ export default function SetupRoute() {
     return Array.from(groups.entries()).sort(([a], [b]) => a - b)
   }, [nodes])
 
+  /** bus 노드 중 선택된 노선이 없는 노드가 있는지 검사 */
+  const hasBusNodeWithoutRoute = nodes.some(
+    n => n.type === 'bus' && (!n.busNumbers || n.busNumbers.length === 0)
+  );
+
   const handleSave = async () => {
     if (!routeName.trim() || nodes.length === 0) return;
+    if (hasBusNodeWithoutRoute) return;
     setIsSaving(true);
     try {
       const jwt = await getJwt();
@@ -734,15 +740,23 @@ export default function SetupRoute() {
 
       </div>
 
-      {/* Sticky 저장 버튼 — BottomNav(56px) 위에 고정 */}
+      {/* Sticky 저장 버튼 — BottomNav(64px) 위에 고정 */}
       {nodes.length > 0 && (
-        <div className="fixed bottom-14 left-0 right-0 z-20 px-4 pb-3 pt-2 bg-gradient-to-t from-[#F6F7F9] via-[#F6F7F9]/90 to-transparent">
-          <div className="max-w-2xl mx-auto">
+        <div className="fixed bottom-16 left-0 right-0 z-20 px-4 pb-3 pt-2 bg-gradient-to-t from-[#F6F7F9] via-[#F6F7F9]/90 to-transparent">
+          <div className="max-w-2xl mx-auto space-y-1.5">
+            {hasBusNodeWithoutRoute && (
+              <p className="text-center text-[13px] text-[#DC2626] font-medium">
+                모든 정류장에 노선을 선택해주세요
+              </p>
+            )}
             <Button
               onClick={handleSave}
-              className="w-full bg-[#111827] hover:bg-[#1F2937] rounded-xl h-12 text-[15px] font-medium shadow-lg"
+              className="w-full rounded-xl h-12 text-[15px] font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: hasBusNodeWithoutRoute || !routeName.trim() ? '#9CA3AF' : '#111827',
+              }}
               size="lg"
-              disabled={!routeName.trim() || isSaving}
+              disabled={!routeName.trim() || isSaving || hasBusNodeWithoutRoute}
             >
               {isSaving ? (
                 <Loader2 className="w-[18px] h-[18px] mr-2 animate-spin" />

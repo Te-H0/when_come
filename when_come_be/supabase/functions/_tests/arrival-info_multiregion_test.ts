@@ -536,6 +536,164 @@ supabaseTest(
   },
 )
 
+// ─── provider_fallback_reason 기반 422 분기 ──────────────────────────────────
+
+supabaseTest(
+  "arrival-info multiregion — odsay_fallback + reason=unsupported_region → 422 ARRIVAL_UNSUPPORTED_REGION",
+  async () => {
+    await withEnv(ENV, () =>
+      withMockFetch(
+        multiMockFetch([
+          { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+          {
+            match: "/rest/v1/route_stops",
+            response: () =>
+              jsonResponse({
+                id: STOP_ID,
+                route_id: "route-1",
+                stop_type: "bus",
+                ars_id: null,
+                gbis_station_id: null,
+                provider: "odsay_fallback",
+                provider_fallback_reason: "unsupported_region",
+                odsay_stop_id: "999999",
+                stop_name: "강릉터미널",
+                routes: { user_id: USER_ID },
+                stop_routes: [],
+              }),
+          },
+        ]),
+        async () => {
+          const res = await handler(makeArrivalRequest(`stopId=${STOP_ID}`))
+          assertEquals(res.status, 422)
+          const body = await res.json()
+          assertEquals(body.error.code, "ARRIVAL_UNSUPPORTED_REGION")
+        },
+      )
+    )
+  },
+)
+
+supabaseTest(
+  "arrival-info multiregion — odsay_fallback + reason=mapping_failed → 422 ARRIVAL_MAPPING_FAILED",
+  async () => {
+    await withEnv(ENV, () =>
+      withMockFetch(
+        multiMockFetch([
+          { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+          {
+            match: "/rest/v1/route_stops",
+            response: () =>
+              jsonResponse({
+                id: STOP_ID,
+                route_id: "route-1",
+                stop_type: "bus",
+                ars_id: null,
+                gbis_station_id: null,
+                provider: "odsay_fallback",
+                provider_fallback_reason: "mapping_failed",
+                odsay_stop_id: "999001",
+                stop_name: "알수없는경기정류소",
+                routes: { user_id: USER_ID },
+                stop_routes: [],
+              }),
+          },
+        ]),
+        async () => {
+          const res = await handler(makeArrivalRequest(`stopId=${STOP_ID}`))
+          assertEquals(res.status, 422)
+          const body = await res.json()
+          assertEquals(body.error.code, "ARRIVAL_MAPPING_FAILED")
+        },
+      )
+    )
+  },
+)
+
+supabaseTest(
+  "arrival-info multiregion — odsay_fallback + reason=verify_failed → 422 ARRIVAL_VERIFY_FAILED",
+  async () => {
+    await withEnv(ENV, () =>
+      withMockFetch(
+        multiMockFetch([
+          { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+          {
+            match: "/rest/v1/route_stops",
+            response: () =>
+              jsonResponse({
+                id: STOP_ID,
+                route_id: "route-1",
+                stop_type: "bus",
+                ars_id: null,
+                gbis_station_id: null,
+                provider: "odsay_fallback",
+                provider_fallback_reason: "verify_failed",
+                odsay_stop_id: "999001",
+                stop_name: "수원시청",
+                routes: { user_id: USER_ID },
+                stop_routes: [],
+              }),
+          },
+        ]),
+        async () => {
+          const res = await handler(makeArrivalRequest(`stopId=${STOP_ID}`))
+          assertEquals(res.status, 422)
+          const body = await res.json()
+          assertEquals(body.error.code, "ARRIVAL_VERIFY_FAILED")
+        },
+      )
+    )
+  },
+)
+
+supabaseTest(
+  "arrival-info multiregion — odsay_fallback + reason=null (구 데이터) → ODsay fallback 200 응답",
+  async () => {
+    await withEnv(ENV, () =>
+      withMockFetch(
+        multiMockFetch([
+          { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+          {
+            match: "/rest/v1/route_stops",
+            response: () =>
+              jsonResponse({
+                id: STOP_ID,
+                route_id: "route-1",
+                stop_type: "bus",
+                ars_id: null,
+                gbis_station_id: null,
+                provider: "odsay_fallback",
+                provider_fallback_reason: null,
+                odsay_stop_id: "106186",
+                stop_name: "강남역",
+                routes: { user_id: USER_ID },
+                stop_routes: [],
+              }),
+          },
+          {
+            match: "api.odsay.com",
+            response: () =>
+              jsonResponse({
+                result: {
+                  real: [
+                    { routeID: "100100643", routeName: "643", arrivalTime1: 5, arrivalTime2: 15, type: 2 },
+                  ],
+                },
+              }),
+          },
+        ]),
+        async () => {
+          const res = await handler(makeArrivalRequest(`stopId=${STOP_ID}`))
+          assertEquals(res.status, 200)
+          const body = await res.json()
+          assertEquals(body.provider, "odsay_fallback")
+          assertEquals(body.items.length, 1)
+        },
+      )
+    )
+  },
+)
+
 // ─── OPTIONS preflight ───────────────────────────────────────────────────────
 
 Deno.test({
