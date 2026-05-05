@@ -10,6 +10,16 @@ npm run build     # 프로덕션 빌드 → dist/
 
 > 테스트/린트 미설정. 추가 시 이 섹션 업데이트.
 
+## 배포 방법 (vercel CLI 수동 실행 금지)
+
+**운영 배포 = `prod` 브랜치에 push → Vercel 자동 트리거**
+
+```bash
+git checkout prod && git merge main && git push origin prod
+```
+
+`vercel`, `vercel --prod` 명령어 직접 실행 금지. prod 브랜치 push가 유일한 배포 경로.
+
 ## 개발 원칙
 
 - 사용자 요청을 맹목적으로 따르지 않는다. 기술적으로 더 나은 방향이 있으면 근거를 들어 먼저 제안한다.

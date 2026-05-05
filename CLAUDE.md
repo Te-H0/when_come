@@ -70,6 +70,26 @@ be-agent ─┘
 
 ---
 
+## 배포 방법 (절대 vercel CLI 수동 실행 금지)
+
+| 대상 | 방법 | 트리거 |
+|------|------|--------|
+| **FE 운영** | `prod` 브랜치에 push | Vercel이 자동으로 프로덕션 배포 |
+| **BE 운영** | `prod` 브랜치에 push | GitHub Actions CI/CD 자동 배포 |
+| **FE/BE 개발** | `main` 브랜치에 push | 변경 없음 (prod merge 시 반영) |
+
+**운영 배포 절차:**
+```bash
+git checkout prod
+git merge main
+git push origin prod
+# → Vercel(FE) + GitHub Actions(BE) 자동 트리거됨
+```
+
+> `vercel --prod` 수동 실행 절대 금지. prod 브랜치 push가 유일한 배포 방법.
+
+---
+
 ## FE 상세
 
 @when_come_fe/CLAUDE.md
