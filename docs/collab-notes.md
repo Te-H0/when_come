@@ -128,6 +128,63 @@ arsId로 해당 정류장에 오는 버스 노선 목록 조회.
 
 ## 변경 이력
 
+### 2026-05-05 | 에러 응답 구조화 + ADR-002 D3-supplement (설계 합의, 구현 대기)
+
+`{ error: string }` 단일 문자열 응답으로는 FE가 에러 종류를 구분할 수 없어 사용자 안내 분기 불가. 특히 `odsay_fallback` provider가 (1) 진짜 미지원 지역, (2) GBIS 매핑 실패, (3) 매핑 검증 실패를 동일하게 표현해 "왜 안 되는지/뭘 해야 하는지" 안내 불가능. 본 변경으로 에러 응답을 구조화하고 `arrival-info` 도메인 코드 5종을 정의. 상세: `docs/api/contracts/error-codes.md`, `docs/decisions/ADR-002-multi-region-arrival-provider.md` (D3-supplement).
+
+**1. 응답 스키마 변경 (BE) [BREAKING — 호환 사이클 별도 합의]:**
+
+```
+{ "error": "메시지" }                                    ← 기존
+{ "error": { "code": "...", "message": "...", "detail"? } }  ← 신
+```
+
+- `error.code` — 머신 판독용 안정 contract (예: `ARRIVAL_MAPPING_FAILED`)
+- `error.message` — 한국어 사용자 노출용 (BE가 책임 — FE 별도 i18n 매핑 불필요)
+- `error.detail` — 디버그 옵셔널 (외부 API status, 매핑 실패 사유 등)
+
+> 호환 전략: 한 사이클 동안 string + object 동시 직렬화 권장 (`{ error: "...", errorCode: "...", errorDetail: "..." }`). 다음 사이클에 object 단일화. 결정은 별도 합의에서 확정.
+
+**2. 신설 에러 코드 (arrival-info 도메인):**
+
+| 코드 | HTTP | 의미 | 재시도 | 사용자 액션 |
+|------|------|-----|------|-----------|
+| `ARRIVAL_UNSUPPORTED_REGION` | 422 | 서울·경기 외 지역 (강원/충청 등) | 불가 | 없음 (지원 확장 대기) |
+| `ARRIVAL_MAPPING_FAILED` | 422 | 경기 정류장 GBIS station 매핑 실패 | 불가 | 경로 재등록 |
+| `ARRIVAL_VERIFY_FAILED` | 422 | GBIS 매핑 운행 노선 교집합 50% 미달 | 불가 | 경로 재등록 |
+| `ARRIVAL_PROVIDER_ERROR` | 502 | 외부 API 호출 실패 (서울/GBIS/ODsay) | 가능 (지수 백오프) | 재시도 |
+| `ARRIVAL_STOP_NOT_FOUND` | 404 | stopId DB 없음 / RLS 위반 | 불가 | 새로고침 |
+
+**3. `odsay_fallback`의 의미 분리 (중요):**
+
+이전까지 `provider === 'odsay_fallback'`은 위 3개 422 에러 케이스를 모두 묶어 표현. 본 변경 후 FE는 다음과 같이 분기한다.
+
+- **정상 응답 + `provider: 'odsay_fallback'` (200)** — 매핑은 실패했지만 ODsay realtimeStation으로 부분 응답 가능. 기존 inline 안내 유지: "도착 정보가 부정확할 수 있어요 (제휴 데이터 사용)"
+- **422 `ARRIVAL_UNSUPPORTED_REGION`** — 도착 카드 자리에 "이 지역은 실시간 도착 정보를 지원하지 않아요". 새로고침 비활성화
+- **422 `ARRIVAL_MAPPING_FAILED` / `ARRIVAL_VERIFY_FAILED`** — "도착 정보를 가져올 수 없어요. 경로를 다시 등록하면 더 정확해져요" + "재등록" 액션 권장
+
+> 한 줄 요약: **`odsay_fallback`은 더 이상 단일 상태가 아님.** 200으로 부분 응답이 가능한 케이스에만 provider 라벨로 사용하고, 응답 자체를 만들 수 없는 실패는 422 에러 코드로 명시 분리.
+
+**4. ADR-002 D3-supplement — busType 보조 신호 (BE):**
+
+좌표 bounding box 1차 판단 유지 + ODsay route의 `busType === 6` (경기버스) 노선이 정류장에 하나라도 있으면 GBIS 매핑 시도. 좌표가 서울 bbox 안인 경계 지역 오분류 보완. ADR-002 Alternatives C ("노선 패턴 기반 판단")는 "정류장 검색 시점에 노선 정보 없음"으로 기각됐으나, 경로 **저장** 시점엔 route-search 응답으로 busType이 확보됨 — 기각 사유 해소.
+
+**FE 영향:**
+- `lib/api.ts` fetch 헬퍼에 응답 normalize 추가 — `body.error.code` 추출 → `ApiError(code, message)` throw
+- `arrival-info` 호출 컴포넌트(`Home.tsx` 도착 카드)에서 코드별 분기 UI 추가
+- 알려지지 않은 코드는 `error.message`를 그대로 일반 토스트 노출 (forward-compat)
+
+**BE 영향:**
+- `_shared/error.ts`에 `errorResponse(code, message, status, detail?)` 헬퍼 추가
+- `arrival-info`의 매핑/검증/외부 API 호출 분기마다 적절한 코드 반환
+- `routes` POST 매핑 단계에 D3-supplement 로직 추가 (busType 6 → GBIS 매핑 시도)
+
+**API 계약 영향:** 모든 엔드포인트의 에러 응답 구조 변경 (BREAKING). 정상 응답 스키마는 영향 없음.
+
+**구현 진행:** 계약서·ADR 작성 완료 (2026-05-05). 호환 사이클 정책 합의 + 사용자 승인 후 BE/FE 동시 구현 예정.
+
+---
+
 ### 2026-05-02 | multi-region-bus-arrival v2 — 캐싱 패턴 도입 (설계 갱신)
 
 GBIS API 명세 확정 후 발견 — (1) 정류소 검색 API 부재, (2) 정류소→노선 detail API 부재. 매번 매핑 시 외부 API 페이징 다운로드는 비현실적 → **경기도 정류소 자체 캐시(`gbis_stations`) + 일 1회 cron** 패턴으로 전환. 상세: `docs/specs/multi-region-bus-arrival/SDD.md`(v2), `docs/decisions/ADR-003-gbis-station-caching.md`, `docs/api/contracts/sync-gbis-stations.md`, `when_come_be/docs/external-apis/gyeonggi-bus.md`(v2).

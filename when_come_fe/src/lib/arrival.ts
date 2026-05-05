@@ -189,15 +189,20 @@ export async function fetchArrival(stop: TransitStop): Promise<ArrivalData> {
     const data = await getArrivalByStopId(stop.id)
     return { type: 'bus_by_stopid', data }
   } catch (err) {
-    // 401(인증 만료), 5xx(서버 오류), 네트워크 오류는 legacy로 누수시키지 않고 그대로 throw
-    // 404/400/405 등 "신 경로 미지원" 신호만 legacy fallback 허용
-    if (err instanceof ApiError && err.status !== 404 && err.status !== 400 && err.status !== 405) {
-      throw err
-    }
     if (!(err instanceof ApiError)) {
       // 네트워크 오류(TypeError 등)도 throw
       throw err
     }
+    // 구조화 에러(비즈니스 에러 코드)는 재시도/fallback 없이 그대로 throw
+    const isBusinessError =
+      err.code === 'ARRIVAL_UNSUPPORTED_REGION' ||
+      err.code === 'ARRIVAL_MAPPING_FAILED' ||
+      err.code === 'ARRIVAL_VERIFY_FAILED' ||
+      err.code === 'ARRIVAL_PROVIDER_ERROR' ||
+      err.code === 'ARRIVAL_STOP_NOT_FOUND'
+    if (isBusinessError) throw err
+    // 401(인증 만료), 5xx(서버 오류)는 그대로 throw
+    if (err.status !== 404 && err.status !== 400 && err.status !== 405) throw err
     // 404 / 400 / 405 → BE 미지원 신호 → legacy fallback (한 사이클 호환)
   }
 

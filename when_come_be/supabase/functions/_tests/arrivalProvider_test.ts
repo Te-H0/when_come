@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert"
+import { AppError } from "../_shared/error.ts"
 import {
   SeoulBusProvider,
   GyeonggiBusProvider,
@@ -480,4 +481,32 @@ Deno.test("pickProvider — 'gyeonggi' → GyeonggiBusProvider 반환", () => {
 Deno.test("pickProvider — 'odsay_fallback' → OdsayBusProvider 반환", () => {
   const p = pickProvider("odsay_fallback")
   assertEquals(p.name, "odsay_fallback")
+})
+
+// ─── GyeonggiBusProvider: HTTP 오류 시 ARRIVAL_PROVIDER_ERROR ────────────────
+
+Deno.test("GyeonggiBusProvider — fetchArrivals: API HTTP 오류 시 ARRIVAL_PROVIDER_ERROR 코드로 throw", async () => {
+  const p = new GyeonggiBusProvider()
+  await withEnv(GBIS_ENV, () =>
+    withMockFetch(async () => new Response("", { status: 503 }), async () => {
+      const err = await p.fetchArrivals(gyeonggiCtx()).catch(e => e)
+      assertEquals(err instanceof AppError, true)
+      assertEquals((err as AppError).status, 502)
+      assertEquals((err as AppError).code, "ARRIVAL_PROVIDER_ERROR")
+    })
+  )
+})
+
+// ─── OdsayBusProvider: HTTP 오류 시 ARRIVAL_PROVIDER_ERROR ───────────────────
+
+Deno.test("OdsayBusProvider — fetchArrivals: API HTTP 오류 시 ARRIVAL_PROVIDER_ERROR 코드로 throw", async () => {
+  const p = new OdsayBusProvider()
+  await withEnv(ODSAY_ENV, () =>
+    withMockFetch(async () => new Response("", { status: 503 }), async () => {
+      const err = await p.fetchArrivals(odsayCtx()).catch(e => e)
+      assertEquals(err instanceof AppError, true)
+      assertEquals((err as AppError).status, 502)
+      assertEquals((err as AppError).code, "ARRIVAL_PROVIDER_ERROR")
+    })
+  )
 })

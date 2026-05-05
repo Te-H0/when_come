@@ -35,7 +35,7 @@ function mockDbInsertRoute() {
 }
 
 function mockDbInsertStops() {
-  return jsonResponse([{ id: STOP_ID, sequence: 1 }], 201)
+  return jsonResponse([{ id: STOP_ID, sequence: 1, step_group: 1 }], 201)
 }
 
 function mockDbInsertStopRoutes() {
@@ -63,6 +63,7 @@ supabaseTest("routes mapping — 서울 좌표 버스 stop → provider='seoul',
             stopName: "강남역버스정류장",
             stopType: "bus",
             sequence: 1,
+            stepGroup: 1,
             arsId: "22014",
             lat: 37.498,
             lng: 127.028,
@@ -145,6 +146,7 @@ supabaseTest("routes mapping — 경기 좌표 버스 stop + GBIS DB 정상 → 
             stopName: "수원시청",
             stopType: "bus",
             sequence: 1,
+            stepGroup: 1,
             lat: 37.265,
             lng: 127.016,
             stopRoutes: [{ odsayRouteId: "r1", routeName: "11" }],
@@ -179,6 +181,7 @@ supabaseTest("routes mapping — 경기 좌표 + GBIS DB 검색 0건 → provide
             stopName: "없는정류소",
             stopType: "bus",
             sequence: 1,
+            stepGroup: 1,
             lat: 37.265,
             lng: 127.016,
             stopRoutes: [{ odsayRouteId: "r1", routeName: "11" }],
@@ -254,6 +257,7 @@ supabaseTest("routes mapping — GBIS 검증 실패 → provider='odsay_fallback
             stopName: "수원시청",
             stopType: "bus",
             sequence: 1,
+            stepGroup: 1,
             lat: 37.265,
             lng: 127.016,
             stopRoutes: [{ odsayRouteId: "r1", routeName: "11" }],
@@ -286,6 +290,7 @@ supabaseTest("routes mapping — lat/lng 없으면 provider='seoul' 가정 (lega
             stopName: "강남역",
             stopType: "bus",
             sequence: 1,
+            stepGroup: 1,
             arsId: "22014",
             stopRoutes: [{ odsayRouteId: "r1", routeName: "472" }],
           }],
@@ -324,6 +329,7 @@ supabaseTest("routes mapping — route_stops insert payload에 provider='seoul' 
             stopName: "강남역버스정류장",
             stopType: "bus",
             sequence: 1,
+            stepGroup: 1,
             arsId: "22014",
             lat: 37.498,
             lng: 127.028,
@@ -399,6 +405,7 @@ supabaseTest("routes mapping — route_stops insert payload에 provider='gyeongg
             stopName: "수원시청",
             stopType: "bus",
             sequence: 1,
+            stepGroup: 1,
             lat: 37.265,
             lng: 127.016,
             stopRoutes: [{ odsayRouteId: "r1", routeName: "11" }],
@@ -487,6 +494,66 @@ supabaseTest("routes mapping GET — provider/gbis_station_id/gbis_route_id 신�
 // stop_routes insert payload에 provider가 들어가는지는 DB 목이 받는 body를 캡처해서 검증.
 // multiMockFetch에서 init.body를 읽으면 된다.
 
+// ─── busType===6 → stop_routes.provider='gyeonggi' 강제 (D3-supplement) ──────
+
+supabaseTest(
+  "routes POST — busType===6 노선은 odsay_route_id prefix와 무관하게 provider='gyeonggi'",
+  async () => {
+    let capturedStopRoutesBody: unknown = null
+
+    await withEnv(ENV, () =>
+      withMockFetch(
+        async (url: string, init?: RequestInit) => {
+          if (url.includes("/auth/v1/user")) return mockSupabaseAuthSuccess(USER_ID)
+          if (url.includes("/rest/v1/routes") && !url.includes("route_stops")) {
+            return jsonResponse({ id: ROUTE_ID }, 201)
+          }
+          if (url.includes("route_stops")) {
+            return jsonResponse([{ id: STOP_ID, sequence: 1, step_group: 1 }], 201)
+          }
+          if (url.includes("stop_routes")) {
+            capturedStopRoutesBody = JSON.parse((init?.body as string) ?? "[]")
+            return jsonResponse([], 201)
+          }
+          return jsonResponse([], 200)
+        },
+        async () => {
+          const res = await handler(makePostRequest({
+            name: "출근길",
+            originName: "집",
+            destinationName: "회사",
+            stops: [{
+              odsayStopId: "106186",
+              stopName: "광명사거리역",
+              stopType: "bus",
+              sequence: 1,
+              stepGroup: 1,
+              stopRoutes: [
+                // busType===6 → gyeonggi 강제 (route ID prefix "3xxx" 무관)
+                { odsayRouteId: "300000001", routeName: "경기버스", busType: 6 },
+                // busType===6 이면서 route ID "2xxx" → gyeonggi (중복 강제, 충돌 없음)
+                { odsayRouteId: "200000001", routeName: "경기직행", busType: 6 },
+                // busType 없음 + route ID "1xxx" → seoul
+                { odsayRouteId: "100100643", routeName: "643" },
+              ],
+            }],
+          }))
+          assertEquals(res.status, 201)
+
+          const rows = capturedStopRoutesBody as Array<{ odsay_route_id: string; provider: string }>
+          assertEquals(rows.length, 3)
+          const busType6Row1 = rows.find((r) => r.odsay_route_id === "300000001")
+          assertEquals(busType6Row1?.provider, "gyeonggi")
+          const busType6Row2 = rows.find((r) => r.odsay_route_id === "200000001")
+          assertEquals(busType6Row2?.provider, "gyeonggi")
+          const seoulRow = rows.find((r) => r.odsay_route_id === "100100643")
+          assertEquals(seoulRow?.provider, "seoul")
+        },
+      )
+    )
+  },
+)
+
 supabaseTest(
   "routes POST — stop_routes insert에 odsay_route_id 기반 provider가 세팅된다",
   async () => {
@@ -500,7 +567,7 @@ supabaseTest(
             return jsonResponse({ id: ROUTE_ID }, 201)
           }
           if (url.includes("route_stops")) {
-            return jsonResponse([{ id: STOP_ID, sequence: 1 }], 201)
+            return jsonResponse([{ id: STOP_ID, sequence: 1, step_group: 1 }], 201)
           }
           if (url.includes("stop_routes")) {
             // insert body 캡처
@@ -520,6 +587,7 @@ supabaseTest(
               stopName: "강남역",
               stopType: "bus",
               sequence: 1,
+              stepGroup: 1,
               // lat/lng 없음 → 서울 fallback
               stopRoutes: [
                 { odsayRouteId: "100100643", routeName: "643" },  // 1로 시작 → seoul

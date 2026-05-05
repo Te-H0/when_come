@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { corsHeaders } from "../_shared/cors.ts"
-import { AppError, errorResponse } from "../_shared/error.ts"
+import { AppError, errorResponse, type ArrivalErrorCode } from "../_shared/error.ts"
 import { authGuard } from "../_shared/auth.ts"
 import { realtimeStation } from "../_shared/odsayClient.ts"
 import {
@@ -73,10 +73,20 @@ async function getBusArrival(
     `?ServiceKey=${busApiKey()}&stId=${stId}&busRouteId=${busRouteId}&ord=${ord}&resultType=json`
 
   const res = await fetch(url)
-  if (!res.ok) throw new AppError("서울 버스 API 도착정보 조회 실패", 502)
+  if (!res.ok) throw new AppError(
+    "잠시 후 다시 시도해 주세요.",
+    502,
+    "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+    `seoul-bus getArrInfoByRoute HTTP ${res.status}`,
+  )
 
   const raw: unknown = await res.json()
-  if (!isSeoulBusApiResponse(raw)) throw new AppError("서울 버스 API 응답 형식 오류", 502)
+  if (!isSeoulBusApiResponse(raw)) throw new AppError(
+    "잠시 후 다시 시도해 주세요.",
+    502,
+    "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+    "seoul-bus getArrInfoByRoute 응답 형식 오류",
+  )
   const item = raw?.msgBody?.itemList?.[0]
   if (!item) return null
 
@@ -111,11 +121,21 @@ async function findBusArrivalByArsId(
     `?ServiceKey=${busApiKey()}&arsId=${arsId}&resultType=json`
 
   const res = await fetch(url)
-  if (!res.ok) throw new AppError("서울 버스 API 정류장 조회 실패", 502)
+  if (!res.ok) throw new AppError(
+    "잠시 후 다시 시도해 주세요.",
+    502,
+    "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+    `seoul-bus getStationByUid HTTP ${res.status}`,
+  )
 
   const raw: unknown = await res.json()
-  if (!isSeoulBusResponse(raw)) throw new AppError("서울 버스 API 응답 형식 오류", 502)
-  const itemList: SeoulBusStationByUidItem[] = (raw?.msgBody?.itemList ?? []) as SeoulBusStationByUidItem[]
+  if (!isSeoulBusResponse(raw)) throw new AppError(
+    "잠시 후 다시 시도해 주세요.",
+    502,
+    "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+    "seoul-bus getStationByUid 응답 형식 오류",
+  )
+  const itemList = raw.msgBody?.itemList ?? []
   const match = itemList.find((item) => item.busRouteId === busRouteId)
   if (!match) return null
 
@@ -155,7 +175,12 @@ async function getSubwayArrival(stationName: string): Promise<SubwayArrivalItem[
     `http://swopenapi.seoul.go.kr/api/subway/${subwayApiKey()}/json/realtimeStationArrival/0/10/${encoded}`
 
   const res = await fetch(url)
-  if (!res.ok) throw new AppError("서울 지하철 API 연결 실패", 502)
+  if (!res.ok) throw new AppError(
+    "잠시 후 다시 시도해 주세요.",
+    502,
+    "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+    `seoul-subway realtimeStationArrival HTTP ${res.status}`,
+  )
 
   const data: SeoulSubwayApiResponse = await res.json()
   const list = data?.realtimeArrivalList ?? []
@@ -194,15 +219,23 @@ function supabaseClient(authHeader: string) {
 /**
  * stop_routes.provider 값을 정규화.
  * migration 백필 전 null인 경우 odsay_route_id로 재추론.
+ *
+ * stopProvider: route_stops.provider — odsay_route_id가 3xxx~ 등 비표준 prefix를 가진
+ * 경기 경계 지역 노선(광명사거리 12번, 27번 등)을 올바르게 gyeonggi로 승격하기 위해 사용.
  */
-function resolveStopRouteProvider(sr: StopRouteRow): "seoul" | "gyeonggi" | "odsay_fallback" {
+function resolveStopRouteProvider(
+  sr: StopRouteRow,
+  stopProvider: "seoul" | "gyeonggi" | "odsay_fallback" | null,
+): "seoul" | "gyeonggi" | "odsay_fallback" {
   if (sr.provider === "seoul" || sr.provider === "gyeonggi" || sr.provider === "odsay_fallback") {
     return sr.provider
   }
-  // null (백필 전 기존 rows) — odsay_route_id 첫 자리로 추론
+  // null (백필 전 기존 rows) — odsay_route_id 첫 자리로 재추론
   if (sr.odsay_route_id) {
     if (sr.odsay_route_id.startsWith("1")) return "seoul"
     if (sr.odsay_route_id.startsWith("2")) return "gyeonggi"
+    // 3xxx~ 등 비표준: stop 자체가 gyeonggi면 경기로 승격
+    if (stopProvider === "gyeonggi") return "gyeonggi"
   }
   return "odsay_fallback"
 }
@@ -234,6 +267,7 @@ interface RouteStopRow {
   ars_id: string | null
   gbis_station_id: string | null
   provider: "seoul" | "gyeonggi" | "odsay_fallback" | null
+  provider_fallback_reason: "unsupported_region" | "mapping_failed" | "verify_failed" | null
   odsay_stop_id: string | null
   stop_name: string | null
   direction_headsign?: string | null
@@ -251,6 +285,8 @@ function isRouteStopRow(val: unknown): val is RouteStopRow {
 
   // stop_type 열거형 검증
   if (row["stop_type"] !== "bus" && row["stop_type"] !== "subway") return false
+
+  // provider_fallback_reason nullable 허용 (마이그레이션 전 기존 rows 호환)
 
   // stop_routes 배열 검증 (존재하면 배열이어야 함)
   if (row["stop_routes"] !== undefined && row["stop_routes"] !== null) {
@@ -290,7 +326,7 @@ async function fetchArrivalByStopId(
   const { data: stop, error } = await db
     .from("route_stops")
     .select(
-      `id, route_id, stop_type, ars_id, gbis_station_id, provider,
+      `id, route_id, stop_type, ars_id, gbis_station_id, provider, provider_fallback_reason,
        odsay_stop_id, stop_name,
        routes!inner(user_id),
        stop_routes(gbis_route_id, gbis_sta_order, provider, odsay_route_id)`,
@@ -300,7 +336,12 @@ async function fetchArrivalByStopId(
     .single()
 
   if (error || !stop) {
-    throw new AppError("정류장을 찾을 수 없습니다", 404)
+    throw new AppError(
+      "경로를 찾을 수 없어요.",
+      404,
+      "ARRIVAL_STOP_NOT_FOUND" satisfies ArrivalErrorCode,
+      `route_stops.id=${stopId} not found or not owned by user`,
+    )
   }
 
   if (!isRouteStopRow(stop)) {
@@ -317,6 +358,33 @@ async function fetchArrivalByStopId(
     if (providerName !== "seoul" && providerName !== "gyeonggi" && providerName !== "odsay_fallback") {
       throw new AppError(`알 수 없는 provider: ${providerName}`, 502)
     }
+
+    // odsay_fallback이고 reason이 명시된 경우 → 즉시 422 반환 (ODsay 시도 없음)
+    if (providerName === "odsay_fallback" && stopRow.provider_fallback_reason != null) {
+      const reason = stopRow.provider_fallback_reason
+      if (reason === "unsupported_region") {
+        throw new AppError(
+          "이 지역은 실시간 도착 정보를 지원하지 않아요.",
+          422,
+          "ARRIVAL_UNSUPPORTED_REGION" satisfies ArrivalErrorCode,
+        )
+      }
+      if (reason === "mapping_failed") {
+        throw new AppError(
+          "도착 정보를 가져올 수 없어요. 경로를 다시 등록하면 더 정확해져요.",
+          422,
+          "ARRIVAL_MAPPING_FAILED" satisfies ArrivalErrorCode,
+        )
+      }
+      if (reason === "verify_failed") {
+        throw new AppError(
+          "도착 정보 정확도가 낮아요. 경로를 다시 등록해 주세요.",
+          422,
+          "ARRIVAL_VERIFY_FAILED" satisfies ArrivalErrorCode,
+        )
+      }
+    }
+
     const provider = pickProvider(providerName)
     const ctx: ArrivalQueryContext = { ...baseCtx, gbisRouteId: null, gbisStaOrder: null }
     if (!provider.canHandle(ctx)) {
@@ -325,10 +393,10 @@ async function fetchArrivalByStopId(
     return await provider.fetchArrivals(ctx)
   }
 
-  // stop_routes별 provider 분류
-  const seoulRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr) === "seoul")
-  const gyeonggiRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr) === "gyeonggi")
-  const odsayRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr) === "odsay_fallback")
+  // stop_routes별 provider 분류 (stop 자체 provider를 hint로 전달)
+  const seoulRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr, stopRow.provider) === "seoul")
+  const gyeonggiRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr, stopRow.provider) === "gyeonggi")
+  const odsayRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr, stopRow.provider) === "odsay_fallback")
 
   const usedProviders = new Set<"seoul" | "gyeonggi" | "odsay_fallback">()
   const allItems: BusArrivalItem[] = []

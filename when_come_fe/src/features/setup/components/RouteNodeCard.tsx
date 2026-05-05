@@ -1,4 +1,4 @@
-import { Bus, Train, GripVertical, X, Plus, ChevronDown } from "lucide-react";
+import { Bus, Train, X, Plus, ChevronDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,17 +30,20 @@ interface RouteNodeCardProps {
   node: RouteNode;
   onRemove: () => void;
   onUpdateBusNumbers?: (busNumbers: string[]) => void;
+  /** @deprecated 드래그 핸들 아이콘은 제거됨. prop은 하위 호환을 위해 유지 */
   showGrip?: boolean;
 }
 
-export default function RouteNodeCard({ 
-  node, 
-  onRemove, 
+export default function RouteNodeCard({
+  node,
+  onRemove,
   onUpdateBusNumbers,
-  showGrip = true 
+  showGrip: _showGrip = true,
 }: RouteNodeCardProps) {
   const [isAddingBus, setIsAddingBus] = useState(false);
   const [newBusNumber, setNewBusNumber] = useState('');
+  // 드롭다운 열릴 때 기존 선택 상태 스냅샷 (취소 시 복원용)
+  const [draftBusNumbers, setDraftBusNumbers] = useState<string[]>([]);
 
   const handleAddBusNumber = () => {
     if (newBusNumber.trim() && onUpdateBusNumbers) {
@@ -58,6 +61,33 @@ export default function RouteNodeCard({
     }
   };
 
+  /** 드롭다운 열 때 현재 선택 상태를 draft에 스냅샷 */
+  const handleOpenDropdown = () => {
+    setDraftBusNumbers([...(node.busNumbers ?? [])]);
+    setIsAddingBus(true);
+  };
+
+  /** 드롭다운에서 노선 토글 */
+  const handleToggleDraftBus = (routeName: string) => {
+    setDraftBusNumbers(prev =>
+      prev.includes(routeName)
+        ? prev.filter(b => b !== routeName)
+        : [...prev, routeName]
+    );
+  };
+
+  /** 확인: draft 상태를 실제 선택에 반영 */
+  const handleConfirmDropdown = () => {
+    onUpdateBusNumbers?.(draftBusNumbers);
+    setIsAddingBus(false);
+  };
+
+  /** 취소: 변경사항 버리고 닫힘 */
+  const handleCancelDropdown = () => {
+    setDraftBusNumbers([]);
+    setIsAddingBus(false);
+  };
+
   // 노선 색상 정보 가져오기
   const getNodeColor = () => {
     if (node.type === 'subway' && node.subwayLine) {
@@ -73,13 +103,7 @@ export default function RouteNodeCard({
   return (
     <Card className="p-4 rounded-xl border border-black/5 shadow-sm bg-white hover:shadow-md transition-shadow">
       <div className="flex items-start gap-3">
-        {showGrip && (
-          <div className="pt-2 cursor-move">
-            <GripVertical className="w-4 h-4 text-[#D1D5DB]" strokeWidth={2} />
-          </div>
-        )}
-        
-        <div 
+        <div
           className="w-10 h-10 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0"
         >
           {node.type === 'bus' ? (
@@ -147,40 +171,60 @@ export default function RouteNodeCard({
               {isAddingBus ? (
                 node.busLines && node.busLines.length > 0 ? (
                   <div className="rounded-lg border border-black/10 overflow-hidden">
-                    {node.busLines
-                      .filter(l => !node.busNumbers?.includes(l.routeName))
-                      .map(l => {
-                        const busInfo = getBusTypeByOdsay(l.busType, l.routeName);
-                        return (
-                          <button
-                            key={l.routeName}
-                            onClick={() => {
-                              onUpdateBusNumbers?.([...(node.busNumbers ?? []), l.routeName]);
-                              setIsAddingBus(false);
+                    {node.busLines.map(l => {
+                      const busInfo = getBusTypeByOdsay(l.busType, l.routeName);
+                      const isSelected = draftBusNumbers.includes(l.routeName);
+                      return (
+                        <button
+                          key={l.routeName}
+                          onClick={() => handleToggleDraftBus(l.routeName)}
+                          className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
+                            isSelected ? 'bg-[#EFF6FF]' : 'hover:bg-[#F9FAFB]'
+                          }`}
+                        >
+                          {/* 체크 표시 영역 */}
+                          <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border"
+                            style={{
+                              backgroundColor: isSelected ? busInfo.color : 'transparent',
+                              borderColor: isSelected ? busInfo.color : '#D1D5DB',
                             }}
-                            className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-[#F9FAFB] text-left transition-colors"
                           >
-                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: busInfo.color }} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[14px] font-medium text-[#111827]">{l.routeName}번</span>
-                                <span className="text-[12px] text-[#9CA3AF]">{busInfo.label}버스</span>
-                              </div>
-                              {(l.startStation || l.endStation) && (
-                                <div className="text-[11px] text-[#9CA3AF] truncate">
-                                  {l.startStation}{l.startStation && l.endStation ? ' ~ ' : ''}{l.endStation}
-                                </div>
-                              )}
+                            {isSelected && (
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                                <path d="M2 5l2.5 2.5 3.5-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            )}
+                          </div>
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: busInfo.color }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[14px] font-medium text-[#111827]">{l.routeName}번</span>
+                              <span className="text-[12px] text-[#9CA3AF]">{busInfo.label}버스</span>
                             </div>
-                          </button>
-                        );
-                      })}
-                    <button
-                      onClick={() => setIsAddingBus(false)}
-                      className="w-full px-3 py-2 text-[13px] text-[#9CA3AF] hover:bg-[#F9FAFB] border-t border-black/5 transition-colors"
-                    >
-                      취소
-                    </button>
+                            {(l.startStation || l.endStation) && (
+                              <div className="text-[11px] text-[#9CA3AF] truncate">
+                                {l.startStation}{l.startStation && l.endStation ? ' ~ ' : ''}{l.endStation}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {/* 확인 / 취소 버튼 */}
+                    <div className="flex border-t border-black/5">
+                      <button
+                        onClick={handleCancelDropdown}
+                        className="flex-1 px-3 py-2 text-[13px] text-[#9CA3AF] hover:bg-[#F9FAFB] transition-colors border-r border-black/5"
+                      >
+                        취소
+                      </button>
+                      <button
+                        onClick={handleConfirmDropdown}
+                        className="flex-1 px-3 py-2 text-[13px] font-medium text-[#111827] hover:bg-[#F9FAFB] transition-colors"
+                      >
+                        확인
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex gap-1.5">
@@ -213,7 +257,7 @@ export default function RouteNodeCard({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setIsAddingBus(true)}
+                  onClick={handleOpenDropdown}
                   className="h-8 text-[13px] rounded-lg border-black/5 text-[#6B7280] hover:bg-[#F9FAFB] hover:text-[#111827]"
                 >
                   {node.busLines && node.busLines.length > 0

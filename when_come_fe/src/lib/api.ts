@@ -15,15 +15,42 @@ const BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 
 export class ApiError extends Error {
   constructor(
+    public readonly code: string,
     message: string,
-    public readonly status: number,
+    public readonly status?: number,
   ) {
     super(message)
     this.name = 'ApiError'
   }
 }
 
-function isErrorPayload(val: unknown): val is { error?: string; message?: string } {
+/** 신형 구조화 에러 응답: { "error": { "code": "...", "message": "...", "detail": "..." } } */
+interface StructuredErrorBody {
+  error: {
+    code: string
+    message: string
+    detail?: string
+  }
+}
+
+/** 구형 에러 응답: { "error": "string 메시지" } 또는 { "message": "..." } */
+interface LegacyErrorBody {
+  error?: string
+  message?: string
+}
+
+function isStructuredError(val: unknown): val is StructuredErrorBody {
+  return (
+    typeof val === 'object' &&
+    val !== null &&
+    'error' in val &&
+    typeof (val as Record<string, unknown>).error === 'object' &&
+    (val as Record<string, unknown>).error !== null &&
+    'code' in ((val as Record<string, unknown>).error as object)
+  )
+}
+
+function isLegacyError(val: unknown): val is LegacyErrorBody {
   return typeof val === 'object' && val !== null
 }
 
@@ -38,11 +65,14 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     },
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    const msg = isErrorPayload(body)
+    const body: unknown = await res.json().catch(() => ({}))
+    if (isStructuredError(body)) {
+      throw new ApiError(body.error.code, body.error.message, res.status)
+    }
+    const msg = isLegacyError(body)
       ? (body.message ?? body.error ?? `HTTP ${res.status}`)
       : `HTTP ${res.status}`
-    throw new ApiError(msg, res.status)
+    throw new ApiError('UNKNOWN', msg, res.status)
   }
   return res.json() as Promise<T>
 }
