@@ -484,6 +484,7 @@ export default function Home() {
                   {/* step_group 2개 이상: flex-row 가로 배치 */}
                   <div className={group.length > 1 ? "flex gap-2" : ""}>
                     {group.map((seg) => {
+                      const isGrouped = group.length > 1;
                       const segArrivalResult = arrivalByStopId.get(seg.stop.id)
                       const segArrivalData = segArrivalResult?.data ?? null;
                       const isArrivalLoading = segArrivalResult?.isLoading ?? false;
@@ -493,13 +494,13 @@ export default function Home() {
                       return (
                         <Card
                           key={seg.id}
-                          className={`rounded-2xl border border-black/5 shadow-sm bg-white overflow-hidden ${group.length > 1 ? 'flex-1 min-w-0' : ''}`}
+                          className={`rounded-2xl border border-black/5 shadow-sm bg-white overflow-hidden ${isGrouped ? 'flex-1 min-w-0' : ''}`}
                         >
                           {/* 정류장 정보 */}
-                          <div className="p-5 border-b border-black/5">
+                          <div className={isGrouped ? "px-3 py-3 border-b border-black/5" : "p-5 border-b border-black/5"}>
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex-1 min-w-0">
-                                <h4 className="text-[18px] font-semibold text-[#111827] mb-1">
+                                <h4 className={`${isGrouped ? 'text-[15px]' : 'text-[18px]'} font-semibold text-[#111827] mb-1`}>
                                   {seg.stop.name}
                                 </h4>
                                 {seg.stop.type === 'bus' && seg.stop.arsId && (
@@ -568,20 +569,20 @@ export default function Home() {
                                   : [];
 
                                 return (
-                                  <div key={line} className="px-5 py-4 hover:bg-[#F9FAFB] transition-colors">
+                                  <div key={line} className={`${isGrouped ? 'px-3 py-3' : 'px-5 py-4'} hover:bg-[#F9FAFB] transition-colors`}>
                                     <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-3 min-w-0">
+                                      <div className={`flex items-center ${isGrouped ? 'gap-2' : 'gap-3'} min-w-0 overflow-hidden`}>
                                         {isSubway ? (
-                                          <div className="w-10 h-10 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                          <div className={`${isGrouped ? 'w-8 h-8' : 'w-10 h-10'} rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0`}>
+                                            <svg width={isGrouped ? "18" : "24"} height={isGrouped ? "18" : "24"} viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                               <path d="M12 12h0"/><path d="M9.75 9.75h4.5"/><path d="M7 15h10"/>
                                               <rect x="5" y="4" width="14" height="16" rx="2"/>
                                               <path d="M8 20l-2 2"/><path d="M16 20l2 2"/>
                                             </svg>
                                           </div>
                                         ) : (
-                                          <div className="w-10 h-10 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={busTypeInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                          <div className={`${isGrouped ? 'w-8 h-8' : 'w-10 h-10'} rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0`}>
+                                            <svg width={isGrouped ? "18" : "24"} height={isGrouped ? "18" : "24"} viewBox="0 0 24 24" fill="none" stroke={busTypeInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                               <path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/>
                                               <path d="m18 18 3-3-3-3"/>
                                               <path d="M3 6h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2"/>
@@ -589,10 +590,10 @@ export default function Home() {
                                             </svg>
                                           </div>
                                         )}
-                                        <div className="min-w-0">
+                                        <div className="min-w-0 overflow-hidden">
                                           {/* T22: 호선명 + 헤드사인 배지 */}
                                           <div className="flex items-center gap-1.5 flex-wrap">
-                                            <div className="text-[15px] font-semibold text-[#111827]">
+                                            <div className={`${isGrouped ? 'text-[13px]' : 'text-[15px]'} font-semibold text-[#111827] whitespace-nowrap`}>
                                               {isSubway ? line : `${line}번`}
                                             </div>
                                             {headsign && (
@@ -607,7 +608,7 @@ export default function Home() {
                                               </span>
                                             )}
                                           </div>
-                                          <div className="text-[13px] text-[#6B7280]">
+                                          <div className={`${isGrouped ? 'text-[11px]' : 'text-[13px]'} text-[#6B7280] whitespace-nowrap`}>
                                             {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
                                           </div>
                                           {/* T23: 방향 정보 없음 안내 */}
@@ -629,7 +630,7 @@ export default function Home() {
                                               ) : (
                                                 <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
                                               )}
-                                              <span className={`font-bold tabular-nums leading-tight text-[18px] ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
+                                              <span className={`font-bold tabular-nums leading-tight ${isGrouped ? 'text-[14px]' : 'text-[18px]'} ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
                                                 {isArrivalLoading ? '조회 중...' : noService ? '운행 없음' : arrivalText}
                                               </span>
                                             </div>
