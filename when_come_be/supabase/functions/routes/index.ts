@@ -218,7 +218,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
     throw new AppError("name, originName, destinationName 이 필요합니다", 400)
   }
   if (!stops || stops.length === 0) {
-    throw new AppError("stops 가 필요합니다", 400)
+    throw new AppError("정류장이 최소 1개 이상 필요합니다", 400)
   }
   for (const s of stops) {
     if (s.stopType !== "bus" && s.stopType !== "subway") {

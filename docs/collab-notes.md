@@ -324,6 +324,24 @@ arsId로 정류장 노선 목록 조회.
 
 ---
 
+2026-05-06 — 지하철 도착 API 다단계 fallback 도입. FE는 stop.name 그대로 전달, BE가 OVERRIDES → strip → OVERRIDES 순서로 시도. 0건일 때 "도착 정보 없음" 표시 (FE 측 변경 별도).
+
+## 2026-05-06 — 군자역 지하철 API 매핑 + 빈 경로 저장 차단
+
+### [FIX] arrival-info: 군자역 별칭 매핑 (BE 내부 변경)
+
+서울 지하철 실시간 도착 API는 군자역을 `"군자(능동)"`으로만 색인. ODsay는 `"군자"`로 반환하므로 BE `normalizeSubwayStationName`에 OVERRIDES 매핑 추가.
+- `"군자"` → `"군자(능동)"` (5호선/7호선)
+- `"군자역"`, `"군자(능동)"` 입력도 모두 `"군자(능동)"`으로 정규화
+- FE 변경 없음. 도착 API 응답 스키마 변경 없음.
+- 향후 동일 패턴 역 발견 시 `SUBWAY_NAME_OVERRIDES` 맵에 추가.
+
+### [FIX] routes POST: stops 없으면 400 (기존 동작 확인)
+
+`stops`가 없거나 빈 배열이면 `400 "정류장이 최소 1개 이상 필요합니다"`. 기존 코드에 이미 구현되어 있었음. FE 변경 없음.
+
+---
+
 ## 2026-05-03 — step_group · 홈 타임라인 전면 개편
 
 ### [NEW] route_stops.step_group

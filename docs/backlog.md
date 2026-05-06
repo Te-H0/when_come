@@ -1,6 +1,6 @@
 # 통합 백로그
 
-> 마지막 업데이트: 2026-04-29
+> 마지막 업데이트: 2026-05-06
 > BE 전용 항목은 `when_come_be/docs/backlog.md` 참고.
 
 ## 🔴 High
@@ -12,6 +12,7 @@
 ## 🟡 Medium
 
 - [ ] #2 | [chore] 서울 버스 API `arrive` 외 서비스 권한 확인 — getArrInfoByRoute 실제 동작 검증 필요 | 2026-04-19
+- [ ] #3 | [chore] 지하철 별칭 일괄 사전검증 스크립트 — 서울 열린데이터 `SearchInfoBySubwayNameService`로 전체 역명(~700) 가져옴 → 도착 API 호출해서 0건인 역만 수집 → 별칭 후보 (`{역명}(인근지명)`) 시도 → 매칭되는 거 `SUBWAY_NAME_OVERRIDES`에 일괄 등록. 1회성 스크립트 (`scripts/probe-subway-aliases.ts` 등). 결과는 CSV/JSON으로 저장하고 OVERRIDES 자동 생성. 현재 해결책은 군자 1건만 hardcode + ad-hoc 발견 방식 → 사전 차단 필요. | 2026-05-06
 
 ## 🟢 Low
 

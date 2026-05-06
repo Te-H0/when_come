@@ -218,7 +218,20 @@ supabaseTest("routes POST — stops 빈 배열이면 400을 반환한다", async
       }))
       assertEquals(res.status, 400)
       const body = await res.json()
-      assertEquals(body.error, "stops 가 필요합니다")
+      assertEquals(body.error, "정류장이 최소 1개 이상 필요합니다")
+    })
+  )
+})
+
+supabaseTest("routes POST — stops 필드 자체가 없으면 400을 반환한다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () => mockSupabaseAuthSuccess(), async () => {
+      const res = await handler(makeRouteRequest("POST", "", {
+        body: { name: "출근길", originName: "집", destinationName: "회사" },
+      }))
+      assertEquals(res.status, 400)
+      const body = await res.json()
+      assertEquals(body.error, "정류장이 최소 1개 이상 필요합니다")
     })
   )
 })
