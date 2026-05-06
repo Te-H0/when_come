@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
+import { formatStationName } from "@/utils/stationName";
 
 export interface RouteNode {
   id: string;
@@ -115,7 +116,9 @@ export default function RouteNodeCard({
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[15px] font-semibold text-[#111827]">{node.name}</span>
+            <span className="text-[15px] font-semibold text-[#111827]">
+              {node.type === 'subway' ? formatStationName(node.name) : node.name}
+            </span>
             {node.order > 1 && (
               <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[#EFF6FF] text-[#3B82F6] font-medium">
                 대안

@@ -92,6 +92,7 @@ fetchArrival(stop)
   - 현재 스텝: 도착 상세 카드 (노선별 전체 표시)
   - 다음 스텝들: 미니 카드 (가장 빠른 버스 `getFastestArrivalText`) + accordion 상세 펼침
   - 새로고침: `allArrivalResults.map(r => r.refetch())` — 전체 동시 갱신
+- **역명 표시 정규화 (2026-05-06~):** BE는 ODsay 원본 저장 + 다단계 fallback 시도. FE는 표시 시점에만 `formatStationName`으로 정규화 (`src/utils/stationName.ts`). `TransitStop.displayName`에 매핑 시점 계산. API 호출 인자에는 원본 `stop.name` 사용. 0건 응답은 "도착 정보 없음"으로 표시 (막차 이외 케이스 포함).
 
 ### 지하철 방향 매칭 규칙 (2026-04-28~)
 

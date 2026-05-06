@@ -1,5 +1,6 @@
 import type { ApiRoute } from '@/types/api'
 import type { SavedRoute } from '@/lib/mockData'
+import { formatStationName } from '@/utils/stationName'
 
 export function mapApiRoute(route: ApiRoute): SavedRoute {
   return {
@@ -18,6 +19,9 @@ export function mapApiRoute(route: ApiRoute): SavedRoute {
         stop: {
           id: stop.id,
           name: stop.stop_name,
+          displayName: stop.stop_type === 'subway'
+            ? formatStationName(stop.stop_name)
+            : stop.stop_name,
           type: stop.stop_type,
           lines: stop.stop_routes.map(r => r.route_name),
           arrivalTimes: [],

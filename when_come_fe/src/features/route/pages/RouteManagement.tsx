@@ -229,7 +229,7 @@ export default function RouteManagement() {
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                                     <span className="text-[15px] font-medium text-[#111827] truncate">
-                                      {segment.stop.name}
+                                      {segment.stop.displayName}
                                     </span>
                                     {group.length === 1 && (
                                       <span className="text-[12px] text-[#9CA3AF] flex-shrink-0">

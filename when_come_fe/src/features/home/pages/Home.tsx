@@ -23,7 +23,7 @@ const SELECTED_ROUTE_KEY = 'when_come:selectedRouteId';
 /**
  * 도착 텍스트 파싱 결과.
  * - count 타입: "3개전" → { kind: 'count', count: 3, unit: '개전' }
- * - text 타입: "곧 도착", "운행 없음" 등 → { kind: 'text', text: '...' }
+ * - text 타입: "곧 도착", "도착 정보 없음" 등 → { kind: 'text', text: '...' }
  */
 type ArrivalTextToken =
   | { kind: 'count'; count: number; unit: string }
@@ -458,7 +458,7 @@ export default function Home() {
                   <div className="flex-1 min-w-0 bg-white rounded-2xl border border-black/5 px-4 py-3">
                     {group.map((seg) => (
                       <div key={seg.id} className="flex items-center justify-between gap-2">
-                        <span className="text-[14px] font-medium text-[#6B7280] truncate">{seg.stop.name}</span>
+                        <span className="text-[14px] font-medium text-[#6B7280] truncate">{seg.stop.displayName}</span>
                         <div className="flex gap-1 flex-shrink-0">
                           {seg.stop.lines.slice(0, 2).map(line => (
                             <span key={line} className="text-[12px] px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[#9CA3AF]">
@@ -508,7 +508,7 @@ export default function Home() {
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex-1 min-w-0">
                                 <h4 className={`${isGrouped ? 'text-[15px]' : 'text-[18px]'} font-semibold text-[#111827] mb-1`}>
-                                  {seg.stop.name}
+                                  {seg.stop.displayName}
                                 </h4>
                                 {seg.stop.type === 'bus' && seg.stop.arsId && (
                                   <div className="text-[11px] text-[#9CA3AF] font-mono mt-1">
@@ -634,7 +634,7 @@ export default function Home() {
                                         <div className="flex items-baseline gap-1.5 flex-wrap">
                                           <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">이번 차</span>
                                           <span className={`text-[13px] font-bold tabular-nums whitespace-nowrap ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
-                                            {isArrivalLoading ? '조회 중' : noService ? '운행 없음' : arrivalTimeOnly}
+                                            {isArrivalLoading ? '조회 중' : noService ? '도착 정보 없음' : arrivalTimeOnly}
                                           </span>
                                           {stopsBefore && (
                                             <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
@@ -748,7 +748,7 @@ export default function Home() {
                                                 <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
                                               )}
                                               <span className={`font-bold tabular-nums leading-tight whitespace-nowrap text-[18px] ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
-                                                {isArrivalLoading ? '조회 중...' : noService ? '운행 없음' : arrivalTimeOnly}
+                                                {isArrivalLoading ? '조회 중...' : noService ? '도착 정보 없음' : arrivalTimeOnly}
                                               </span>
                                               {!isArrivalLoading && !noService && stopsBefore && (
                                                 <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
@@ -836,7 +836,7 @@ export default function Home() {
                       >
                         <div className="px-4 py-3 flex items-center justify-between">
                           <div className="flex-1 min-w-0">
-                            <div className="text-[14px] font-medium text-[#374151] truncate">{seg.stop.name}</div>
+                            <div className="text-[14px] font-medium text-[#374151] truncate">{seg.stop.displayName}</div>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {seg.stop.lines.slice(0, 3).map(line => (
                                 <span key={line} className="text-[11px] px-1.5 py-0.5 rounded-md bg-[#F1F3F5] text-[#9CA3AF]">
@@ -900,7 +900,7 @@ export default function Home() {
                                       ) : (
                                         <>
                                           <div className={`text-[13px] font-semibold tabular-nums ${noSvc ? 'text-[#D1D5DB]' : 'text-[#374151]'}`}>
-                                            {noSvc ? '운행 없음' : arrText}
+                                            {noSvc ? '도착 정보 없음' : arrText}
                                           </div>
                                           {arrText2 && (
                                             <div className="text-[11px] text-[#9CA3AF] tabular-nums">{arrText2}</div>

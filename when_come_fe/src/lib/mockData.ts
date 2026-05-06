@@ -11,6 +11,13 @@ export interface StopRouteInfo {
 export interface TransitStop {
   id: string;
   name: string;
+  /**
+   * 화면 표시용 정규화된 역명/정류장명.
+   * 지하철: "군자(능동)" → "군자" (formatStationName 적용)
+   * 버스: name 그대로 (괄호 제거 시 정보 손실 우려)
+   * API 호출 시에는 원본 name을 사용할 것 (BE fallback 작동).
+   */
+  displayName: string;
   type: 'bus' | 'subway';
   lines: string[];
   arrivalTimes: number[]; // 분 단위
@@ -58,6 +65,7 @@ export const mockRoutes: SavedRoute[] = [
         stop: {
           id: "stop-1",
           name: "신림역 3번출구",
+          displayName: "신림역 3번출구",
           type: "bus",
           lines: ["5524", "5413", "5516"],
           arrivalTimes: [2, 8, 15],
@@ -70,6 +78,7 @@ export const mockRoutes: SavedRoute[] = [
         stop: {
           id: "stop-2",
           name: "신림역",
+          displayName: "신림역",
           type: "subway",
           lines: ["2호선"],
           arrivalTimes: [3, 7, 11],
@@ -82,6 +91,7 @@ export const mockRoutes: SavedRoute[] = [
         stop: {
           id: "stop-3",
           name: "강남역 5번출구",
+          displayName: "강남역 5번출구",
           type: "bus",
           lines: ["146", "360", "740"],
           arrivalTimes: [1, 5, 12],
@@ -103,6 +113,7 @@ export const mockRoutes: SavedRoute[] = [
         stop: {
           id: "stop-4",
           name: "강남역 12번출구",
+          displayName: "강남역 12번출구",
           type: "bus",
           lines: ["146", "360"],
           arrivalTimes: [3, 9],
@@ -115,6 +126,7 @@ export const mockRoutes: SavedRoute[] = [
         stop: {
           id: "stop-5",
           name: "강남역",
+          displayName: "강남역",
           type: "subway",
           lines: ["2호선", "신분당선"],
           arrivalTimes: [2, 5, 9],
@@ -127,6 +139,7 @@ export const mockRoutes: SavedRoute[] = [
         stop: {
           id: "stop-6",
           name: "신림역 1번출구",
+          displayName: "신림역 1번출구",
           type: "bus",
           lines: ["5524", "5413"],
           arrivalTimes: [4, 11],

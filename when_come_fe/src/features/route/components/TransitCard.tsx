@@ -30,7 +30,7 @@ export default function TransitCard({ stop, isNext = false, showDistance = false
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
             <h3 className={`font-bold text-lg ${isNext ? 'text-white' : 'text-gray-900'}`}>
-              {stop.name}
+              {stop.displayName}
             </h3>
             {isNext && (
               <Badge className="bg-white/30 text-white border-0 backdrop-blur-sm font-semibold">
