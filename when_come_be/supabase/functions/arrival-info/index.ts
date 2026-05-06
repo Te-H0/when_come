@@ -148,12 +148,24 @@ async function findBusArrivalByArsId(
   }
 }
 
-// ─── 서울 지하철 (변경 없음) ─────────────────────────────────────────────────
-const SUBWAY_NAME_OVERRIDES: Record<string, string> = {}
+// ─── 서울 지하철 ─────────────────────────────────────────────────────────────
+// 서울 지하철 실시간 도착 API 별칭 매핑.
+// API가 정식 이름이 아닌 별칭으로만 색인하는 역을 등록 (예: "군자" → "군자(능동)").
+// 향후 발견 시 추가. 키/값 모두 ODsay/사용자가 입력할 수 있는 형태 둘 다 등록 권장.
+const SUBWAY_NAME_OVERRIDES: Record<string, string> = {
+  "군자": "군자(능동)",
+  "군자역": "군자(능동)",      // stop_name이 "역" 접미사 포함된 경우 1차에서 직접 처리
+  "군자(능동)": "군자(능동)",
+}
 
-export function normalizeSubwayStationName(stationName: string): string {
-  if (stationName in SUBWAY_NAME_OVERRIDES) return SUBWAY_NAME_OVERRIDES[stationName]
-  return stationName.replace(/\([^)]*\)/g, "").replace(/역$/, "").trim()
+/** 알려진 별칭 매핑. 모르는 역은 원본 그대로 반환. */
+export function applySubwayNameOverride(stationName: string): string {
+  return SUBWAY_NAME_OVERRIDES[stationName] ?? stationName
+}
+
+/** 호선 표기 괄호("강남역 (2호선)")와 "역" 접미사 제거. 표시·검색 fallback용. */
+export function stripSubwayNameDecorations(stationName: string): string {
+  return stationName.replace(/\([^)]*\)/g, "").trim().replace(/역$/, "").trim()
 }
 
 interface SeoulSubwayArrivalItem {
@@ -168,12 +180,10 @@ interface SeoulSubwayApiResponse {
   realtimeArrivalList?: SeoulSubwayArrivalItem[]
 }
 
-async function getSubwayArrival(stationName: string): Promise<SubwayArrivalItem[]> {
-  const normalized = normalizeSubwayStationName(stationName)
-  const encoded = encodeURIComponent(normalized)
+async function fetchSubwayArrivalRaw(name: string): Promise<SubwayArrivalItem[]> {
+  const encoded = encodeURIComponent(name)
   const url =
-    `http://swopenapi.seoul.go.kr/api/subway/${subwayApiKey()}/json/realtimeStationArrival/0/10/${encoded}`
-
+    `http://swopenapi.seoul.go.kr/api/subway/${subwayApiKey()}/json/realtimeStationArrival/0/30/${encoded}`
   const res = await fetch(url)
   if (!res.ok) throw new AppError(
     "잠시 후 다시 시도해 주세요.",
@@ -181,16 +191,8 @@ async function getSubwayArrival(stationName: string): Promise<SubwayArrivalItem[
     "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
     `seoul-subway realtimeStationArrival HTTP ${res.status}`,
   )
-
   const data: SeoulSubwayApiResponse = await res.json()
   const list = data?.realtimeArrivalList ?? []
-
-  if (list.length === 0) {
-    console.warn(
-      `[subway-arrival] empty result: input="${stationName}" normalized="${normalized}"`,
-    )
-  }
-
   return list.map((item) => ({
     lineName: item.subwayId,
     direction: item.trainLineNm,
@@ -198,6 +200,28 @@ async function getSubwayArrival(stationName: string): Promise<SubwayArrivalItem[
     arrmsg2: item.arvlMsg3,
     updnLine: item.updnLine,
   }))
+}
+
+async function getSubwayArrival(stationName: string): Promise<SubwayArrivalItem[]> {
+  // 1차: OVERRIDES 적용한 명칭으로 호출
+  const primary = applySubwayNameOverride(stationName)
+  let items = await fetchSubwayArrivalRaw(primary)
+  if (items.length > 0) return items
+
+  // 2차: 괄호/역 제거 → 다시 OVERRIDES 한 번 더
+  const stripped = stripSubwayNameDecorations(primary)
+  const fallback = applySubwayNameOverride(stripped)
+  if (fallback !== primary) {
+    items = await fetchSubwayArrivalRaw(fallback)
+    if (items.length > 0) return items
+  }
+
+  // 모든 fallback 실패 — 메트릭용 warn 로그
+  // 운영 모니터링으로 새 별칭 케이스 발견 시 SUBWAY_NAME_OVERRIDES에 추가
+  console.warn(
+    `[subway-arrival] no result after fallback: input="${stationName}" primary="${primary}" fallback="${fallback}"`,
+  )
+  return []
 }
 
 function parseArrivalSec(val: unknown): number | null {
