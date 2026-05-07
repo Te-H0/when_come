@@ -630,9 +630,7 @@ export default function Home() {
 
                                       {/* 아래 행: 도착 정보 */}
                                       <div className="mt-2 space-y-1">
-                                        {/* 이번 차 */}
-                                        <div className="flex items-baseline gap-1.5 flex-wrap">
-                                          <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">이번 차</span>
+                                        <div className="flex items-center gap-1.5" aria-label="이번 차">
                                           <span className={`text-[13px] font-bold tabular-nums whitespace-nowrap ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
                                             {isArrivalLoading ? '조회 중' : noService ? '도착 정보 없음' : arrivalTimeOnly}
                                           </span>
@@ -640,10 +638,8 @@ export default function Home() {
                                             <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
                                           )}
                                         </div>
-                                        {/* 다음 차 */}
                                         {arrivalText2 && (
-                                          <div className="flex items-baseline gap-1.5 flex-wrap">
-                                            <span className="text-[10px] text-[#9CA3AF] flex-shrink-0">다음 차</span>
+                                          <div className="flex items-center gap-1.5" aria-label="다음 차">
                                             <span className="text-[12px] text-[#9CA3AF] tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
                                             {stopsBefore2 && (
                                               <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore2}</span>
@@ -739,29 +735,23 @@ export default function Home() {
 
                                       <div className="flex items-start gap-2 flex-shrink-0">
                                         <div className="text-right space-y-1">
-                                          <div>
-                                            <div className="text-[11px] text-[#9CA3AF] text-right leading-none mb-0.5">이번 차</div>
-                                            <div className="flex items-center gap-2 justify-end">
-                                              {isArrivalLoading ? (
-                                                <Loader2 className="w-[14px] h-[14px] text-[#9CA3AF] animate-spin" strokeWidth={2} />
-                                              ) : (
-                                                <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
-                                              )}
-                                              <span className={`font-bold tabular-nums leading-tight whitespace-nowrap text-[18px] ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
-                                                {isArrivalLoading ? '조회 중...' : noService ? '도착 정보 없음' : arrivalTimeOnly}
-                                              </span>
-                                              {!isArrivalLoading && !noService && stopsBefore && (
-                                                <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
-                                              )}
-                                            </div>
+                                          <div className="flex items-center gap-2 justify-end" aria-label="이번 차">
+                                            {isArrivalLoading ? (
+                                              <Loader2 className="w-[14px] h-[14px] text-[#9CA3AF] animate-spin" strokeWidth={2} />
+                                            ) : (
+                                              <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
+                                            )}
+                                            <span className={`font-bold tabular-nums leading-tight whitespace-nowrap text-[18px] ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
+                                              {isArrivalLoading ? '조회 중...' : noService ? '도착 정보 없음' : arrivalTimeOnly}
+                                            </span>
+                                            {!isArrivalLoading && !noService && stopsBefore && (
+                                              <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
+                                            )}
                                           </div>
                                           {arrivalText2 && (
-                                            <div>
-                                              <div className="text-[11px] text-[#9CA3AF] text-right leading-none mb-0.5">다음 차</div>
-                                              <div className="flex items-center gap-1.5 justify-end">
-                                                <span className="text-[12px] text-[#9CA3AF] tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
-                                                {stopsBefore2 && <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore2}</span>}
-                                              </div>
+                                            <div className="flex items-center gap-1.5 justify-end" aria-label="다음 차">
+                                              <span className="text-[12px] text-[#9CA3AF] tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
+                                              {stopsBefore2 && <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore2}</span>}
                                             </div>
                                           )}
                                         </div>
