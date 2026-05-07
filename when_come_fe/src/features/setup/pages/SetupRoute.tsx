@@ -94,6 +94,12 @@ function nextStepGroupOf(nodes: RouteNode[]): number {
   return Math.max(...nodes.map(n => n.stepGroup)) + 1
 }
 
+// 같은 ms에 연속 호출되어도 충돌 안 나도록 랜덤 suffix 부여
+// (전체 추가 루프에서 지하철 노드는 await 없이 빠르게 연속 추가됨)
+function newNodeId(): string {
+  return `node-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 export default function SetupRoute() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -183,7 +189,7 @@ export default function SetupRoute() {
    * targetStepGroup 이 있으면 해당 스텝의 대안 정류장으로, 없으면 새 스텝으로 추가.
    */
   const handleAddNodeFromSearch = async (node: SearchNodeData, targetStepGroup?: number, forcedNewGroup?: number) => {
-    const nodeId = `node-${Date.now()}`;
+    const nodeId = newNodeId();
     const isAlternative = targetStepGroup !== undefined;
     const stepGroup = isAlternative
       ? targetStepGroup
@@ -254,7 +260,7 @@ export default function SetupRoute() {
    * targetStepGroup 이 있으면 해당 스텝의 대안 정류장으로, 없으면 새 스텝으로 추가.
    */
   const handleAddNodeManual = async (stop: ApiStop, targetStepGroup?: number) => {
-    const nodeId = `node-${Date.now()}`;
+    const nodeId = newNodeId();
     const isAlternative = targetStepGroup !== undefined;
     const stepGroup = isAlternative ? targetStepGroup : nextStepGroupOf(nodes);
     const orderInGroup = isAlternative
