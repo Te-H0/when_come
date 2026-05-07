@@ -90,9 +90,24 @@ export function applyCountdownToArrmsg(arrmsg: string, elapsedSec: number): stri
   return `${timeStr}${suffix}`
 }
 
-// T20: stop의 방향 필드를 읽어 matchSubwayItems에 전달
-// T21: 같은 item의 arrmsg1/arrmsg2 대신, 상위 2개 매칭 item의 arrmsg1을 각각 사용
-function getRawArrmsg(stop: TransitStop, line: string, idx: number, arrival: ArrivalData, which: 1 | 2): string | null {
+// 노선 매칭 — 같은 노선번호 item이 여러 개 들어오면(서울/경기 동일 번호 등) traTime1 최솟값 채택
+function matchBusItem<T extends { busRouteAbrv: string; traTime1: number | null }>(
+  items: T[],
+  line: string,
+): T | null {
+  const matched = items.filter(
+    i => i.busRouteAbrv === line || i.busRouteAbrv.replace(/번$/, '') === line,
+  )
+  if (matched.length === 0) return null
+  if (matched.length === 1) return matched[0]
+  return matched.reduce((best, cur) => {
+    const bestT = best.traTime1 ?? Infinity
+    const curT = cur.traTime1 ?? Infinity
+    return curT < bestT ? cur : best
+  })
+}
+
+function getRawArrmsg(stop: TransitStop, line: string, arrival: ArrivalData, which: 1 | 2): string | null {
   if (!arrival) return null
 
   if (arrival.type === 'subway') {
@@ -108,14 +123,14 @@ function getRawArrmsg(stop: TransitStop, line: string, idx: number, arrival: Arr
   }
 
   if (arrival.type === 'odsay') {
-    const match = arrival.items.find(item => item.routeName === line) ?? arrival.items[idx]
+    const match = arrival.items.find(item => item.routeName === line)
     if (!match) return null
     const t = which === 1 ? match.arrivalTime1 : match.arrivalTime2
     return t != null ? `${t}분` : null
   }
 
   if (arrival.type === 'bus') {
-    const item = arrival.items[idx] ?? arrival.items[0]
+    const item = arrival.items.find(i => i?.routeName === line) ?? null
     if (!item) return null
     if (which === 1) {
       if (item.arrivalSec1 != null) return `${Math.ceil(item.arrivalSec1 / 60)}분후`
@@ -127,7 +142,7 @@ function getRawArrmsg(stop: TransitStop, line: string, idx: number, arrival: Arr
   }
 
   if (arrival.type === 'bus_by_stopid') {
-    const item = arrival.data.items[idx] ?? arrival.data.items[0]
+    const item = matchBusItem(arrival.data.items, line)
     if (!item) return null
     if (which === 1) return item.arrmsg1 || null
     return item.arrmsg2 || null
@@ -136,15 +151,15 @@ function getRawArrmsg(stop: TransitStop, line: string, idx: number, arrival: Arr
   return null
 }
 
-export function getArrivalDisplay(stop: TransitStop, line: string, idx: number, arrival: ArrivalData): string {
-  return getRawArrmsg(stop, line, idx, arrival, 1) ?? '--'
+export function getArrivalDisplay(stop: TransitStop, line: string, arrival: ArrivalData): string {
+  return getRawArrmsg(stop, line, arrival, 1) ?? '--'
 }
 
-export function getArrivalDisplay2(stop: TransitStop, line: string, idx: number, arrival: ArrivalData): string | null {
-  return getRawArrmsg(stop, line, idx, arrival, 2)
+export function getArrivalDisplay2(stop: TransitStop, line: string, arrival: ArrivalData): string | null {
+  return getRawArrmsg(stop, line, arrival, 2)
 }
 
-export function getArrivalMin(stop: TransitStop, line: string, idx: number, arrival: ArrivalData): number | null {
+export function getArrivalMin(stop: TransitStop, line: string, arrival: ArrivalData): number | null {
   if (!arrival) return null
 
   if (arrival.type === 'subway') {
@@ -158,18 +173,18 @@ export function getArrivalMin(stop: TransitStop, line: string, idx: number, arri
   }
 
   if (arrival.type === 'odsay') {
-    const match = arrival.items.find(item => item.routeName === line) ?? arrival.items[idx]
+    const match = arrival.items.find(item => item.routeName === line)
     return match?.arrivalTime1 ?? null
   }
 
   if (arrival.type === 'bus') {
-    const item = arrival.items[idx] ?? arrival.items[0]
+    const item = arrival.items.find(i => i?.routeName === line) ?? null
     if (item?.arrivalSec1 != null) return Math.ceil(item.arrivalSec1 / 60)
     if (item?.arrmsg1) return parseArrivalMin(item.arrmsg1)
   }
 
   if (arrival.type === 'bus_by_stopid') {
-    const item = arrival.data.items[idx] ?? arrival.data.items[0]
+    const item = matchBusItem(arrival.data.items, line)
     if (item?.traTime1 != null) return Math.ceil(item.traTime1 / 60)
     if (item?.arrmsg1) return parseArrivalMin(item.arrmsg1)
   }

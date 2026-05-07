@@ -546,11 +546,11 @@ export default function Home() {
                                 const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null;
                                 const subwayColorInfo = isSubway ? getSubwayColor(line) : null;
 
-                                const rawMsg1 = getArrivalDisplay(seg.stop, line, idx, segArrivalData);
-                                const rawMsg2 = getArrivalDisplay2(seg.stop, line, idx, segArrivalData);
+                                const rawMsg1 = getArrivalDisplay(seg.stop, line, segArrivalData);
+                                const rawMsg2 = getArrivalDisplay2(seg.stop, line, segArrivalData);
                                 const arrivalText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec) : '--';
                                 const arrivalText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec) : null;
-                                const baseMin = getArrivalMin(seg.stop, line, idx, segArrivalData);
+                                const baseMin = getArrivalMin(seg.stop, line, segArrivalData);
                                 const remainSec = baseMin !== null ? Math.max(0, baseMin * 60 - elapsedSec) : null;
                                 const isUrgent = remainSec !== null && remainSec < 180;
                                 const noService = segArrivalData !== null && arrivalText === '--';
@@ -866,8 +866,8 @@ export default function Home() {
                                 const stopRoute = seg.stop.stopRoutes?.find(r => r.routeName === line)
                                 const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null
                                 const subwayColorInfo = isSubway ? getSubwayColor(line) : null
-                                const rawMsg1 = getArrivalDisplay(seg.stop, line, idx, arrData)
-                                const rawMsg2 = getArrivalDisplay2(seg.stop, line, idx, arrData)
+                                const rawMsg1 = getArrivalDisplay(seg.stop, line, arrData)
+                                const rawMsg2 = getArrivalDisplay2(seg.stop, line, arrData)
                                 const arrText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec) : '--'
                                 const arrText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec) : null
                                 const noSvc = arrData !== null && arrText === '--'

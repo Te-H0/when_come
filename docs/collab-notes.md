@@ -326,6 +326,23 @@ arsId로 정류장 노선 목록 조회.
 
 2026-05-06 — 지하철 도착 API 다단계 fallback 도입. FE는 stop.name 그대로 전달, BE가 OVERRIDES → strip → OVERRIDES 순서로 시도. 0건일 때 "도착 정보 없음" 표시 (FE 측 변경 별도).
 
+## 2026-05-08 — 도착정보 노선 매칭 규약 명시 (FE 버그 수정)
+
+### [CONTRACT] `GET /arrival-info?stopId=` 응답 items 순서 보장 안 함
+
+기존부터 BE `arrival-info`는 provider별 `Promise.all` 병렬 fetch 결과를 단순 concat하므로 응답 `items` 순서는 **provider 응답 도착 순서**이며 `stop_routes` 순서와 무관. 또한 외부 API(서울 버스 `getStationByUid` 등)는 정류장의 모든 노선을 반환하므로 사용자 미저장 노선이 섞일 수 있음.
+
+**FE는 인덱스 기반 매칭을 사용하면 안 됨.** 노선번호로 매칭:
+- `bus_by_stopid`: `item.busRouteAbrv === line` (또는 `"번"` suffix 정규화)
+- `bus` (legacy): `item.routeName === line`
+- `odsay`: `item.routeName === line`
+
+같은 `busRouteAbrv`가 중복으로 올 수 있음(서울/경기 동일 번호 노선 등). FE는 `traTime1` 최솟값을 채택.
+
+영향 파일: `when_come_fe/src/lib/arrival.ts`. 자세한 분석은 `when_come_fe/docs/tech-notes/arrival-route-matching.md`.
+
+---
+
 ## 2026-05-06 — 군자역 지하철 API 매핑 + 빈 경로 저장 차단
 
 ### [FIX] arrival-info: 군자역 별칭 매핑 (BE 내부 변경)
