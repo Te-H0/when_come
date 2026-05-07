@@ -16,6 +16,20 @@ interface SubwayDirection {
   updn: 'up' | 'down' | null
 }
 
+// 서울 지하철 API가 동일 열차를 byte-identical row로 중복 반환하는 quirk 방어
+// 다른 트레인이 우연히 같은 메시지를 갖는 경우는 서로 다른 row이므로 제거하지 않음
+function dedupeSubwayItems(items: ApiSubwayArrivalItem[]): ApiSubwayArrivalItem[] {
+  const seen = new Set<string>()
+  const result: ApiSubwayArrivalItem[] = []
+  for (const i of items) {
+    const key = `${i.lineName}|${i.direction}|${i.arrmsg1}|${i.arrmsg2}|${i.updnLine}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(i)
+  }
+  return result
+}
+
 // T19: 지하철 도착 items에서 호선 + 방향으로 필터링
 // 매칭 0건 시 호선만 일치하는 전체로 fallback (legacy 호환)
 function matchSubwayItems(
@@ -23,7 +37,8 @@ function matchSubwayItems(
   line: string,
   direction: SubwayDirection,
 ): ApiSubwayArrivalItem[] {
-  const sameLine = items.filter(i => subwayApiCodeToLineName(i.lineName) === line)
+  const deduped = dedupeSubwayItems(items)
+  const sameLine = deduped.filter(i => subwayApiCodeToLineName(i.lineName) === line)
   if (sameLine.length === 0) return []
 
   // 방향 정보가 없으면 전체 반환 (기존 경로 fallback)

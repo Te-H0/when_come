@@ -113,6 +113,7 @@ matchSubwayItems(items, line, { headsign, updn })
 - 매칭 0건이면 호선 일치 전체로 fallback — legacy 데이터(방향 NULL) 안전망
 - 방향 NULL인 지하철 stop에는 카드 헤더에 inline 안내 노출 ("방향 정보 없음 — 경로를 다시 등록하면 더 정확해요")
 - 카드 표시 규칙: 같은 item의 `arrmsg1`/`arrmsg2`를 두 줄로 보이던 방식 → **상위 2개 매칭 item의 `arrmsg1`만** 두 줄로 표시
+- **byte-identical 중복 제거 (2026-05-08~):** 서울 API가 동일 열차를 같은 row로 중복 반환하는 quirk 방어. `(lineName, direction, arrmsg1, arrmsg2, updnLine)` 모두 일치할 때만 제거 — 다른 트레인이 우연히 같은 메시지를 갖는 경우는 보존.
 
 ### step_group — 한 스텝에 정류장 최대 2개 그룹핑 (2026-05-03~)
 
@@ -128,3 +129,4 @@ groupedSegments: Map<stepGroup, RouteSegment[]>
 - 한 그룹 최대 2개, 같은 stopType 강제 (BE 검증)
 - `handleRemoveNode`: 제거 후 stepGroup 번호 연속 재정렬
 - 버스 노선 선택: 사용자가 드롭다운에서 직접 선택 (자동 선택 없음)
+- **전체 추가 동작 (2026-05-08~):** "전체 추가" 버튼은 각 노드를 **별도 stepGroup**으로 추가. 같은 stepGroup의 대안 정류장은 명시적 "대안 정류장 추가" 버튼으로만 등록. 과거 `handleAddAllNodes`가 `for...await` 루프 내내 stale `nodes` 클로저를 참조해 모든 노드가 동일 stepGroup으로 들어가던 버그 수정 — `forcedNewGroup` 인자로 호출자가 명시적으로 stepGroup 증가시켜 전달.

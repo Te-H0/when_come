@@ -182,10 +182,12 @@ export default function SetupRoute() {
    * 검색 결과 노드를 경로에 추가.
    * targetStepGroup 이 있으면 해당 스텝의 대안 정류장으로, 없으면 새 스텝으로 추가.
    */
-  const handleAddNodeFromSearch = async (node: SearchNodeData, targetStepGroup?: number) => {
+  const handleAddNodeFromSearch = async (node: SearchNodeData, targetStepGroup?: number, forcedNewGroup?: number) => {
     const nodeId = `node-${Date.now()}`;
     const isAlternative = targetStepGroup !== undefined;
-    const stepGroup = isAlternative ? targetStepGroup : nextStepGroupOf(nodes);
+    const stepGroup = isAlternative
+      ? targetStepGroup
+      : (forcedNewGroup ?? nextStepGroupOf(nodes));
     const orderInGroup = isAlternative
       ? nodes.filter(n => n.stepGroup === stepGroup).length + 1
       : 1;
@@ -237,8 +239,12 @@ export default function SetupRoute() {
       toast.info('이미 모든 정류장이 추가되어 있습니다');
       return;
     }
+    // 각 노드를 새 스텝으로 추가하기 위해 명시적으로 stepGroup 증가시켜 전달
+    // (handleAddNodeFromSearch가 stale `nodes` 클로저를 보면 모든 노드가 같은 stepGroup이 되어 alternative로 들어가는 버그 방지)
+    let nextGroup = nextStepGroupOf(nodes);
     for (const node of newNodes) {
-      await handleAddNodeFromSearch(node);
+      await handleAddNodeFromSearch(node, undefined, nextGroup);
+      nextGroup += 1;
     }
     toast.success(`경로 ${newNodes.length}개 정류장이 추가되었습니다`);
   };
