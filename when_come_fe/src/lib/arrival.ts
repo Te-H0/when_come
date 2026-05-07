@@ -133,8 +133,9 @@ function getRawArrmsg(stop: TransitStop, line: string, arrival: ArrivalData, whi
     const matched = matchSubwayItems(arrival.items, line, direction)
     // which === 1 → 첫 번째 매칭 item의 arrmsg1
     // which === 2 → 두 번째 매칭 item의 arrmsg1 (다음 차량)
+    // displayMsg가 있으면(짧은 상태 라벨) 우선 사용 — 카운트다운 미적용
     const item = matched[which - 1]
-    return item ? item.arrmsg1 : null
+    return item ? (item.displayMsg ?? item.arrmsg1) : null
   }
 
   if (arrival.type === 'odsay') {
@@ -184,7 +185,10 @@ export function getArrivalMin(stop: TransitStop, line: string, arrival: ArrivalD
     }
     const matched = matchSubwayItems(arrival.items, line, direction)
     const item = matched[0]
-    return item ? parseArrivalMin(item.arrmsg1) : null
+    if (!item) return null
+    // displayMsg가 있으면 진입중/도착/출발 등 도착 임박 상태 → 0분으로 간주해 isUrgent 강조 동작 유지
+    if (item.displayMsg != null) return 0
+    return parseArrivalMin(item.arrmsg1)
   }
 
   if (arrival.type === 'odsay') {

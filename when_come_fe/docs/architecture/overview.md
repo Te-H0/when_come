@@ -114,6 +114,7 @@ matchSubwayItems(items, line, { headsign, updn })
 - 방향 NULL인 지하철 stop에는 카드 헤더에 inline 안내 노출 ("방향 정보 없음 — 경로를 다시 등록하면 더 정확해요")
 - 카드 표시 규칙: 같은 item의 `arrmsg1`/`arrmsg2`를 두 줄로 보이던 방식 → **상위 2개 매칭 item의 `arrmsg1`만** 두 줄로 표시
 - **byte-identical 중복 제거 (2026-05-08~):** 서울 API가 동일 열차를 같은 row로 중복 반환하는 quirk 방어. `(lineName, direction, arrmsg1, arrmsg2, updnLine)` 모두 일치할 때만 제거 — 다른 트레인이 우연히 같은 메시지를 갖는 경우는 보존.
+- **displayMsg 짧은 표준 라벨 (2026-05-08~):** BE가 서울 지하철 API의 `arvlCd`(도착 코드)를 "진입중"/"도착"/"출발"/"전역 출발"/"전역 진입"/"전역 도착"으로 매핑해 응답 동봉. FE는 `displayMsg ?? arrmsg1`로 우선 사용. 99/누락은 null → 기존 카운트다운 표시 유지. 카드 폭 깨짐 해소 + `getArrivalMin`에서 displayMsg 있으면 0분 처리해 isUrgent 강조.
 
 ### step_group — 한 스텝에 정류장 최대 2개 그룹핑 (2026-05-03~)
 

@@ -326,6 +326,30 @@ arsId로 정류장 노선 목록 조회.
 
 2026-05-06 — 지하철 도착 API 다단계 fallback 도입. FE는 stop.name 그대로 전달, BE가 OVERRIDES → strip → OVERRIDES 순서로 시도. 0건일 때 "도착 정보 없음" 표시 (FE 측 변경 별도).
 
+## 2026-05-08 — 지하철 도착 응답 `displayMsg` 필드 추가
+
+### [ADD] `arrival-info` 지하철 응답 item에 `displayMsg: string | null`
+
+서울 지하철 통합 API의 `arvlCd`(도착 코드)를 BE에서 짧은 한국어 라벨로 매핑해 동봉.
+
+매핑:
+- 0(당역진입) → `"진입중"`
+- 1(당역도착) → `"도착"`
+- 2(출발) → `"출발"`
+- 3(전역출발) → `"전역 출발"`
+- 4(전역진입) → `"전역 진입"`
+- 5(전역도착) → `"전역 도착"`
+- 99(운행중) / 누락 / 알 수 없는 값 → `null`
+
+FE 동작:
+- `displayMsg ?? arrmsg1` 패턴으로 우선 사용 — null이면 기존 카운트다운 표시 유지
+- `getArrivalMin` subway 분기에서 `displayMsg != null`이면 0분으로 간주해 isUrgent 빨간색 강조 동작
+- BE 미배포 환경 호환을 위해 FE 타입은 `displayMsg?: string | null` (옵셔널). 양쪽 배포 완료 후 별도 커밋으로 옵셔널 제거 예정
+
+영향: 지하철 카드 폭 깨짐(긴 메시지로 호선 뱃지 잘림) 해소.
+
+---
+
 ## 2026-05-08 — 도착정보 노선 매칭 규약 명시 (FE 버그 수정)
 
 ### [CONTRACT] `GET /arrival-info?stopId=` 응답 items 순서 보장 안 함

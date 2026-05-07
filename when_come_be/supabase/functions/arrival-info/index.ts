@@ -61,6 +61,7 @@ export interface SubwayArrivalItem {
   arrmsg1: string
   arrmsg2: string
   updnLine: string
+  displayMsg: string | null
 }
 
 // ─── 서울 버스 도착정보 — getArrInfoByRoute (legacy) ────────────────────────
@@ -168,11 +169,24 @@ export function stripSubwayNameDecorations(stationName: string): string {
   return stationName.replace(/\([^)]*\)/g, "").trim().replace(/역$/, "").trim()
 }
 
+export function arvlCdToDisplayMsg(arvlCd: string): string | null {
+  const map: Record<string, string> = {
+    "0": "진입중",
+    "1": "도착",
+    "2": "출발",
+    "3": "전역 출발",
+    "4": "전역 진입",
+    "5": "전역 도착",
+  }
+  return map[arvlCd] ?? null
+}
+
 interface SeoulSubwayArrivalItem {
   subwayId: string
   trainLineNm: string
   arvlMsg2: string
   arvlMsg3: string
+  arvlCd: string
   updnLine: string
 }
 
@@ -199,6 +213,7 @@ async function fetchSubwayArrivalRaw(name: string): Promise<SubwayArrivalItem[]>
     arrmsg1: item.arvlMsg2,
     arrmsg2: item.arvlMsg3,
     updnLine: item.updnLine,
+    displayMsg: arvlCdToDisplayMsg(item.arvlCd ?? ""),
   }))
 }
 

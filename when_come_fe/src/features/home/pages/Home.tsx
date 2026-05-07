@@ -118,7 +118,8 @@ function getFastestArrivalText(stop: TransitStop, arrival: ArrivalData, elapsedS
   if (arrival.type === 'subway') {
     const item = arrival.items[0]
     if (!item) return '--'
-    return stripSuffix(applyCountdownToArrmsg(item.arrmsg1, elapsedSec))
+    const rawMsg = item.displayMsg ?? item.arrmsg1
+    return item.displayMsg ? rawMsg : stripSuffix(applyCountdownToArrmsg(rawMsg, elapsedSec))
   }
   if (arrival.type === 'bus_by_stopid') {
     const items = arrival.data.items
@@ -665,7 +666,8 @@ export default function Home() {
                                           <div className="space-y-1">
                                             {extraItems.map((item, extraIdx) => {
                                               const label = extraIdx === 0 ? '3번째' : `${extraIdx + 3}번째`;
-                                              const msg = applyCountdownToArrmsg(item.arrmsg1, elapsedSec);
+                                              const rawMsg = item.displayMsg ?? item.arrmsg1;
+                                              const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec);
                                               return (
                                                 <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between">
                                                   <div className="text-[11px] text-[#9CA3AF]">{label}</div>
@@ -777,7 +779,8 @@ export default function Home() {
                                       <div className="mt-2 ml-[52px] space-y-1">
                                         {extraItems.map((item, extraIdx) => {
                                           const label = extraIdx === 0 ? '3번째' : `${extraIdx + 3}번째`;
-                                          const msg = applyCountdownToArrmsg(item.arrmsg1, elapsedSec);
+                                          const rawMsg = item.displayMsg ?? item.arrmsg1;
+                                          const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec);
                                           return (
                                             <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between">
                                               <div className="text-[11px] text-[#9CA3AF]">{label}</div>

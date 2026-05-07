@@ -147,4 +147,6 @@ export interface ApiSubwayArrivalItem {
   arrmsg1: string
   arrmsg2: string
   updnLine: string
+  /** BE가 arvlCd를 짧은 한국어 라벨로 매핑한 값. null이면 기존 arrmsg1 사용 */
+  displayMsg?: string | null
 }
