@@ -8,6 +8,20 @@
 
 ---
 
+## 2026-05-08 — favorites-and-aliases spec OQ 5개 결정 반영
+
+`docs/specs/favorites-and-aliases/{PRD,SDD,TASKS}.md` + `docs/api/contracts/favorites.md` 업데이트. 구현은 spec 승인 후 진행.
+
+- **D1.** `GET /arrival-info?stopId=` lookup 통합 — `route_stops` ∪ `favorite_stops`. FE는 분기 모름.
+- **D2.** `routes.active boolean NOT NULL DEFAULT true` 컬럼 신설 + 기존 row backfill. `PATCH /routes/:id`에 `active` 토글 포함. GET 응답에 `active` 필드 추가 (옵셔널 → 마이그레이션 후 NOT NULL).
+- **D3.** 별명 컨텍스트별 분리 — `route_stops.alias`와 `favorite_stops.alias`는 별도. 동기화 없음.
+- **D4.** dnd 인프라 새로 도입 (`react-dnd-multi-backend`/`react-dnd-touch-backend` 후보). 기존 `react-dnd` + HTML5 단독은 모바일 미지원이라 사용 안 함. SetupRoute의 dnd 제거는 의도적이었음 — 백로그 #B3 무효 처리.
+- **D5.** 즐겨찾기 노선 0개 불허. POST/PATCH `/favorite-stops`에서 `routes: []`/누락 시 400 `FAVORITE_ROUTES_REQUIRED`. FE는 저장 버튼 disabled.
+
+영향: BE는 `routes` 마이그레이션 1개 추가 (active), FE는 `SavedRoute` 타입에 `active` 필드 + dnd 라이브러리 교체 + 즐겨찾기 저장 버튼 검증 추가.
+
+---
+
 ## 현재 API 스펙 요약 (2026-04-21 기준)
 
 ### GET /search-stops?q={query}
@@ -326,6 +340,46 @@ arsId로 정류장 노선 목록 조회.
 
 2026-05-06 — 지하철 도착 API 다단계 fallback 도입. FE는 stop.name 그대로 전달, BE가 OVERRIDES → strip → OVERRIDES 순서로 시도. 0건일 때 "도착 정보 없음" 표시 (FE 측 변경 별도).
 
+## 2026-05-08 — 지하철 도착 응답 `headsign` + `displayMsg` 확장
+
+### [ADD] `arrival-info` 지하철 응답 item에 `headsign: string | null` 추가 (additive, Breaking 없음)
+
+서울 지하철 API의 `trainLineNm`과 `arrmsg1`에서 행선지(이번 열차가 어디행인지)를 추출해 동봉.
+
+추출 우선순위:
+1. `trainLineNm`의 첫 번째 "X행" 패턴: `"온수행 - 역삼방면"` → `"온수행"`
+2. 실패 시 `arrmsg1` 괄호 안 텍스트: `"5분 후 (인천)"` → `"인천행"`
+3. 둘 다 실패 → `null` (anomaly_logs 기록, 응답엔 영향 없음)
+
+FE 사용 예시: `"온수행 곧 도착"` / `"인천행 5분 후"` 패턴으로 카카오지하철과 유사한 UX.
+
+### [EXTEND] `displayMsg` — arvlCd 99 fallback 패턴 추가
+
+기존 arvlCd 0~5 매핑 유지. arvlCd 99(또는 누락)인 경우 arrmsg1 패턴 매칭으로 보충:
+- `"[N]번째 전역 (...)"` → `"N개역 전"` (예: `"[2]번째 전역 (온수)"` → `"2개역 전"`)
+- `"N분..."`, `"N초..."` 등 시간 카운트다운 → `null` (FE 기존 카운트다운 유지)
+- 매칭 실패 → `null` (anomaly_logs 기록)
+
+FE 기존 동작 (`displayMsg ?? arrmsg1`) 그대로 유지. BE 미배포 환경에서도 FE는 정상 동작.
+
+업데이트된 응답 타입:
+```ts
+interface SubwayArrivalItem {
+  lineName: string
+  direction: string
+  arrmsg1: string
+  arrmsg2: string
+  updnLine: string
+  displayMsg: string | null  // 기존
+  headsign: string | null    // 신규 추가
+}
+```
+
+영향 파일: `when_come_be/supabase/functions/arrival-info/index.ts`
+FE 타입 업데이트 필요: `SubwayArrivalItem`에 `headsign?: string | null` 추가 (옵셔널로 받아 forward-compat).
+
+---
+
 ## 2026-05-08 — 지하철 도착 응답 `displayMsg` 필드 추가
 
 ### [ADD] `arrival-info` 지하철 응답 item에 `displayMsg: string | null`
@@ -347,6 +401,18 @@ FE 동작:
 - BE 미배포 환경 호환을 위해 FE 타입은 `displayMsg?: string | null` (옵셔널). 양쪽 배포 완료 후 별도 커밋으로 옵셔널 제거 예정
 
 영향: 지하철 카드 폭 깨짐(긴 메시지로 호선 뱃지 잘림) 해소.
+
+---
+
+## 2026-05-08 — favorites-and-aliases spec 작성 (구현 별도)
+
+FavoriteStops(단일 정류장 즐겨찾기) 도메인 + 정류장/역 별명(alias) + 경로/즐겨찾기 정렬을 위한 PRD/SDD/TASKS/계약서 작성. 구현은 사용자 승인 후 별도 Phase로 진행.
+
+- 신규 spec: `docs/specs/favorites-and-aliases/PRD.md`, `SDD.md`, `TASKS.md`
+- 신규 계약: `docs/api/contracts/favorites.md` (GET/POST/PATCH/DELETE `/favorite-stops`, PATCH `/routes/:id`, PATCH `/route-stops/:id`)
+- DB 변경 예정: 신규 `favorite_stops` + `favorite_stop_routes`, `route_stops.alias`, `routes.display_order` 추가
+- FE 영향: BottomNav "경로 등록" → "즐겨찾기" 라벨 변경, `/favorites` + `/favorites/add` 신규, `<StopName>` + `<AliasEditor>` 공용 컴포넌트, RouteManagement 두 섹션 분할 + 항목 메뉴 통합 + 경로 수정 진입, Home 칩 DnD 정렬, Favorites 길게 누름 정렬
+- 모든 신규 필드 옵셔널 (additive — Breaking 없음). 기존 사용자 데이터는 마이그레이션 시 `display_order` ROW_NUMBER 백필.
 
 ---
 

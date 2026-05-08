@@ -2,6 +2,8 @@ import { assertEquals } from "@std/assert"
 import { handler, applySubwayNameOverride, stripSubwayNameDecorations, arvlCdToDisplayMsg } from "../arrival-info/index.ts"
 import { withMockFetch, withEnv, jsonResponse, makeRequest, multiMockFetch, TEST_ENV } from "./helpers.ts"
 
+// extractHeadsign, normalizeArrmsg 단위 테스트는 arrival_normalize_test.ts에 있음
+
 const ENV = {
   SEOUL_BUS_API_KEY: TEST_ENV.SEOUL_BUS_API_KEY,
   SEOUL_SUBWAY_API_KEY: TEST_ENV.SEOUL_SUBWAY_API_KEY,
@@ -574,6 +576,117 @@ Deno.test("arrival-info subway — arvlCd 없는 item은 displayMsg null로 grac
       assertEquals(res.status, 200)
       const body = await res.json()
       assertEquals(body[0].displayMsg, null)
+    })
+  )
+})
+
+// ─── headsign 통합 테스트 ────────────────────────────────────────────────────
+
+Deno.test("arrival-info subway — trainLineNm '온수행 - 역삼방면' → headsign '온수행'", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [{
+          subwayId: "1002",
+          trainLineNm: "온수행 - 역삼방면",
+          arvlMsg2: "2분 40초 후",
+          arvlMsg3: "서초",
+          arvlCd: "99",
+          updnLine: "외선",
+        }],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=강남`))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      assertEquals(body[0].headsign, "온수행")
+    })
+  )
+})
+
+Deno.test("arrival-info subway — arvlCd '99' + '[2]번째 전역 (온수)' → displayMsg '2개역 전', headsign '온수행'", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [{
+          subwayId: "1002",
+          trainLineNm: null,
+          arvlMsg2: "[2]번째 전역 (온수)",
+          arvlMsg3: "",
+          arvlCd: "99",
+          updnLine: "외선",
+        }],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=강남`))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      assertEquals(body[0].displayMsg, "2개역 전")
+      assertEquals(body[0].headsign, "온수행")
+    })
+  )
+})
+
+Deno.test("arrival-info subway — arvlCd '99' + '5분 30초 후 (인천)' → displayMsg null, headsign '인천행'", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [{
+          subwayId: "1007",
+          trainLineNm: null,
+          arvlMsg2: "5분 30초 후 (인천)",
+          arvlMsg3: "",
+          arvlCd: "99",
+          updnLine: "하행",
+        }],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=강남`))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      assertEquals(body[0].displayMsg, null)
+      assertEquals(body[0].headsign, "인천행")
+    })
+  )
+})
+
+Deno.test("arrival-info subway — trainLineNm '광명행 - 급행' → headsign '광명행' (arrmsg '[1]번째 전역 (인천)' 무시)", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [{
+          subwayId: "1001",
+          trainLineNm: "광명행 - 급행",
+          arvlMsg2: "[1]번째 전역 (인천)",
+          arvlMsg3: "",
+          arvlCd: "99",
+          updnLine: "하행",
+        }],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=구로`))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      assertEquals(body[0].headsign, "광명행")
+      assertEquals(body[0].displayMsg, "1개역 전")
+    })
+  )
+})
+
+Deno.test("arrival-info subway — arvlCd '0' → displayMsg '진입중', headsign trainLineNm에서 추출", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [{
+          subwayId: "1002",
+          trainLineNm: "성수행 - 역삼방면",
+          arvlMsg2: "도착",
+          arvlMsg3: "",
+          arvlCd: "0",
+          updnLine: "외선",
+        }],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=강남`))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      assertEquals(body[0].displayMsg, "진입중")
+      assertEquals(body[0].headsign, "성수행")
     })
   )
 })

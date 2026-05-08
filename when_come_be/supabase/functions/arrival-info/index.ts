@@ -11,6 +11,7 @@ import {
   BusArrivalItem,
   isSeoulBusResponse,
 } from "../_shared/arrivalProvider.ts"
+import { logAnomaly } from "../_shared/anomaly.ts"
 
 function busApiKey(): string {
   const key = Deno.env.get("SEOUL_BUS_API_KEY")
@@ -63,6 +64,99 @@ export interface SubwayArrivalItem {
   arrmsg2: string
   updnLine: string
   displayMsg: string | null
+  headsign: string | null
+}
+
+// ─── 지하철 행선지(headsign) 추출 ────────────────────────────────────────────
+
+/**
+ * trainLineNm, arrmsg1에서 행선지를 추출한다. best-effort — 실패하면 null.
+ *
+ * 우선순위:
+ * 1. trainLineNm의 첫 번째 "X행" 패턴: /^([^\s-]+행)/ → "온수행", "광명행"
+ * 2. arrmsg1의 괄호 안 텍스트: /\(([^)]+)\)/ → "온수" → "온수행"으로 가공
+ * 3. 둘 다 실패 → null + anomaly_logs 기록
+ */
+export function extractHeadsign(
+  trainLineNm: string | null | undefined,
+  arrmsg1: string,
+  context?: { lineName?: string },
+): string | null {
+  // 1차: trainLineNm에서 "X행" 추출
+  if (trainLineNm) {
+    const m = trainLineNm.match(/^([^\s-]+행)/)
+    if (m) return m[1]
+  }
+
+  // 2차: arrmsg1 괄호 안 텍스트 → "X행"으로 가공
+  const m2 = arrmsg1.match(/\(([^)]+)\)/)
+  if (m2 && m2[1]) {
+    const candidate = m2[1].trim()
+    if (candidate.length > 0) {
+      // 이미 "행"으로 끝나면 그대로, 아니면 "행" 접미사 추가
+      return candidate.endsWith("행") ? candidate : `${candidate}행`
+    }
+  }
+
+  // 둘 다 실패 — anomaly_logs 기록 (fire-and-forget)
+  logAnomaly({
+    source: "arrival-info",
+    category: "pattern.unparseable_subway_headsign",
+    detail: {
+      trainLineNm: trainLineNm ?? null,
+      arrmsg1,
+      lineName: context?.lineName ?? null,
+    },
+  })
+  return null
+}
+
+/** arrmsg 정규화 결과 */
+export interface NormalizeArrmsgResult {
+  displayMsg: string | null
+  /** arrmsg에서 괄호 부분을 제거한 순수 텍스트 */
+  stripped: string
+}
+
+/**
+ * arvlCd가 99이거나 코드 매핑 실패 시 arrmsg1 패턴으로 displayMsg를 보충한다.
+ *
+ * 매칭 패턴:
+ * - "[N]번째 전역" → displayMsg = "N개역 전"
+ * - "N분..." / "N초 후" → displayMsg = null (카운트다운 — FE 그대로)
+ * - 매칭 실패 → displayMsg = null + anomaly_logs 기록
+ */
+export function normalizeArrmsg(
+  arrmsg: string,
+  context?: { arvlCd?: string; lineName?: string; trainLineNm?: string | null },
+): NormalizeArrmsgResult {
+  // 괄호 부분 제거한 stripped 먼저 계산
+  const stripped = arrmsg.replace(/\([^)]*\)/g, "").trim()
+
+  // "[N]번째 전역" 패턴
+  const mPrev = arrmsg.match(/^\[(\d+)\]번째 전역/)
+  if (mPrev) {
+    return { displayMsg: `${mPrev[1]}개역 전`, stripped }
+  }
+
+  // "N분..." or "N초 후" 등 시간 카운트다운 패턴
+  const mTime = arrmsg.match(/^(\d+)[분초]/)
+  if (mTime) {
+    return { displayMsg: null, stripped }
+  }
+
+  // 매칭 실패 — anomaly_logs 기록 (fire-and-forget)
+  logAnomaly({
+    source: "arrival-info",
+    category: "pattern.unparseable_subway_arrmsg",
+    detail: {
+      arrmsg1: arrmsg,
+      arvlCd: context?.arvlCd ?? null,
+      lineName: context?.lineName ?? null,
+      trainLineNm: context?.trainLineNm ?? null,
+    },
+  })
+  return { displayMsg: null, stripped }
 }
 
 // ─── 서울 버스 도착정보 — getArrInfoByRoute (legacy) ────────────────────────
@@ -208,14 +302,31 @@ async function fetchSubwayArrivalRaw(name: string): Promise<SubwayArrivalItem[]>
   )
   const data: SeoulSubwayApiResponse = await res.json()
   const list = data?.realtimeArrivalList ?? []
-  return list.map((item) => ({
-    lineName: item.subwayId,
-    direction: item.trainLineNm,
-    arrmsg1: item.arvlMsg2,
-    arrmsg2: item.arvlMsg3,
-    updnLine: item.updnLine,
-    displayMsg: arvlCdToDisplayMsg(item.arvlCd ?? ""),
-  }))
+  return list.map((item) => {
+    // displayMsg: arvlCd 0~5 기존 매핑 우선. 실패 시 arrmsg1 패턴으로 보충.
+    const baseDisplayMsg = arvlCdToDisplayMsg(item.arvlCd ?? "")
+    const arrmsg1 = item.arvlMsg2
+    const displayMsg = baseDisplayMsg !== null
+      ? baseDisplayMsg
+      : normalizeArrmsg(arrmsg1, {
+        arvlCd: item.arvlCd,
+        lineName: item.subwayId,
+        trainLineNm: item.trainLineNm,
+      }).displayMsg
+
+    // headsign: trainLineNm 우선 → arrmsg1 괄호 fallback
+    const headsign = extractHeadsign(item.trainLineNm, arrmsg1, { lineName: item.subwayId })
+
+    return {
+      lineName: item.subwayId,
+      direction: item.trainLineNm,
+      arrmsg1,
+      arrmsg2: item.arvlMsg3,
+      updnLine: item.updnLine,
+      displayMsg,
+      headsign,
+    }
+  })
 }
 
 async function getSubwayArrival(stationName: string): Promise<SubwayArrivalItem[]> {
