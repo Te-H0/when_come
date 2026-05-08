@@ -145,6 +145,10 @@ export interface OdsayPath {
  * ODsay searchStation: stationClass 미지정 시 버스만 반환하는 실제 동작 quirk가 있음.
  * 이름 검색(isNameSearch=true)일 때는 버스(1) + 지하철(2) 두 번 병렬 호출 후 merge.
  * ARS 번호 검색은 버스 정류장 대상이므로 단일 호출 유지.
+ *
+ * 지하철 quirk: ODsay에 대부분 역명은 "역" 없이 등록됨 ("개봉", "강남" 등).
+ * "개봉역"처럼 "역"으로 끝나는 query는 "역" 제거 변형도 함께 시도 후 stationID dedupe.
+ * 버스 정류장은 "역", "사거리" 등 다양해서 임의 제거 위험 → 변경 없음.
  */
 export async function searchStation(
   query: string,
@@ -157,18 +161,47 @@ export async function searchStation(
     return hasStation(result) ? result.station : []
   }
 
-  // 버스(stationClass=1) + 지하철(stationClass=2) 병렬 호출
-  const [busResult, subwayResult] = await Promise.all([
-    odsayFetch(
-      `/searchStation?lang=0&stationName=${encodeURIComponent(query)}&stationClass=1&apiKey=${apiKey()}`,
-    ),
+  // "역" 접미사 제거 변형 계산 (query가 "역"만인 경우는 제거 안 함)
+  const subwayQueryAlt = query.endsWith("역") && query.length > 1
+    ? query.slice(0, -1)
+    : null
+
+  // 버스(stationClass=1) 호출 + 지하철(stationClass=2) 호출 (원본 + 변형 병렬)
+  const subwayFetches: Promise<unknown>[] = [
     odsayFetch(
       `/searchStation?lang=0&stationName=${encodeURIComponent(query)}&stationClass=2&apiKey=${apiKey()}`,
     ),
+  ]
+  if (subwayQueryAlt !== null) {
+    subwayFetches.push(
+      odsayFetch(
+        `/searchStation?lang=0&stationName=${encodeURIComponent(subwayQueryAlt)}&stationClass=2&apiKey=${apiKey()}`,
+      ),
+    )
+  }
+
+  const [busResult, ...subwayResults] = await Promise.all([
+    odsayFetch(
+      `/searchStation?lang=0&stationName=${encodeURIComponent(query)}&stationClass=1&apiKey=${apiKey()}`,
+    ),
+    ...subwayFetches,
   ])
 
   const busStations = hasStation(busResult) ? busResult.station : []
-  const subwayStations = hasStation(subwayResult) ? subwayResult.station : []
+
+  // 지하철 결과 merge + stationID 기준 dedupe
+  const seenIds = new Set<number>()
+  const subwayStations: OdsayStation[] = []
+  for (const result of subwayResults) {
+    if (!hasStation(result)) continue
+    for (const station of result.station) {
+      if (!seenIds.has(station.stationID)) {
+        seenIds.add(station.stationID)
+        subwayStations.push(station)
+      }
+    }
+  }
+
   return [...busStations, ...subwayStations]
 }
 

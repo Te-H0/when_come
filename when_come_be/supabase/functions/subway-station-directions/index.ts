@@ -1,4 +1,5 @@
 import { corsHeaders } from "../_shared/cors.ts"
+import { authGuard } from "../_shared/auth.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
 import {
@@ -31,8 +32,10 @@ function wayCodeToUpdn(wayCode: number): "up" | "down" {
 // ODsay subwayStationInfo 응답은 두 가지 포맷이 확인됨:
 //
 // 포맷 A (wayList 배열): station.wayList[{ wayCode, prevOBJ, nextOBJ }]
-//   - wayCode=1(상행/내선): nextOBJ = 상행 방향 다음 역, prevOBJ = 하행 방향 다음 역
-//   - wayCode=2(하행/외선): nextOBJ = 하행 방향 다음 역, prevOBJ = 상행 방향 다음 역
+//   - wayCode=1(상행/내선): nextOBJ = 해당 방향 다음 역
+//   - wayCode=2(하행/외선): nextOBJ = 해당 방향 다음 역
+//   - nextOBJ 없고 prevOBJ만 있는 경우(종점/일부 역): prevOBJ를 해당 way 방향 역으로 fallback
+//   - wayList 파싱 후 0건이면 포맷 B로 추가 fallback
 //
 // 포맷 B (단일 prevOBJ/nextOBJ): station.prevOBJ, station.nextOBJ
 //   - wayCode 정보 없으므로 up/down 추정 불가 — up/down 순서로 2건 반환
@@ -42,15 +45,17 @@ function extractDirections(station: OdsaySubwayStationInfo): DirectionItem[] {
   // 포맷 A: wayList 있는 경우
   if (Array.isArray(station.wayList) && station.wayList.length > 0) {
     for (const way of station.wayList) {
-      // nextOBJ가 해당 방향으로 진행 시 다음 역
+      const updn = wayCodeToUpdn(way.wayCode)
       if (way.nextOBJ?.stationName) {
-        directions.push({
-          updn: wayCodeToUpdn(way.wayCode),
-          nextStop: way.nextOBJ.stationName,
-        })
+        // 정상: nextOBJ가 해당 방향으로 진행 시 다음 역
+        directions.push({ updn, nextStop: way.nextOBJ.stationName })
+      } else if (way.prevOBJ?.stationName) {
+        // fallback: nextOBJ 없고 prevOBJ만 있는 경우 (종점 인접역 등)
+        directions.push({ updn, nextStop: way.prevOBJ.stationName })
       }
     }
-    return directions
+    // wayList가 있어도 방향을 하나도 추출 못한 경우 → 포맷 B로 추가 시도
+    if (directions.length > 0) return directions
   }
 
   // 포맷 B: 단일 prevOBJ/nextOBJ
@@ -73,6 +78,8 @@ export async function handler(req: Request): Promise<Response> {
 
   try {
     if (req.method !== "GET") throw new AppError("GET 요청만 허용됩니다", 405)
+
+    await authGuard(req)
 
     const { searchParams } = new URL(req.url)
     const stationId = searchParams.get("stationId")?.trim()

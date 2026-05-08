@@ -1,10 +1,25 @@
 import { assertEquals } from "@std/assert"
 import { handler } from "../subway-station-directions/index.ts"
-import { withMockFetch, withEnv, jsonResponse, makeRequest, multiMockFetch, TEST_ENV } from "./helpers.ts"
+import {
+  withMockFetch,
+  withEnv,
+  jsonResponse,
+  makeRequest,
+  multiMockFetch,
+  mockSupabaseAuthSuccess,
+  mockSupabaseAuthFailure,
+  supabaseTest,
+  TEST_ENV,
+} from "./helpers.ts"
 
-const ENV = { ODSAY_API_KEY: TEST_ENV.ODSAY_API_KEY }
+const ENV = {
+  ODSAY_API_KEY: TEST_ENV.ODSAY_API_KEY,
+  SUPABASE_URL: TEST_ENV.SUPABASE_URL,
+  SUPABASE_ANON_KEY: TEST_ENV.SUPABASE_ANON_KEY,
+}
 
 const BASE = "https://test.supabase.co/functions/v1/subway-station-directions"
+const AUTH_HEADER = { authorization: "Bearer valid-jwt-token" }
 
 // ─── ODsay subwayStationInfo 목 응답 헬퍼 ────────────────────────────────
 
@@ -50,6 +65,60 @@ const MOCK_STATION_SINGLE_DIRECTION = {
   nextOBJ: { stationID: 132, stationName: "남영" },
 }
 
+// laneName 없는 역 (일부 ODsay 응답에서 laneName 누락)
+const MOCK_STATION_NO_LANENAME = {
+  stationID: 999,
+  stationName: "테스트역",
+  laneCity: "수도권",
+  subwayCode: 1,
+  wayList: [
+    {
+      wayCode: 1,
+      wayName: "소요산",
+      prevOBJ: { stationID: 1000, stationName: "다음역A" },
+      nextOBJ: { stationID: 998, stationName: "다음역B" },
+    },
+  ],
+}
+
+// wayList가 있지만 nextOBJ 없고 prevOBJ만 있는 경우 (개봉역 등 일부 광역 노선)
+const MOCK_STATION_WAYLIST_NO_NEXTOBJ = {
+  stationID: 140,
+  stationName: "개봉",
+  laneName: "수도권 1호선",
+  laneCity: "수도권",
+  subwayCode: 1,
+  wayList: [
+    {
+      wayCode: 1,
+      wayName: "소요산",
+      prevOBJ: { stationID: 141, stationName: "오류동" },
+      // nextOBJ 없음
+    },
+    {
+      wayCode: 2,
+      wayName: "신창",
+      prevOBJ: { stationID: 139, stationName: "온수" },
+      // nextOBJ 없음
+    },
+  ],
+}
+
+// wayList는 있지만 prevOBJ/nextOBJ 모두 없는 경우 → 포맷 B fallback
+const MOCK_STATION_WAYLIST_EMPTY_OBJS = {
+  stationID: 141,
+  stationName: "오류동",
+  laneName: "수도권 1호선",
+  laneCity: "수도권",
+  subwayCode: 1,
+  wayList: [
+    { wayCode: 1, wayName: "소요산" },
+    { wayCode: 2, wayName: "신창" },
+  ],
+  prevOBJ: { stationID: 142, stationName: "개봉" },
+  nextOBJ: { stationID: 140, stationName: "구일" },
+}
+
 // ─── CORS ────────────────────────────────────────────────────
 
 Deno.test("subway-station-directions — OPTIONS는 200을 반환한다", async () => {
@@ -67,110 +136,249 @@ Deno.test("subway-station-directions — POST는 405를 반환한다", async () 
   assertEquals(res.status, 405)
 })
 
-// ─── 파라미터 검증 ────────────────────────────────────────────────
+// ─── 인증 검증 ────────────────────────────────────────────────
 
-Deno.test("subway-station-directions — stationId 없으면 400을 반환한다", async () => {
-  const req = makeRequest("GET", BASE)
-  const res = await handler(req)
-  assertEquals(res.status, 400)
-  const body = await res.json()
-  assertEquals(body.error, "stationId 파라미터가 필요합니다")
+supabaseTest("subway-station-directions — Authorization 헤더 없으면 401을 반환한다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () => mockSupabaseAuthFailure(), async () => {
+      const req = makeRequest("GET", `${BASE}?stationId=133`)
+      const res = await handler(req)
+      assertEquals(res.status, 401)
+    })
+  )
 })
 
-Deno.test("subway-station-directions — stationId 공백이면 400을 반환한다", async () => {
-  const req = makeRequest("GET", `${BASE}?stationId=   `)
-  const res = await handler(req)
-  assertEquals(res.status, 400)
+supabaseTest("subway-station-directions — 유효하지 않은 JWT는 401을 반환한다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () => mockSupabaseAuthFailure(), async () => {
+      const req = makeRequest("GET", `${BASE}?stationId=133`, {
+        headers: { authorization: "Bearer invalid-token" },
+      })
+      const res = await handler(req)
+      assertEquals(res.status, 401)
+    })
+  )
+})
+
+// ─── 파라미터 검증 ────────────────────────────────────────────────
+
+supabaseTest("subway-station-directions — stationId 없으면 400을 반환한다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () => mockSupabaseAuthSuccess(), async () => {
+      const req = makeRequest("GET", BASE, { headers: AUTH_HEADER })
+      const res = await handler(req)
+      assertEquals(res.status, 400)
+      const body = await res.json()
+      assertEquals(body.error, "stationId 파라미터가 필요합니다")
+    })
+  )
+})
+
+supabaseTest("subway-station-directions — stationId 공백이면 400을 반환한다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () => mockSupabaseAuthSuccess(), async () => {
+      const req = makeRequest("GET", `${BASE}?stationId=   `, { headers: AUTH_HEADER })
+      const res = await handler(req)
+      assertEquals(res.status, 400)
+    })
+  )
 })
 
 // ─── 정상 동작 ────────────────────────────────────────────────
 
-Deno.test("subway-station-directions — wayList 포맷: 양방향 directions를 반환한다", async () => {
+supabaseTest("subway-station-directions — wayList 포맷: 양방향 directions를 반환한다", async () => {
   await withEnv(ENV, () =>
-    withMockFetch(async () => odsaySubwayStationInfoResponse(MOCK_STATION_BIDIRECTIONAL), async () => {
-      const req = makeRequest("GET", `${BASE}?stationId=133`)
-      const res = await handler(req)
-      assertEquals(res.status, 200)
-      const body = await res.json()
-      assertEquals(body.stationName, "서울역")
-      assertEquals(body.lineName, "수도권 1호선")
-      assertEquals(body.subwayCode, "1001")
-      assertEquals(body.directions.length, 2)
-      // 상행(wayCode=1) → updn=up
-      const upDir = body.directions.find((d: { updn: string }) => d.updn === "up")
-      assertEquals(upDir?.nextStop, "남영")
-      // 하행(wayCode=2) → updn=down
-      const downDir = body.directions.find((d: { updn: string }) => d.updn === "down")
-      assertEquals(downDir?.nextStop, "시청")
-    })
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+        { match: "subwayStationInfo", response: () => odsaySubwayStationInfoResponse(MOCK_STATION_BIDIRECTIONAL) },
+      ]),
+      async () => {
+        const req = makeRequest("GET", `${BASE}?stationId=133`, { headers: AUTH_HEADER })
+        const res = await handler(req)
+        assertEquals(res.status, 200)
+        const body = await res.json()
+        assertEquals(body.stationName, "서울역")
+        assertEquals(body.lineName, "수도권 1호선")
+        assertEquals(body.subwayCode, "1001")
+        assertEquals(body.directions.length, 2)
+        // 상행(wayCode=1) → updn=up
+        const upDir = body.directions.find((d: { updn: string }) => d.updn === "up")
+        assertEquals(upDir?.nextStop, "남영")
+        // 하행(wayCode=2) → updn=down
+        const downDir = body.directions.find((d: { updn: string }) => d.updn === "down")
+        assertEquals(downDir?.nextStop, "시청")
+      },
+    )
   )
 })
 
-Deno.test("subway-station-directions — prevOBJ/nextOBJ 단일 포맷: 방향 2건 반환", async () => {
+supabaseTest("subway-station-directions — prevOBJ/nextOBJ 단일 포맷: 방향 2건 반환", async () => {
   await withEnv(ENV, () =>
-    withMockFetch(async () => odsaySubwayStationInfoResponse(MOCK_STATION_SINGLE_DIRECTION), async () => {
-      const req = makeRequest("GET", `${BASE}?stationId=133`)
-      const res = await handler(req)
-      assertEquals(res.status, 200)
-      const body = await res.json()
-      assertEquals(body.directions.length, 2)
-    })
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+        { match: "subwayStationInfo", response: () => odsaySubwayStationInfoResponse(MOCK_STATION_SINGLE_DIRECTION) },
+      ]),
+      async () => {
+        const req = makeRequest("GET", `${BASE}?stationId=133`, { headers: AUTH_HEADER })
+        const res = await handler(req)
+        assertEquals(res.status, 200)
+        const body = await res.json()
+        assertEquals(body.directions.length, 2)
+      },
+    )
   )
 })
 
-Deno.test("subway-station-directions — 기본 응답 스키마 필드가 모두 존재한다", async () => {
+supabaseTest("subway-station-directions — 기본 응답 스키마 필드가 모두 존재한다", async () => {
   await withEnv(ENV, () =>
-    withMockFetch(async () => odsaySubwayStationInfoResponse(MOCK_STATION_BIDIRECTIONAL), async () => {
-      const req = makeRequest("GET", `${BASE}?stationId=133`)
-      const res = await handler(req)
-      const body = await res.json()
-      // 스키마 필드 존재 검사
-      assertEquals(typeof body.stationName, "string")
-      assertEquals(typeof body.lineName, "string")
-      assertEquals(typeof body.subwayCode, "string")  // "1001" 형식
-      assertEquals(Array.isArray(body.directions), true)
-      for (const d of body.directions) {
-        assertEquals(typeof d.updn, "string")
-        assertEquals(typeof d.nextStop, "string")
-      }
-    })
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+        { match: "subwayStationInfo", response: () => odsaySubwayStationInfoResponse(MOCK_STATION_BIDIRECTIONAL) },
+      ]),
+      async () => {
+        const req = makeRequest("GET", `${BASE}?stationId=133`, { headers: AUTH_HEADER })
+        const res = await handler(req)
+        const body = await res.json()
+        // 스키마 필드 존재 검사
+        assertEquals(typeof body.stationName, "string")
+        // lineName은 string | null
+        assertEquals(typeof body.lineName === "string" || body.lineName === null, true)
+        // subwayCode는 string | null
+        assertEquals(typeof body.subwayCode === "string" || body.subwayCode === null, true)
+        assertEquals(Array.isArray(body.directions), true)
+        for (const d of body.directions) {
+          assertEquals(typeof d.updn, "string")
+          assertEquals(typeof d.nextStop, "string")
+        }
+      },
+    )
+  )
+})
+
+// ─── lineName null 케이스 (ODsay laneName 누락) ──────────────────────────────
+
+supabaseTest("subway-station-directions — laneName 없는 역은 lineName: null을 반환한다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+        { match: "subwayStationInfo", response: () => odsaySubwayStationInfoResponse(MOCK_STATION_NO_LANENAME) },
+      ]),
+      async () => {
+        const req = makeRequest("GET", `${BASE}?stationId=999`, { headers: AUTH_HEADER })
+        const res = await handler(req)
+        assertEquals(res.status, 200)
+        const body = await res.json()
+        assertEquals(body.lineName, null)
+      },
+    )
   )
 })
 
 // ─── 404 케이스 ────────────────────────────────────────────────
 
-Deno.test("subway-station-directions — ODsay 결과 없음은 404를 반환한다", async () => {
+supabaseTest("subway-station-directions — ODsay 결과 없음은 404를 반환한다", async () => {
   await withEnv(ENV, () =>
-    withMockFetch(async () => odsaySubwayStationInfoEmpty(), async () => {
-      const req = makeRequest("GET", `${BASE}?stationId=999999`)
-      const res = await handler(req)
-      assertEquals(res.status, 404)
-      const body = await res.json()
-      assertEquals(body.error, "역 정보를 찾을 수 없습니다")
-    })
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+        { match: "subwayStationInfo", response: () => odsaySubwayStationInfoEmpty() },
+      ]),
+      async () => {
+        const req = makeRequest("GET", `${BASE}?stationId=999999`, { headers: AUTH_HEADER })
+        const res = await handler(req)
+        assertEquals(res.status, 404)
+        const body = await res.json()
+        assertEquals(body.error, "역 정보를 찾을 수 없습니다")
+      },
+    )
   )
 })
 
 // ─── 502 케이스 ────────────────────────────────────────────────
 
-Deno.test("subway-station-directions — ODsay HTTP 오류는 502를 반환한다", async () => {
+supabaseTest("subway-station-directions — ODsay HTTP 오류는 502를 반환한다", async () => {
   await withEnv(ENV, () =>
-    withMockFetch(async () => new Response("", { status: 500 }), async () => {
-      const req = makeRequest("GET", `${BASE}?stationId=133`)
-      const res = await handler(req)
-      assertEquals(res.status, 502)
-    })
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+        { match: "subwayStationInfo", response: () => new Response("", { status: 500 }) },
+      ]),
+      async () => {
+        const req = makeRequest("GET", `${BASE}?stationId=133`, { headers: AUTH_HEADER })
+        const res = await handler(req)
+        assertEquals(res.status, 502)
+      },
+    )
+  )
+})
+
+// ─── wayList prevOBJ fallback (이슈 3: 개봉역 등 광역 노선) ─────────────────
+
+supabaseTest("subway-station-directions — wayList에 nextOBJ 없고 prevOBJ만 있으면 prevOBJ로 방향 추출한다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+        { match: "subwayStationInfo", response: () => odsaySubwayStationInfoResponse(MOCK_STATION_WAYLIST_NO_NEXTOBJ) },
+      ]),
+      async () => {
+        const req = makeRequest("GET", `${BASE}?stationId=140`, { headers: AUTH_HEADER })
+        const res = await handler(req)
+        assertEquals(res.status, 200)
+        const body = await res.json()
+        assertEquals(body.stationName, "개봉")
+        // wayList 2건 모두 prevOBJ로 추출되어야 함
+        assertEquals(body.directions.length, 2)
+        const upDir = body.directions.find((d: { updn: string }) => d.updn === "up")
+        assertEquals(upDir?.nextStop, "오류동")
+        const downDir = body.directions.find((d: { updn: string }) => d.updn === "down")
+        assertEquals(downDir?.nextStop, "온수")
+      },
+    )
+  )
+})
+
+supabaseTest("subway-station-directions — wayList에 OBJ 정보 없으면 최상위 prevOBJ/nextOBJ로 fallback한다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+        { match: "subwayStationInfo", response: () => odsaySubwayStationInfoResponse(MOCK_STATION_WAYLIST_EMPTY_OBJS) },
+      ]),
+      async () => {
+        const req = makeRequest("GET", `${BASE}?stationId=141`, { headers: AUTH_HEADER })
+        const res = await handler(req)
+        assertEquals(res.status, 200)
+        const body = await res.json()
+        // wayList에서 추출 불가 → 최상위 prevOBJ/nextOBJ로 2건 반환
+        assertEquals(body.directions.length, 2)
+        const upDir = body.directions.find((d: { updn: string }) => d.updn === "up")
+        assertEquals(upDir?.nextStop, "개봉")
+        const downDir = body.directions.find((d: { updn: string }) => d.updn === "down")
+        assertEquals(downDir?.nextStop, "구일")
+      },
+    )
   )
 })
 
 // ─── CORS 헤더 ────────────────────────────────────────────────
 
-Deno.test("subway-station-directions — CORS 헤더가 성공 응답에도 포함된다", async () => {
+supabaseTest("subway-station-directions — CORS 헤더가 성공 응답에도 포함된다", async () => {
   await withEnv(ENV, () =>
-    withMockFetch(async () => odsaySubwayStationInfoResponse(MOCK_STATION_BIDIRECTIONAL), async () => {
-      const req = makeRequest("GET", `${BASE}?stationId=133`)
-      const res = await handler(req)
-      assertEquals(res.headers.get("Access-Control-Allow-Origin"), "*")
-    })
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+        { match: "subwayStationInfo", response: () => odsaySubwayStationInfoResponse(MOCK_STATION_BIDIRECTIONAL) },
+      ]),
+      async () => {
+        const req = makeRequest("GET", `${BASE}?stationId=133`, { headers: AUTH_HEADER })
+        const res = await handler(req)
+        assertEquals(res.headers.get("Access-Control-Allow-Origin"), "*")
+      },
+    )
   )
 })
