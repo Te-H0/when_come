@@ -89,7 +89,9 @@ export function parseArrivalMin(arrmsg: string): number | null {
 }
 
 // arrmsg에 경과 시간을 반영해 카운트다운 ("5분26초후[2번째 전]" → "4분55초후[2번째 전]")
-export function applyCountdownToArrmsg(arrmsg: string, elapsedSec: number): string {
+// mode === 'bus': 초 단위 제거 (가짜 정밀도 방지), 1분 미만 → "곧 도착"
+// mode === 'subway': 기존 동작 유지 (초 표시)
+export function applyCountdownToArrmsg(arrmsg: string, elapsedSec: number, mode: 'bus' | 'subway' = 'subway'): string {
   const minMatch = arrmsg.match(/(\d+)분/)
   const secMatch = arrmsg.match(/(\d+)초/)
   if (!minMatch && !secMatch) return arrmsg
@@ -100,6 +102,12 @@ export function applyCountdownToArrmsg(arrmsg: string, elapsedSec: number): stri
 
   if (remainSec < 60) return `곧 도착${suffix ? ' ' + suffix : ''}`
   const mins = Math.floor(remainSec / 60)
+
+  if (mode === 'bus') {
+    // 버스는 분 단위만 표시 — 초 단위 제거
+    return `${mins}분 후${suffix}`
+  }
+
   const secs = Math.floor(remainSec % 60)
   const timeStr = secs > 0 ? `${mins}분${secs}초후` : `${mins}분후`
   return `${timeStr}${suffix}`

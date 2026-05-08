@@ -149,4 +149,6 @@ export interface ApiSubwayArrivalItem {
   updnLine: string
   /** BE가 arvlCd를 짧은 한국어 라벨로 매핑한 값. null이면 기존 arrmsg1 사용 */
   displayMsg?: string | null
+  /** BE가 응답에 동봉하는 행선지 (예: "온수", "인천공항2터미널"). null이면 fallback */
+  headsign?: string | null
 }

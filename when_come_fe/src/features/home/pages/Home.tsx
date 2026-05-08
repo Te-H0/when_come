@@ -4,7 +4,7 @@ import { useQuery, useQueries } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   MapPin, Settings, RefreshCw, Navigation,
-  ChevronDown, ChevronUp, Clock, Loader2,
+  ChevronDown, ChevronUp, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -136,7 +136,7 @@ function getFastestArrivalText(stop: TransitStop, arrival: ArrivalData, elapsedS
       if (t !== null && t < minSec) { minSec = t; minMsg = item.arrmsg1 }
       else if (minMsg === '--' && item.arrmsg1) minMsg = item.arrmsg1
     }
-    return stripSuffix(applyCountdownToArrmsg(minMsg, elapsedSec))
+    return stripSuffix(applyCountdownToArrmsg(minMsg, elapsedSec, 'bus'))
   }
   if (arrival.type === 'odsay') {
     const item = arrival.items[0]
@@ -547,16 +547,17 @@ export default function Home() {
                                 const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null;
                                 const subwayColorInfo = isSubway ? getSubwayColor(line) : null;
 
+                                const transitMode = isSubway ? 'subway' : 'bus';
                                 const rawMsg1 = getArrivalDisplay(seg.stop, line, segArrivalData);
                                 const rawMsg2 = getArrivalDisplay2(seg.stop, line, segArrivalData);
-                                const arrivalText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec) : '--';
-                                const arrivalText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec) : null;
+                                const arrivalText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec, transitMode) : '--';
+                                const arrivalText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec, transitMode) : null;
                                 const baseMin = getArrivalMin(seg.stop, line, segArrivalData);
                                 const remainSec = baseMin !== null ? Math.max(0, baseMin * 60 - elapsedSec) : null;
                                 const isUrgent = remainSec !== null && remainSec < 180;
                                 const noService = segArrivalData !== null && arrivalText === '--';
 
-                                // T22: 지하철 방향 배지
+                                // T22: 지하철 방향 배지 (기존 방향 배지용)
                                 const headsign = isSubway ? (seg.stop.directionHeadsign ?? null) : null;
                                 // T23: 방향 정보 없음 안내
                                 const showNoDirection = isSubway
@@ -568,6 +569,14 @@ export default function Home() {
                                   ? getMatchedSubwayItems(seg.stop, line, segArrivalData)
                                   : [];
                                 const hasMoreItems = isSubway && matchedSubwayItems.length > 2;
+
+                                // 카카오 스타일 행선지 prefix — 매칭 item별 headsign
+                                const item1Headsign = isSubway && matchedSubwayItems[0]?.headsign
+                                  ? matchedSubwayItems[0].headsign
+                                  : null;
+                                const item2Headsign = isSubway && matchedSubwayItems[1]?.headsign
+                                  ? matchedSubwayItems[1].headsign
+                                  : null;
                                 const lineKey = `${seg.id}-${line}`;
                                 const isLineExpanded = expandedLines[lineKey] ?? false;
 
@@ -629,23 +638,39 @@ export default function Home() {
                                         </div>
                                       </div>
 
-                                      {/* 아래 행: 도착 정보 */}
-                                      <div className="mt-2 space-y-1">
-                                        <div className="flex items-center gap-1.5" aria-label="이번 차">
-                                          <span className={`text-[13px] font-bold tabular-nums whitespace-nowrap ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
-                                            {isArrivalLoading ? '조회 중' : noService ? '도착 정보 없음' : arrivalTimeOnly}
-                                          </span>
-                                          {stopsBefore && (
-                                            <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
-                                          )}
-                                        </div>
-                                        {arrivalText2 && (
-                                          <div className="flex items-center gap-1.5" aria-label="다음 차">
-                                            <span className="text-[12px] text-[#9CA3AF] tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
-                                            {stopsBefore2 && (
-                                              <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore2}</span>
+                                      {/* 아래 행: 도착 정보 — 카카오 스타일 (지하철: 행선지 prefix) */}
+                                      <div className="mt-2 space-y-1.5">
+                                        {isArrivalLoading ? (
+                                          <div className="text-[12px] text-[#9CA3AF]">조회 중...</div>
+                                        ) : noService ? (
+                                          <div className="text-[12px] text-[#9CA3AF]">도착 정보 없음</div>
+                                        ) : (
+                                          <>
+                                            {/* 첫 번째 차 — isUrgent 빨강 */}
+                                            <div className="flex items-center gap-1.5" aria-label="이번 차">
+                                              {item1Headsign && (
+                                                <span className="text-[11px] text-[#6B7280] whitespace-nowrap font-medium">{item1Headsign}행</span>
+                                              )}
+                                              <span className={`text-[13px] font-bold tabular-nums whitespace-nowrap ${isUrgent ? 'text-[#DC2626]' : 'text-[#111827]'}`}>
+                                                {arrivalTimeOnly}
+                                              </span>
+                                              {stopsBefore && (
+                                                <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
+                                              )}
+                                            </div>
+                                            {/* 두 번째 차 — 항상 회색 */}
+                                            {arrivalText2 && (
+                                              <div className="flex items-center gap-1.5" aria-label="다음 차">
+                                                {item2Headsign && (
+                                                  <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{item2Headsign}행</span>
+                                                )}
+                                                <span className="text-[12px] text-[#9CA3AF] tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
+                                                {stopsBefore2 && (
+                                                  <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore2}</span>
+                                                )}
+                                              </div>
                                             )}
-                                          </div>
+                                          </>
                                         )}
                                         {/* 지하철 3건 이상 토글 */}
                                         {hasMoreItems && (
@@ -667,7 +692,7 @@ export default function Home() {
                                             {extraItems.map((item, extraIdx) => {
                                               const label = extraIdx === 0 ? '3번째' : `${extraIdx + 3}번째`;
                                               const rawMsg = item.displayMsg ?? item.arrmsg1;
-                                              const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec);
+                                              const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway');
                                               return (
                                                 <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between">
                                                   <div className="text-[11px] text-[#9CA3AF]">{label}</div>
@@ -736,25 +761,40 @@ export default function Home() {
                                       </div>
 
                                       <div className="flex items-start gap-2 flex-shrink-0">
-                                        <div className="text-right space-y-1">
-                                          <div className="flex items-center gap-2 justify-end" aria-label="이번 차">
-                                            {isArrivalLoading ? (
+                                        {/* 카카오 스타일 — 행선지 prefix + 시간, 두 번째 차 항상 회색 */}
+                                        <div className="text-right space-y-1.5">
+                                          {isArrivalLoading ? (
+                                            <div className="flex items-center gap-1.5 justify-end">
                                               <Loader2 className="w-[14px] h-[14px] text-[#9CA3AF] animate-spin" strokeWidth={2} />
-                                            ) : (
-                                              <Clock className="w-[14px] h-[14px] text-[#6B7280]" strokeWidth={2} />
-                                            )}
-                                            <span className={`font-bold tabular-nums leading-tight whitespace-nowrap text-[18px] ${isArrivalLoading ? 'text-[#9CA3AF]' : isUrgent ? 'text-[#DC2626]' : noService ? 'text-[#9CA3AF]' : 'text-[#111827]'}`}>
-                                              {isArrivalLoading ? '조회 중...' : noService ? '도착 정보 없음' : arrivalTimeOnly}
-                                            </span>
-                                            {!isArrivalLoading && !noService && stopsBefore && (
-                                              <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
-                                            )}
-                                          </div>
-                                          {arrivalText2 && (
-                                            <div className="flex items-center gap-1.5 justify-end" aria-label="다음 차">
-                                              <span className="text-[12px] text-[#9CA3AF] tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
-                                              {stopsBefore2 && <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore2}</span>}
+                                              <span className="text-[16px] text-[#9CA3AF] tabular-nums">조회 중...</span>
                                             </div>
+                                          ) : noService ? (
+                                            <span className="text-[14px] text-[#9CA3AF]">도착 정보 없음</span>
+                                          ) : (
+                                            <>
+                                              {/* 첫 번째 차 */}
+                                              <div className="flex items-center gap-1.5 justify-end" aria-label="이번 차">
+                                                {item1Headsign && (
+                                                  <span className="text-[12px] text-[#6B7280] whitespace-nowrap font-medium">{item1Headsign}행</span>
+                                                )}
+                                                <span className={`font-bold tabular-nums leading-tight whitespace-nowrap text-[18px] ${isUrgent ? 'text-[#DC2626]' : 'text-[#111827]'}`}>
+                                                  {arrivalTimeOnly}
+                                                </span>
+                                                {stopsBefore && (
+                                                  <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
+                                                )}
+                                              </div>
+                                              {/* 두 번째 차 — 항상 회색 */}
+                                              {arrivalText2 && (
+                                                <div className="flex items-center gap-1.5 justify-end" aria-label="다음 차">
+                                                  {item2Headsign && (
+                                                    <span className="text-[12px] text-[#9CA3AF] whitespace-nowrap">{item2Headsign}행</span>
+                                                  )}
+                                                  <span className="text-[14px] text-[#9CA3AF] tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
+                                                  {stopsBefore2 && <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore2}</span>}
+                                                </div>
+                                              )}
+                                            </>
                                           )}
                                         </div>
                                         {/* 지하철 3건 이상일 때 토글 버튼 */}
@@ -780,7 +820,7 @@ export default function Home() {
                                         {extraItems.map((item, extraIdx) => {
                                           const label = extraIdx === 0 ? '3번째' : `${extraIdx + 3}번째`;
                                           const rawMsg = item.displayMsg ?? item.arrmsg1;
-                                          const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec);
+                                          const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway');
                                           return (
                                             <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between">
                                               <div className="text-[11px] text-[#9CA3AF]">{label}</div>
@@ -871,8 +911,9 @@ export default function Home() {
                                 const subwayColorInfo = isSubway ? getSubwayColor(line) : null
                                 const rawMsg1 = getArrivalDisplay(seg.stop, line, arrData)
                                 const rawMsg2 = getArrivalDisplay2(seg.stop, line, arrData)
-                                const arrText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec) : '--'
-                                const arrText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec) : null
+                                const miniMode = isSubway ? 'subway' : 'bus'
+                                const arrText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec, miniMode) : '--'
+                                const arrText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec, miniMode) : null
                                 const noSvc = arrData !== null && arrText === '--'
                                 return (
                                   <div key={line} className="px-4 py-3 flex items-center justify-between">
