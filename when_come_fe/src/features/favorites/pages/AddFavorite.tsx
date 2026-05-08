@@ -156,7 +156,7 @@ function BusRouteSelectStep({
 
 interface SubwayConfirmStepProps {
   stop: ApiStop
-  direction: { updn: 'up' | 'down' | null; nextStop: string | null }
+  direction: { updn: null; nextStop: null }
   alias: string
   onAliasChange: (alias: string) => void
   onSave: () => void
@@ -165,7 +165,7 @@ interface SubwayConfirmStepProps {
 
 function SubwayConfirmStep({
   stop,
-  direction,
+  // direction은 현재 표시에 미사용 (옵션 A: 양방향 표시)
   alias,
   onAliasChange,
   onSave,
@@ -178,13 +178,7 @@ function SubwayConfirmStep({
         <div className="text-[16px] font-semibold text-[#111827]">{formatStationName(stop.name)}</div>
         <div className="flex items-center gap-2 mt-1 flex-wrap">
           <span className="text-[13px] text-[#6B7280]">{stop.laneName ?? '지하철역'}</span>
-          {direction.nextStop ? (
-            <span className="text-[12px] px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[#6B7280]">
-              {direction.nextStop} 방향
-            </span>
-          ) : (
-            <span className="text-[12px] text-[#9CA3AF]">방향 정보 없음</span>
-          )}
+          <span className="text-[12px] text-[#6B7280]">이 호선의 양방향 도착 정보가 모두 표시돼요</span>
         </div>
       </div>
 
@@ -225,7 +219,7 @@ function SubwayConfirmStep({
 type PageStep =
   | { kind: 'picking' }
   | { kind: 'bus-routes'; stop: ApiStop; busLines: ApiStopBus[]; isLoadingLines: boolean }
-  | { kind: 'subway-confirm'; stop: ApiStop; direction: { updn: 'up' | 'down' | null; nextStop: string | null } }
+  | { kind: 'subway-confirm'; stop: ApiStop; direction: { updn: null; nextStop: null } }
 
 export default function AddFavorite() {
   const navigate = useNavigate()
