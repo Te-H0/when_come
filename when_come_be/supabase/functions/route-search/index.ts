@@ -1,5 +1,6 @@
 import { corsHeaders } from "../_shared/cors.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
+import { withErrorLogging } from "../_shared/middleware.ts"
 import { searchPubTransPath } from "../_shared/odsayClient.ts"
 
 // ─── 요청/응답 DTO ──────────────────────────────────────────────
@@ -137,8 +138,8 @@ export async function handler(req: Request): Promise<Response> {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   } catch (e) {
-    return errorResponse(e)
+    return errorResponse(e, "route-search")
   }
 }
 
-if (import.meta.main) Deno.serve(handler)
+if (import.meta.main) Deno.serve(withErrorLogging(handler, "route-search"))

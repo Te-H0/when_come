@@ -1,4 +1,5 @@
 import { corsHeaders } from "./cors.ts"
+import { logAnomaly } from "./anomaly.ts"
 
 // ─── 에러 코드 타입 ────────────────────────────────────────────────────────────
 export type ArrivalErrorCode =
@@ -22,8 +23,24 @@ export class AppError extends Error {
 // ─── 구조화된 에러 응답 ────────────────────────────────────────────────────────
 // 스키마: { "error": { "code": "...", "message": "...", "detail": "..." } }
 // AppError에 code가 없으면 message를 code로 사용 (하위 호환)
-export function errorResponse(e: unknown): Response {
+//
+// source 인자를 전달하면 로깅 대상 에러를 anomaly_logs 에 fire-and-forget 기록.
+// 로깅 정책: 5xx 전체 + 비즈니스 코드(code 있는 4xx) 기록. 단순 4xx 클라이언트 잘못은 기록 안 함.
+export function errorResponse(e: unknown, source?: string): Response {
   if (e instanceof AppError) {
+    if (source && _shouldLog(e)) {
+      logAnomaly({
+        source,
+        category: e.code ? `error.business.${e.code}` : `error.${e.status}xx`,
+        detail: {
+          message: e.message,
+          status: e.status,
+          ...(e.code ? { code: e.code } : {}),
+          ...(e.detail ? { detail: e.detail } : {}),
+        },
+      })
+    }
+
     const body = e.code
       ? JSON.stringify({
           error: {
@@ -39,9 +56,28 @@ export function errorResponse(e: unknown): Response {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
+
+  if (source) {
+    logAnomaly({
+      source,
+      category: "error.unhandled",
+      detail: {
+        message: e instanceof Error ? e.message : String(e),
+        ...(e instanceof Error && e.stack ? { stack: e.stack } : {}),
+      },
+    })
+  }
   console.error(e)
   return new Response(JSON.stringify({ error: "INTERNAL_SERVER_ERROR" }), {
     status: 500,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   })
+}
+
+// ─── 내부 헬퍼 ────────────────────────────────────────────────────────────────
+
+/** 기록 대상 여부: 5xx 전체 또는 비즈니스 코드(code 있는 4xx) */
+function _shouldLog(err: AppError): boolean {
+  if (err.status >= 500) return true
+  return typeof err.code === "string" // 비즈니스 에러 코드 있는 4xx
 }

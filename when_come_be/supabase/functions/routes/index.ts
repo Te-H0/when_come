@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 import { corsHeaders } from "../_shared/cors.ts"
 import { authGuard } from "../_shared/auth.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
+import { withErrorLogging } from "../_shared/middleware.ts"
 import { resolveStopProvider, mapGbisRoutes } from "../_shared/regionMapper.ts"
 import type { GbisStationCandidate } from "../_shared/gbisClient.ts"
 
@@ -467,8 +468,8 @@ export async function handler(req: Request): Promise<Response> {
 
     throw new AppError("지원하지 않는 요청입니다", 405)
   } catch (e) {
-    return errorResponse(e)
+    return errorResponse(e, "routes")
   }
 }
 
-if (import.meta.main) Deno.serve(handler)
+if (import.meta.main) Deno.serve(withErrorLogging(handler, "routes"))

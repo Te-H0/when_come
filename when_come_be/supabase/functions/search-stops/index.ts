@@ -1,5 +1,6 @@
 import { corsHeaders } from "../_shared/cors.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
+import { withErrorLogging } from "../_shared/middleware.ts"
 import { searchStation, type OdsayStation } from "../_shared/odsayClient.ts"
 
 // ─── 서울 버스 API: getStationByUid 응답 타입 ───────────────────────────────
@@ -65,25 +66,31 @@ export async function handler(req: Request): Promise<Response> {
     const q = searchParams.get("q")?.trim()
     if (!q) throw new AppError("q 파라미터가 필요합니다", 400)
 
-    // 4~6자리 숫자이면 ARS 번호 검색, 아니면 기존 이름 검색
+    // 4~6자리 숫자이면 ARS 번호 검색, 아니면 이름 검색 (버스+지하철 병렬)
     const isArsId = /^\d{4,6}$/.test(q)
-    const stations = isArsId ? await searchByArsId(q) : await searchStation(q)
+    const stations = isArsId ? await searchByArsId(q) : await searchStation(q, { includeSubway: true })
 
-    const data = stations.map((s) => ({
-      id: String(s.stationID),
-      name: s.stationName,
-      type: s.type === 2 ? "subway" : "bus",
-      lat: s.y,
-      lng: s.x,
-      arsId: s.arsID || null,
-    }))
+    const data = stations
+      .map((s) => ({
+        id: String(s.stationID),
+        name: s.stationName,
+        type: s.type === 2 ? "subway" : "bus",
+        lat: s.y,
+        lng: s.x,
+        arsId: s.arsID || null,
+      }))
+      // 지하철(subway)을 버스보다 앞에 배치 — ARS 번호 검색 경로에서는 항상 bus만 있으므로 무해
+      .sort((a, b) => {
+        if (a.type === b.type) return 0
+        return a.type === "subway" ? -1 : 1
+      })
 
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   } catch (e) {
-    return errorResponse(e)
+    return errorResponse(e, "search-stops")
   }
 }
 
-if (import.meta.main) Deno.serve(handler)
+if (import.meta.main) Deno.serve(withErrorLogging(handler, "search-stops"))

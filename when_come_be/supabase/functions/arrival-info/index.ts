@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { corsHeaders } from "../_shared/cors.ts"
 import { AppError, errorResponse, type ArrivalErrorCode } from "../_shared/error.ts"
+import { withErrorLogging } from "../_shared/middleware.ts"
 import { authGuard } from "../_shared/auth.ts"
 import { realtimeStation } from "../_shared/odsayClient.ts"
 import {
@@ -591,8 +592,8 @@ export async function handler(req: Request): Promise<Response> {
 
     throw new AppError("type 파라미터가 필요합니다 (bus | subway | odsay)", 400)
   } catch (e) {
-    return errorResponse(e)
+    return errorResponse(e, "arrival-info")
   }
 }
 
-if (import.meta.main) Deno.serve(handler)
+if (import.meta.main) Deno.serve(withErrorLogging(handler, "arrival-info"))

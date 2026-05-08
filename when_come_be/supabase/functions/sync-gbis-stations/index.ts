@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { corsHeaders } from "../_shared/cors.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
+import { withErrorLogging } from "../_shared/middleware.ts"
 import { fetchBusStationsBySigun, GgBusStationRow } from "../_shared/gbisOpenApiClient.ts"
 
 // ─── 경기도 31개 시군 목록 ──────────────────────────────────────────────────
@@ -309,8 +310,8 @@ export async function handler(req: Request): Promise<Response> {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   } catch (e) {
-    return errorResponse(e)
+    return errorResponse(e, "sync-gbis-stations")
   }
 }
 
-if (import.meta.main) Deno.serve(handler)
+if (import.meta.main) Deno.serve(withErrorLogging(handler, "sync-gbis-stations"))
