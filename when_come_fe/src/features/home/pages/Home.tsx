@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import BottomNav from "@/components/BottomNav";
+import StopName from "@/components/StopName";
 import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 import { listRoutes } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
@@ -459,7 +460,7 @@ export default function Home() {
                   <div className="flex-1 min-w-0 bg-white rounded-2xl border border-black/5 px-4 py-3">
                     {group.map((seg) => (
                       <div key={seg.id} className="flex items-center justify-between gap-2">
-                        <span className="text-[14px] font-medium text-[#6B7280] truncate">{seg.stop.displayName}</span>
+                        <StopName name={seg.stop.displayName ?? seg.stop.name} alias={seg.stop.alias ?? undefined} size="sm" className="text-[#6B7280] truncate" />
                         <div className="flex gap-1 flex-shrink-0">
                           {seg.stop.lines.slice(0, 2).map(line => (
                             <span key={line} className="text-[12px] px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[#9CA3AF]">
@@ -508,9 +509,13 @@ export default function Home() {
                           <div className={isGrouped ? "px-3 py-3 border-b border-black/5" : "p-5 border-b border-black/5"}>
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex-1 min-w-0">
-                                <h4 className={`${isGrouped ? 'text-[15px]' : 'text-[18px]'} font-semibold text-[#111827] mb-1`}>
-                                  {seg.stop.displayName}
-                                </h4>
+                                <div className="mb-1">
+                                  <StopName
+                                    name={seg.stop.displayName ?? seg.stop.name}
+                                    alias={seg.stop.alias ?? undefined}
+                                    size={isGrouped ? 'md' : 'lg'}
+                                  />
+                                </div>
                                 {seg.stop.type === 'bus' && seg.stop.arsId && (
                                   <div className="text-[11px] text-[#9CA3AF] font-mono mt-1">
                                     ARS {seg.stop.arsId}
@@ -869,7 +874,9 @@ export default function Home() {
                       >
                         <div className="px-4 py-3 flex items-center justify-between">
                           <div className="flex-1 min-w-0">
-                            <div className="text-[14px] font-medium text-[#374151] truncate">{seg.stop.displayName}</div>
+                            <div className="truncate">
+                              <StopName name={seg.stop.displayName ?? seg.stop.name} alias={seg.stop.alias ?? undefined} size="sm" />
+                            </div>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {seg.stop.lines.slice(0, 3).map(line => (
                                 <span key={line} className="text-[11px] px-1.5 py-0.5 rounded-md bg-[#F1F3F5] text-[#9CA3AF]">

@@ -8,6 +8,8 @@ import type {
   ApiSubwayArrivalItem,
   ApiRoute,
   ApiStopBus,
+  SubwayStationDirectionsResponse,
+  ApiFavoriteStop,
 } from '@/types/api'
 import { getJwt } from './supabase'
 
@@ -175,7 +177,10 @@ export function saveRoute(data: SaveRouteRequest, jwt: string): Promise<{ id: st
   })
 }
 
-export function updateRoute(id: string, data: { is_active: boolean }): Promise<void> {
+export function updateRoute(
+  id: string,
+  data: { is_active?: boolean; name?: string },
+): Promise<void> {
   return apiFetch<{ ok: boolean }>(`/routes/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(data),
@@ -187,4 +192,81 @@ export function deleteRoute(id: string, jwt: string): Promise<void> {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${jwt}` },
   }).then(() => undefined)
+}
+
+export function getSubwayStationDirections(stationId: string): Promise<SubwayStationDirectionsResponse> {
+  return apiFetch<SubwayStationDirectionsResponse>(
+    `/subway-station-directions?stationId=${encodeURIComponent(stationId)}`,
+  )
+}
+
+// ──────────────────────── Favorite Stops ────────────────────────
+
+export interface FavoriteStopRouteInput {
+  odsayRouteId: string
+  routeName: string
+  busType?: number | null
+  stId?: string | null
+  busRouteId?: string | null
+  stationOrd?: number | null
+  stationName?: string | null
+  gbisRouteId?: string | null
+  gbisStaOrder?: number | null
+}
+
+export interface CreateFavoriteStopRequest {
+  odsayStopId: string
+  stopName: string
+  stopType: 'bus' | 'subway'
+  arsId?: string | null
+  lat?: number | null
+  lng?: number | null
+  directionHeadsign?: string | null
+  directionUpdn?: 'up' | 'down' | null
+  directionNextStop?: string | null
+  alias?: string | null
+  routes: FavoriteStopRouteInput[]
+}
+
+export interface UpdateFavoriteStopRequest {
+  alias?: string | null
+  displayOrder?: number
+  routes?: FavoriteStopRouteInput[]
+}
+
+export function listFavoriteStops(jwt: string): Promise<ApiFavoriteStop[]> {
+  return apiFetch<ApiFavoriteStop[]>('/favorite-stops', {
+    headers: { Authorization: `Bearer ${jwt}` },
+  })
+}
+
+export function createFavoriteStop(body: CreateFavoriteStopRequest, jwt: string): Promise<ApiFavoriteStop> {
+  return apiFetch<ApiFavoriteStop>('/favorite-stops', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${jwt}` },
+    body: JSON.stringify(body),
+  })
+}
+
+export function updateFavoriteStop(id: string, body: UpdateFavoriteStopRequest, jwt: string): Promise<ApiFavoriteStop> {
+  return apiFetch<ApiFavoriteStop>(`/favorite-stops/${id}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${jwt}` },
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteFavoriteStop(id: string, jwt: string): Promise<void> {
+  return apiFetch<void>(`/favorite-stops/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${jwt}` },
+  }).then(() => undefined)
+}
+
+export function updateRouteStopAlias(id: string, alias: string | null, jwt: string): Promise<{ id: string; alias: string | null }> {
+  return apiFetch<{ id: string; alias: string | null }>(`/route-stops/${id}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${jwt}` },
+    body: JSON.stringify({ alias }),
+  })
 }

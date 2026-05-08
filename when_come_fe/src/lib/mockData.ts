@@ -31,6 +31,8 @@ export interface TransitStop {
   directionNextStop?: string | null;
   // multi-region: BE에서 결정된 도착 조회 provider
   provider?: 'seoul' | 'gyeonggi' | 'odsay_fallback' | null;
+  /** 사용자 지정 별명 (예: "회사 앞") */
+  alias?: string | null;
 }
 
 export interface RouteSegment {

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 import { formatStationName } from "@/utils/stationName";
+import StopName from "@/components/StopName";
 
 export interface RouteNode {
   id: string;
@@ -25,6 +26,9 @@ export interface RouteNode {
   way?: string | null;
   wayCode?: 1 | 2 | null;
   endName?: string | null;
+  // UnifiedStopPicker 경유 수동 추가 시 직접 저장
+  directionUpdn?: 'up' | 'down' | null;
+  directionNextStop?: string | null;
 }
 
 interface RouteNodeCardProps {
@@ -116,9 +120,10 @@ export default function RouteNodeCard({
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[15px] font-semibold text-[#111827]">
-              {node.type === 'subway' ? formatStationName(node.name) : node.name}
-            </span>
+            <StopName
+              name={node.type === 'subway' ? formatStationName(node.name) : node.name}
+              size="md"
+            />
             {node.order > 1 && (
               <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[#EFF6FF] text-[#3B82F6] font-medium">
                 대안

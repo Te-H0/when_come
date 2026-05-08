@@ -12,6 +12,15 @@ export interface ApiStop {
   lat: number
   lng: number
   arsId?: string
+  laneName?: string | null
+  subwayCode?: string | null
+}
+
+export interface SubwayStationDirectionsResponse {
+  stationName: string
+  lineName: string
+  subwayCode: string | null
+  directions: Array<{ updn: 'up' | 'down'; nextStop: string }>
 }
 
 export interface ApiRouteLine {
@@ -86,6 +95,8 @@ export interface ApiRouteStop {
   // multi-region (신규)
   provider?: 'seoul' | 'gyeonggi' | 'odsay_fallback' | null
   gbis_station_id?: string | null
+  /** 사용자 지정 별명 */
+  alias?: string | null
   stop_routes: ApiStopRoute[]
 }
 
@@ -151,4 +162,42 @@ export interface ApiSubwayArrivalItem {
   displayMsg?: string | null
   /** BE가 응답에 동봉하는 행선지 (예: "온수", "인천공항2터미널"). null이면 fallback */
   headsign?: string | null
+}
+
+// ──────────────────────── Favorite Stops ────────────────────────
+
+export interface ApiFavoriteStopRoute {
+  id: string
+  favorite_stop_id: string
+  odsay_route_id: string
+  route_name: string
+  bus_type: number | null
+  st_id: string | null
+  bus_route_id: string | null
+  station_ord: number | null
+  station_name: string | null
+  gbis_route_id: string | null
+  gbis_sta_order: number | null
+  provider: 'seoul' | 'gyeonggi' | 'odsay_fallback' | null
+}
+
+export interface ApiFavoriteStop {
+  id: string
+  user_id: string
+  odsay_stop_id: string
+  stop_name: string
+  stop_type: 'bus' | 'subway'
+  ars_id: string | null
+  lat: number | null
+  lng: number | null
+  direction_headsign: string | null
+  direction_updn: 'up' | 'down' | null
+  direction_next_stop: string | null
+  provider: 'seoul' | 'gyeonggi' | 'odsay_fallback'
+  gbis_station_id: string | null
+  alias: string | null
+  display_order: number
+  favorite_stop_routes: ApiFavoriteStopRoute[]
+  created_at: string
+  updated_at: string
 }
