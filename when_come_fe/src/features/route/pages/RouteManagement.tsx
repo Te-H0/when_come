@@ -76,7 +76,7 @@ export default function RouteManagement() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#F6F7F9] flex items-center justify-center pb-20">
+      <div className="h-dvh bg-[#F6F7F9] flex items-center justify-center pb-20">
         <Loader2 className="w-6 h-6 animate-spin text-[#6B7280]" />
       </div>
     );
@@ -84,7 +84,7 @@ export default function RouteManagement() {
 
   if (isError) {
     return (
-      <div className="min-h-screen bg-[#F6F7F9] flex items-center justify-center p-4 pb-20">
+      <div className="h-dvh bg-[#F6F7F9] flex items-center justify-center p-4 pb-20">
         <Card className="max-w-md w-full p-8 text-center rounded-2xl border border-black/5 shadow-sm">
           <p className="text-[#DC2626] text-[15px]">경로를 불러오지 못했습니다</p>
           <Button
@@ -100,7 +100,7 @@ export default function RouteManagement() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F6F7F9] pb-24">
+    <div className="h-dvh overflow-y-auto bg-[#F6F7F9] pb-24">
       {/* 헤더 */}
       <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">

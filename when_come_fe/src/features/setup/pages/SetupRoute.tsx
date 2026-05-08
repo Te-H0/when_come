@@ -437,7 +437,7 @@ export default function SetupRoute() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F7F9] pb-36">
+    <div className="h-dvh overflow-y-auto bg-[#F6F7F9] pb-36">
       {/* 헤더 */}
       <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
