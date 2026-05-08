@@ -23,6 +23,9 @@ src/
 ├── components/
 │   ├── ui/                   ← shadcn/ui 컴포넌트
 │   ├── BottomNav.tsx         ← 공유 내비게이션
+│   ├── EmptyState.tsx        ← 공용 빈 상태 UI (아이콘+제목+설명+CTA 카드)
+│   ├── StopName.tsx          ← 정류장/역 이름 표시 (별명 병기 지원)
+│   ├── AliasEditor.tsx       ← 별명 인라인 편집 컴포넌트
 │   └── figma/
 │       └── ImageWithFallback.tsx
 ├── features/
@@ -31,9 +34,13 @@ src/
 │   ├── setup/
 │   │   ├── components/       ← RouteNodeCard, SearchResultNode
 │   │   └── pages/SetupRoute.tsx
-│   └── route/
-│       ├── components/       ← TransitCard, RouteProgress, RouteOption
-│       └── pages/RouteManagement.tsx
+│   ├── route/
+│   │   ├── components/       ← TransitCard, RouteProgress, RouteOption
+│   │   └── pages/RouteManagement.tsx
+│   ├── favorites/
+│   │   └── pages/Favorites.tsx   ← 즐겨찾기 탭 (Stage B에서 본격 구현)
+│   └── stop-picker/
+│       └── UnifiedStopPicker.tsx ← 검색+호선+방향 multi-step 정류장 선택 UI
 ├── lib/
 │   ├── api.ts                ← API 클라이언트 함수
 │   ├── arrival.ts            ← 실시간 도착정보 fetch/파싱 로직
@@ -52,13 +59,16 @@ src/
 | route | 저장된 경로 관리 | `RouteManagement.tsx` |
 | setup | 경로 생성/편집 | `SetupRoute.tsx` |
 | home | 활성 경로 대시보드 | `Home.tsx` |
+| favorites | 즐겨찾기 정류장 관리 | `Favorites.tsx` (Stage B 구현 예정) |
+| stop-picker | 정류장 검색+호선+방향 선택 | `UnifiedStopPicker.tsx` |
 
 ## 라우팅
 
 | Route | Page | Purpose |
 |-------|------|---------|
 | `/` | `Home.tsx` | 활성 경로 대시보드 — 현재 구간, 도착 시간 |
-| `/setup` | `SetupRoute.tsx` | 경로 빌더 — 정류장 검색/추가 |
+| `/setup` | `SetupRoute.tsx` | 경로 빌더 — 정류장 검색/추가 (홈 상단 버튼으로만 진입) |
+| `/favorites` | `Favorites.tsx` | 즐겨찾기 탭 (푸터 탭 2번) |
 | `/routes` | `RouteManagement.tsx` | 저장된 경로 CRUD |
 
 ## 상태 관리 전략

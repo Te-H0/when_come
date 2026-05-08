@@ -1,17 +1,19 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
-import { useQuery, useQueries } from "@tanstack/react-query";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
+import { useDrag, useDrop } from "react-dnd";
 import { toast } from "sonner";
 import {
   MapPin, Settings, RefreshCw, Navigation,
-  ChevronDown, ChevronUp, Loader2,
+  ChevronDown, ChevronUp, Loader2, Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import BottomNav from "@/components/BottomNav";
+import EmptyState from "@/components/EmptyState";
 import StopName from "@/components/StopName";
 import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
-import { listRoutes } from "@/lib/api";
+import { listRoutes, updateRoute } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { mapApiRoute } from "@/lib/mappers";
 import type { TransitStop, SavedRoute } from "@/lib/mockData";
@@ -117,7 +119,10 @@ function splitArrival(text: string | null): { time: string; stops: string | null
 function getFastestArrivalText(stop: TransitStop, arrival: ArrivalData, elapsedSec: number): string {
   if (!arrival) return '--'
   if (arrival.type === 'subway') {
-    const item = arrival.items[0]
+    // 방향/호선 필터 적용 — items[0] 직접 접근 시 다른 방향·호선이 노출되는 회귀 방어
+    const line = stop.lines[0] ?? ''
+    const matched = getMatchedSubwayItems(stop, line, arrival)
+    const item = matched[0]
     if (!item) return '--'
     const rawMsg = item.displayMsg ?? item.arrmsg1
     return item.displayMsg ? rawMsg : stripSuffix(applyCountdownToArrmsg(rawMsg, elapsedSec))
@@ -153,8 +158,67 @@ function getFastestArrivalText(stop: TransitStop, arrival: ArrivalData, elapsedS
   return '--'
 }
 
+const ROUTE_CHIP_DND_TYPE = 'ROUTE_CHIP';
+
+interface RouteChipDragItem {
+  id: string;
+  index: number;
+}
+
+interface RouteChipProps {
+  route: SavedRoute;
+  index: number;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+  onMove: (dragIndex: number, hoverIndex: number) => void;
+  onDrop: () => void;
+}
+
+function RouteChip({ route, index, isSelected, onSelect, onMove, onDrop }: RouteChipProps) {
+  const ref = useRef<HTMLButtonElement>(null);
+
+  const [{ isDragging }, drag] = useDrag<RouteChipDragItem, void, { isDragging: boolean }>({
+    type: ROUTE_CHIP_DND_TYPE,
+    item: { id: route.id, index },
+    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+    end: (_item, monitor) => {
+      if (monitor.didDrop()) onDrop();
+    },
+  });
+
+  const [, drop] = useDrop<RouteChipDragItem>({
+    accept: ROUTE_CHIP_DND_TYPE,
+    hover(item) {
+      if (item.index === index) return;
+      onMove(item.index, index);
+      item.index = index;
+    },
+  });
+
+  drag(drop(ref));
+
+  return (
+    <button
+      ref={ref}
+      onClick={() => onSelect(route.id)}
+      className={`px-4 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors select-none ${
+        isDragging
+          ? 'opacity-40 cursor-grabbing'
+          : 'cursor-grab active:cursor-grabbing'
+      } ${
+        isSelected
+          ? 'bg-[#111827] text-white'
+          : 'bg-[#F1F3F5] text-[#6B7280] hover:bg-[#E5E7EB]'
+      }`}
+    >
+      {route.name}
+    </button>
+  );
+}
+
 export default function Home() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: apiRoutes, isLoading, isError, refetch } = useQuery({
     queryKey: ['routes'],
@@ -168,6 +232,47 @@ export default function Home() {
 
   const routes = useMemo<SavedRoute[]>(() => (apiRoutes ?? []).map(mapApiRoute), [apiRoutes]);
   const activeRoutes = useMemo(() => routes.filter(r => r.isActive), [routes]);
+
+  // 칩 정렬 로컬 상태 (드래그 중 optimistic 순서 유지)
+  const [chipOrder, setChipOrder] = useState<string[]>([]);
+  const activeRouteIdsKey = useMemo(() => activeRoutes.map(r => r.id).join(','), [activeRoutes]);
+  useEffect(() => {
+    setChipOrder(activeRoutes.map(r => r.id));
+  // activeRouteIdsKey가 변경될 때만 순서 초기화 — 불필요한 리셋 방지
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRouteIdsKey]);
+
+  const orderedActiveRoutes = useMemo(() => {
+    if (chipOrder.length === 0) return activeRoutes;
+    const map = new Map(activeRoutes.map(r => [r.id, r]));
+    return chipOrder.flatMap(id => (map.has(id) ? [map.get(id)!] : []));
+  }, [chipOrder, activeRoutes]);
+
+  const handleChipMove = useCallback((dragIdx: number, hoverIdx: number) => {
+    setChipOrder(prev => {
+      const next = [...prev];
+      const [removed] = next.splice(dragIdx, 1);
+      next.splice(hoverIdx, 0, removed);
+      return next;
+    });
+  }, []);
+
+  const handleChipDrop = useCallback(async () => {
+    // chipOrder 기준으로 변경된 route만 PATCH
+    const changed: Array<{ id: string; displayOrder: number }> = [];
+    chipOrder.forEach((id, idx) => {
+      const route = activeRoutes.find(r => r.id === id);
+      if (!route || route.displayOrder !== idx) changed.push({ id, displayOrder: idx });
+    });
+    if (changed.length === 0) return;
+    try {
+      await Promise.all(changed.map(({ id, displayOrder }) => updateRoute(id, { displayOrder })));
+      queryClient.invalidateQueries({ queryKey: ['routes'] });
+    } catch {
+      toast.error('순서 저장에 실패했어요');
+      queryClient.invalidateQueries({ queryKey: ['routes'] });
+    }
+  }, [chipOrder, activeRoutes, queryClient]);
 
   const [selectedRouteId, setSelectedRouteId] = useState<string>(() => {
     return localStorage.getItem(SELECTED_ROUTE_KEY) ?? '';
@@ -351,25 +456,12 @@ export default function Home() {
   if (activeRoutes.length === 0) {
     return (
       <div className="h-dvh bg-[#F6F7F9] flex items-center justify-center p-4 pb-20">
-        <Card className="max-w-md w-full p-8 text-center rounded-2xl border border-black/5 shadow-sm">
-          <div className="mb-6">
-            <div className="w-16 h-16 bg-[#111827] rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <MapPin className="w-8 h-8 text-white" strokeWidth={1.5} />
-            </div>
-            <h2 className="text-xl font-semibold mb-2 text-[#111827]">경로를 등록해주세요</h2>
-            <p className="text-[#6B7280] text-[15px] leading-relaxed">
-              출발지와 도착지를 설정하면<br />
-              실시간으로 교통정보를 확인할 수 있습니다
-            </p>
-          </div>
-          <Button
-            onClick={() => navigate('/setup')}
-            className="w-full bg-[#111827] hover:bg-[#1F2937] rounded-xl h-12 text-[15px] font-medium shadow-sm"
-            size="lg"
-          >
-            경로 등록하기
-          </Button>
-        </Card>
+        <EmptyState
+          icon={<MapPin className="w-8 h-8 text-white" strokeWidth={1.5} />}
+          title="경로를 등록해주세요"
+          description={['출발지와 도착지를 설정하면', '실시간으로 교통정보를 확인할 수 있습니다']}
+          cta={{ label: '경로 등록하기', onClick: () => navigate('/setup') }}
+        />
         <BottomNav />
       </div>
     );
@@ -413,31 +505,37 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 활성 경로 탭 — 2개 이상일 때만 표시 */}
-      {activeRoutes.length > 1 && (
-        <div className="bg-white border-b border-black/5">
-          <div className="max-w-2xl mx-auto px-4 py-2 overflow-x-auto">
-            <div className="flex gap-2 w-max">
-              {activeRoutes.map((route) => {
-                const isSelected = route.id === currentRoute?.id;
-                return (
-                  <button
+      {/* 활성 경로 탭 + 경로 추가 버튼 */}
+      <div className="bg-white border-b border-black/5">
+        <div className="max-w-2xl mx-auto px-4 py-2 flex items-center gap-2">
+          {/* 칩 스크롤 영역 */}
+          {orderedActiveRoutes.length > 0 && (
+            <div className="flex-1 overflow-x-auto min-w-0">
+              <div className="flex gap-2 w-max">
+                {orderedActiveRoutes.map((route, idx) => (
+                  <RouteChip
                     key={route.id}
-                    onClick={() => handleSelectRoute(route.id)}
-                    className={`px-4 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors ${
-                      isSelected
-                        ? 'bg-[#111827] text-white'
-                        : 'bg-[#F1F3F5] text-[#6B7280] hover:bg-[#E5E7EB]'
-                    }`}
-                  >
-                    {route.name}
-                  </button>
-                );
-              })}
+                    route={route}
+                    index={idx}
+                    isSelected={route.id === currentRoute?.id}
+                    onSelect={handleSelectRoute}
+                    onMove={handleChipMove}
+                    onDrop={handleChipDrop}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+          {/* + 버튼 — 경로 등록 진입점 */}
+          <button
+            onClick={() => navigate('/setup')}
+            className="flex-shrink-0 w-8 h-8 rounded-full bg-[#F1F3F5] hover:bg-[#E5E7EB] flex items-center justify-center transition-colors"
+            aria-label="경로 추가"
+          >
+            <Plus className="w-4 h-4 text-[#6B7280]" strokeWidth={2.5} />
+          </button>
         </div>
-      )}
+      </div>
 
       <div className="max-w-2xl mx-auto px-4 pt-4 space-y-3">
         {/* 전체 스텝 세로 타임라인 */}

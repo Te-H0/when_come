@@ -18,12 +18,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { searchStops, searchRoutes, saveRoute, getStopBuses } from "@/lib/api";
+import { searchRoutes, saveRoute, getStopBuses } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { subwayApiCodeToLineName, seoulBisTypeToOdsayBusType } from "@/utils/transitColors";
 import { wayCodeToUpdn } from "@/utils/transitDirection";
 import type { ApiPlace, ApiStop, ApiRouteOption } from "@/types/api";
 import { toast } from "sonner";
+import UnifiedStopPicker from "@/features/stop-picker/UnifiedStopPicker";
+import type { PickerPayload } from "@/features/stop-picker/UnifiedStopPicker";
 
 interface SearchRouteResult {
   routeId: string
@@ -130,32 +132,77 @@ export default function SetupRoute() {
   // 더보기 (초기 3건 → 전체)
   const [showAll, setShowAll] = useState(false);
 
-  const [manualQuery, setManualQuery] = useState('');
-  const [manualResults, setManualResults] = useState<ApiStop[]>([]);
-  const [isManualLoading, setIsManualLoading] = useState(false);
-  const manualTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 수동 탭은 UnifiedStopPicker로 교체 — 기존 state 불필요하나 build 호환을 위해 제거
+  // 이하는 완전 제거 후 handleManualPickerComplete 단일 핸들러로 대체
 
-  useEffect(() => {
-    return () => {
-      if (manualTimerRef.current) clearTimeout(manualTimerRef.current)
-    }
-  }, [])
+  /**
+   * UnifiedStopPicker onComplete 핸들러 (수동 탭 전용).
+   * bus: 노선 조회 후 노드 추가. subway: direction 필드 포함해 노드 추가.
+   */
+  const handleManualPickerComplete = async (payload: PickerPayload) => {
+    const stop: ApiStop = payload.stop;
+    const nodeId = newNodeId();
+    const stepGroup = addingAlternativeToStep ?? nextStepGroupOf(nodes);
+    const isAlternative = addingAlternativeToStep !== null;
+    const orderInGroup = isAlternative
+      ? nodes.filter(n => n.stepGroup === stepGroup).length + 1
+      : 1;
 
-  const handleManualSearch = (text: string) => {
-    setManualQuery(text);
-    if (manualTimerRef.current) clearTimeout(manualTimerRef.current);
-    if (!text.trim()) { setManualResults([]); return; }
-    manualTimerRef.current = setTimeout(async () => {
-      setIsManualLoading(true);
-      try {
-        const data = await searchStops(text);
-        setManualResults(data.slice(0, 10));
-      } catch {
-        setManualResults([]);
-      } finally {
-        setIsManualLoading(false);
+    if (payload.type === 'bus') {
+      const newNode: RouteNode = {
+        id: nodeId,
+        name: stop.name,
+        type: 'bus',
+        stepGroup,
+        order: orderInGroup,
+        stopId: stop.id,
+        arsId: stop.arsId,
+        lat: stop.lat,
+        lng: stop.lng,
+        busNumbers: [],
+      };
+      setNodes(prev => [...prev, newNode]);
+      setAddingAlternativeToStep(null);
+
+      if (stop.arsId) {
+        try {
+          const buses = await getStopBuses(stop.arsId);
+          const mappedLines = buses.map(b => ({
+            routeName: b.routeName,
+            busRouteId: b.busRouteId,
+            busType: seoulBisTypeToOdsayBusType(b.busRouteType),
+            startStation: b.startStation,
+            endStation: b.endStation,
+          }));
+          setNodes(prev =>
+            prev.map(n => (n.id === nodeId ? { ...n, busLines: mappedLines } : n))
+          );
+        } catch {
+          // 실패 시 수동 입력
+        }
       }
-    }, 300);
+    } else {
+      // subway
+      const dir = payload.direction;
+      const lineName = stop.laneName ?? '';
+      const newNode: RouteNode = {
+        id: nodeId,
+        name: stop.name,
+        type: 'subway',
+        stepGroup,
+        order: orderInGroup,
+        stopId: stop.id,
+        lat: stop.lat,
+        lng: stop.lng,
+        subwayLine: lineName,
+        direction: dir.nextStop || undefined,
+        // UnifiedStopPicker에서 받은 방향 정보 — 저장 시 우선 사용
+        directionUpdn: dir.updn,
+        directionNextStop: dir.nextStop || null,
+      };
+      setNodes(prev => [...prev, newNode]);
+      setAddingAlternativeToStep(null);
+    }
   };
 
   const handleAutoSearch = async () => {
@@ -172,7 +219,7 @@ export default function SetupRoute() {
       setShowAll(false);
       if (results.length > 0) setExpandedRoutes(new Set([results[0].routeId]));
     } catch {
-      toast.error('경로 검색에 실패했습니다');
+      toast.error('경로 검색에 실패했어요');
     } finally {
       setIsSearching(false);
     }
@@ -252,55 +299,7 @@ export default function SetupRoute() {
       await handleAddNodeFromSearch(node, undefined, nextGroup);
       nextGroup += 1;
     }
-    toast.success(`경로 ${newNodes.length}개 정류장이 추가되었습니다`);
-  };
-
-  /**
-   * 수동 검색으로 정류장 추가.
-   * targetStepGroup 이 있으면 해당 스텝의 대안 정류장으로, 없으면 새 스텝으로 추가.
-   */
-  const handleAddNodeManual = async (stop: ApiStop, targetStepGroup?: number) => {
-    const nodeId = newNodeId();
-    const isAlternative = targetStepGroup !== undefined;
-    const stepGroup = isAlternative ? targetStepGroup : nextStepGroupOf(nodes);
-    const orderInGroup = isAlternative
-      ? nodes.filter(n => n.stepGroup === stepGroup).length + 1
-      : 1;
-
-    const newNode: RouteNode = {
-      id: nodeId,
-      name: stop.name,
-      type: stop.type,
-      stepGroup,
-      order: orderInGroup,
-      stopId: stop.id,
-      arsId: stop.arsId,
-      lat: stop.lat,
-      lng: stop.lng,
-      busNumbers: stop.type === 'bus' ? [] : undefined,
-    };
-    setNodes(prev => [...prev, newNode]);
-    setManualQuery('');
-    setManualResults([]);
-    setAddingAlternativeToStep(null);
-
-    if (stop.type === 'bus' && stop.arsId) {
-      try {
-        const buses = await getStopBuses(stop.arsId);
-        const mappedLines = buses.map(b => ({
-          routeName: b.routeName,
-          busRouteId: b.busRouteId,
-          busType: seoulBisTypeToOdsayBusType(b.busRouteType),
-          startStation: b.startStation,
-          endStation: b.endStation,
-        }));
-        setNodes(prev => prev.map(n =>
-          n.id === nodeId ? { ...n, busLines: mappedLines } : n
-        ));
-      } catch {
-        // 실패하면 수동 입력
-      }
-    }
+    toast.success(`정류장 ${newNodes.length}개를 추가했어요`);
   };
 
   /**
@@ -382,9 +381,11 @@ export default function SetupRoute() {
         lat: node.lat,
         lng: node.lng,
         ...(node.type === 'subway' && {
-          directionHeadsign: node.way ? `${node.way}행` : null,
-          directionUpdn: wayCodeToUpdn(node.wayCode),
-          directionNextStop: node.endName ?? null,
+          directionHeadsign: null, // D11: 저장 안 함
+          // UnifiedStopPicker 경유 수동 추가면 directionUpdn/directionNextStop 직접 사용
+          // 자동 검색(route-search) 경유라면 wayCode → updn 변환
+          directionUpdn: node.directionUpdn ?? wayCodeToUpdn(node.wayCode),
+          directionNextStop: node.directionNextStop ?? node.endName ?? null,
         }),
         stopRoutes: node.type === 'subway'
           ? [{
@@ -418,7 +419,7 @@ export default function SetupRoute() {
       queryClient.invalidateQueries({ queryKey: ['routes'] });
 
       const reverseState: ReverseOfState = { fromName: destinationName, toName: originName };
-      toast.success('경로가 저장되었습니다', {
+      toast.success('경로를 저장했어요', {
         description: '반대 방향 경로도 등록하시겠어요?',
         action: {
           label: '등록하기',
@@ -430,7 +431,7 @@ export default function SetupRoute() {
       });
       navigate('/');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '저장에 실패했습니다');
+      toast.error(e instanceof Error ? e.message : '저장에 실패했어요');
     } finally {
       setIsSaving(false);
     }
@@ -704,48 +705,15 @@ export default function SetupRoute() {
 
           <TabsContent value="manual" className="space-y-3 mt-3">
             <Card className="p-4 rounded-2xl border border-black/5 shadow-sm bg-white">
-              <Label htmlFor="manualSearch" className="text-[14px] font-medium text-[#111827] mb-2 block">
-                {addingAlternativeToStep !== null
-                  ? `스텝 ${addingAlternativeToStep} 대안 정류장 검색`
-                  : '정류장/역 검색'}
-              </Label>
-              <div className="relative">
-                <Input
-                  id="manualSearch"
-                  placeholder="정류장 또는 역 이름"
-                  value={manualQuery}
-                  onChange={(e) => handleManualSearch(e.target.value)}
-                  className="rounded-xl border-black/5 h-11 text-[15px] pr-10"
-                />
-                {isManualLoading && (
-                  <Loader2 className="absolute right-3 top-3 w-5 h-5 text-[#9CA3AF] animate-spin" />
-                )}
-              </div>
-
-              {manualResults.length > 0 && (
-                <div className="mt-3 space-y-2 max-h-96 overflow-y-auto">
-                  {manualResults.map((stop) => (
-                    <div
-                      key={stop.id}
-                      className="p-3 rounded-xl hover:bg-[#F9FAFB] cursor-pointer transition-colors border border-black/5"
-                      onClick={() => handleAddNodeManual(stop, addingAlternativeToStep ?? undefined)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-[15px] font-medium text-[#111827]">{stop.name}</div>
-                          <div className="text-[13px] text-[#6B7280] mt-0.5">
-                            {stop.type === 'bus' ? '버스 정류장' : '지하철역'}
-                            {stop.arsId && <span className="ml-1.5 text-[#9CA3AF]">· {stop.arsId}</span>}
-                          </div>
-                        </div>
-                        <div className="px-2 py-1 rounded-lg bg-[#F1F3F5] text-[12px] font-medium text-[#6B7280]">
-                          {stop.type === 'bus' ? '버스' : '지하철'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {addingAlternativeToStep !== null && (
+                <p className="text-[13px] text-[#1D4ED8] font-medium mb-3">
+                  스텝 {addingAlternativeToStep} 대안 정류장 검색
+                </p>
               )}
+              <UnifiedStopPicker
+                onComplete={handleManualPickerComplete}
+                onCancel={() => setAddingAlternativeToStep(null)}
+              />
             </Card>
           </TabsContent>
         </Tabs>

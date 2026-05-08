@@ -3,10 +3,11 @@ import { useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Plus, MoreVertical, Trash2, Bus, Train, Loader2,
-  Pencil, Star, Map,
+  Pencil, Star, Map, MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import EmptyState from "@/components/EmptyState";
 import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
@@ -382,7 +383,7 @@ export default function RouteManagement() {
     mutationFn: (route: SavedRoute) =>
       updateRoute(route.id, { is_active: !route.isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['routes'] }),
-    onError: () => toast.error('변경에 실패했습니다'),
+    onError: () => toast.error('변경에 실패했어요'),
   });
 
   const renameMutation = useMutation({
@@ -393,7 +394,7 @@ export default function RouteManagement() {
       setRenameTarget(null);
       toast.success('경로 이름을 수정했어요');
     },
-    onError: () => toast.error('이름 수정에 실패했습니다'),
+    onError: () => toast.error('이름 수정에 실패했어요'),
   });
 
   const deleteMutation = useMutation({
@@ -405,11 +406,11 @@ export default function RouteManagement() {
     onSuccess: () => {
       setPendingDeleteId(null);
       queryClient.invalidateQueries({ queryKey: ['routes'] });
-      toast.success('경로가 삭제되었습니다');
+      toast.success('경로를 삭제했어요');
     },
-    onError: (err) => {
+    onError: () => {
       setPendingDeleteId(null);
-      toast.error(`삭제 실패: ${(err as Error).message}`);
+      toast.error('삭제에 실패했어요. 잠시 후 다시 시도해주세요');
     },
   });
 
@@ -422,11 +423,11 @@ export default function RouteManagement() {
     onSuccess: () => {
       setPendingFavDeleteId(null);
       queryClient.invalidateQueries({ queryKey: ['favorite-stops'] });
-      toast.success('즐겨찾기가 삭제되었습니다');
+      toast.success('즐겨찾기를 삭제했어요');
     },
-    onError: (err) => {
+    onError: () => {
       setPendingFavDeleteId(null);
-      toast.error(`삭제 실패: ${(err as Error).message}`);
+      toast.error('삭제에 실패했어요. 잠시 후 다시 시도해주세요');
     },
   });
 
@@ -438,7 +439,7 @@ export default function RouteManagement() {
       queryClient.invalidateQueries({ queryKey: ['routes'] });
       toast.success('별명을 저장했어요');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '저장에 실패했습니다');
+      toast.error(e instanceof Error ? e.message : '저장에 실패했어요');
     }
   };
 
@@ -450,7 +451,7 @@ export default function RouteManagement() {
       queryClient.invalidateQueries({ queryKey: ['favorite-stops'] });
       toast.success('별명을 저장했어요');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '저장에 실패했습니다');
+      toast.error(e instanceof Error ? e.message : '저장에 실패했어요');
     }
   };
 
@@ -559,19 +560,12 @@ export default function RouteManagement() {
         {activeTab === 'routes' && (
           <>
             {routes.length === 0 ? (
-              <Card className="p-8 text-center rounded-2xl border border-black/5 shadow-sm bg-white">
-                <div className="w-12 h-12 bg-[#F1F3F5] rounded-xl flex items-center justify-center mx-auto mb-4">
-                  <Plus className="w-6 h-6 text-[#6B7280]" strokeWidth={2} />
-                </div>
-                <h3 className="text-[17px] font-semibold text-[#111827] mb-2">저장된 경로가 없어요</h3>
-                <p className="text-[14px] text-[#6B7280] mb-4">홈 화면에서 새로운 경로를 추가해보세요</p>
-                <Button
-                  onClick={() => navigate('/setup')}
-                  className="bg-[#111827] hover:bg-[#1F2937] rounded-xl h-11 px-6 text-[15px] font-medium"
-                >
-                  경로 등록하기
-                </Button>
-              </Card>
+              <EmptyState
+                icon={<MapPin className="w-8 h-8 text-white" strokeWidth={1.5} />}
+                title="저장된 경로가 없어요"
+                description="홈 화면에서 새로운 경로를 추가해보세요"
+                cta={{ label: '경로 등록하기', onClick: () => navigate('/setup') }}
+              />
             ) : (
               routes.map((route) => (
                 <RouteCard
@@ -593,19 +587,12 @@ export default function RouteManagement() {
         {activeTab === 'favorites' && (
           <>
             {favorites.length === 0 ? (
-              <Card className="p-8 text-center rounded-2xl border border-black/5 shadow-sm bg-white">
-                <div className="w-12 h-12 bg-[#F1F3F5] rounded-xl flex items-center justify-center mx-auto mb-4">
-                  <Star className="w-6 h-6 text-[#6B7280]" strokeWidth={1.5} />
-                </div>
-                <h3 className="text-[17px] font-semibold text-[#111827] mb-2">즐겨찾기가 없어요</h3>
-                <p className="text-[14px] text-[#6B7280] mb-4">즐겨찾기 탭에서 자주 가는 정류장을 등록해보세요</p>
-                <Button
-                  onClick={() => navigate('/favorites/add')}
-                  className="bg-[#111827] hover:bg-[#1F2937] rounded-xl h-11 px-6 text-[15px] font-medium"
-                >
-                  즐겨찾기 추가
-                </Button>
-              </Card>
+              <EmptyState
+                icon={<Star className="w-8 h-8 text-white" strokeWidth={1.5} />}
+                title="즐겨찾기가 없어요"
+                description="자주 가는 정류장을 등록해보세요"
+                cta={{ label: '즐겨찾기 추가', onClick: () => navigate('/favorites/add') }}
+              />
             ) : (
               <Card className="overflow-hidden rounded-2xl border border-black/5 shadow-sm bg-white divide-y divide-black/5">
                 {favorites.map((fav) => (
