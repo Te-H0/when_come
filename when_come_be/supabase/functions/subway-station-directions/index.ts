@@ -2,8 +2,10 @@ import { corsHeaders } from "../_shared/cors.ts"
 import { authGuard } from "../_shared/auth.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
+import { logAnomaly } from "../_shared/anomaly.ts"
 import {
   subwayStationInfo,
+  searchSubwaySchedule,
   odsaySubwayTypeToSubwayCode,
   type OdsaySubwayStationInfo,
 } from "../_shared/odsayClient.ts"
@@ -71,6 +73,22 @@ function extractDirections(station: OdsaySubwayStationInfo): DirectionItem[] {
   return directions
 }
 
+// ─── schedule fallback에서 directions 추출 ──────────────────────────────────
+// searchSubwaySchedule의 up/down 배열에서 종착역명을 뽑아 DirectionItem 2건으로 반환.
+// endStationName이 없으면 해당 방향 건너뜀.
+async function extractDirectionsFromSchedule(stationId: string): Promise<DirectionItem[]> {
+  const schedule = await searchSubwaySchedule(stationId)
+  const directions: DirectionItem[] = []
+
+  const upEnd = schedule.up?.[0]?.endStationName
+  if (upEnd) directions.push({ updn: "up", nextStop: upEnd })
+
+  const downEnd = schedule.down?.[0]?.endStationName
+  if (downEnd) directions.push({ updn: "down", nextStop: downEnd })
+
+  return directions
+}
+
 // ─── 핸들러 ─────────────────────────────────────────────────────────────────
 
 export async function handler(req: Request): Promise<Response> {
@@ -87,11 +105,50 @@ export async function handler(req: Request): Promise<Response> {
 
     const info = await subwayStationInfo(stationId)
 
-    if (!info) {
-      throw new AppError("역 정보를 찾을 수 없습니다", 404)
+    // info가 null인 경우(ODsay invalid station 응답)도 schedule fallback을 시도한다.
+    // ODsay searchStation이 인정한 stationId라도 subwayStationInfo가 invalid를 반환하는 케이스가 있음.
+    if (info === null) {
+      // schedule fallback으로 방향 정보 추출 시도
+      const directions = await extractDirectionsFromSchedule(stationId)
+      if (directions.length === 0) {
+        // schedule도 빈 응답 → 진짜 invalid station
+        throw new AppError("역 정보를 찾을 수 없습니다", 404)
+      }
+      // schedule에서 방향 추출 성공 — stationName/lineName/subwayCode는 null로 반환
+      logAnomaly({
+        source: "subway-station-directions",
+        category: "pattern.subway_directions_info_null_schedule_fallback",
+        detail: { stationId, directionsFromSchedule: directions.length },
+      })
+      const response: SubwayStationDirectionsResponse = {
+        stationName: "",
+        lineName: null,
+        subwayCode: null,
+        directions,
+      }
+      return new Response(JSON.stringify(response), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
     }
 
-    const directions = extractDirections(info)
+    let directions = extractDirections(info)
+
+    // subwayStationInfo에서 directions 0건 → searchSubwaySchedule fallback
+    if (directions.length === 0) {
+      logAnomaly({
+        source: "subway-station-directions",
+        category: "pattern.subway_directions_schedule_fallback",
+        detail: {
+          stationId,
+          stationName: info.stationName,
+          hasWayList: Array.isArray(info.wayList),
+          wayListLength: info.wayList?.length ?? 0,
+          hasPrevOBJ: !!info.prevOBJ,
+          hasNextOBJ: !!info.nextOBJ,
+        },
+      })
+      directions = await extractDirectionsFromSchedule(stationId)
+    }
 
     const response: SubwayStationDirectionsResponse = {
       stationName: info.stationName,

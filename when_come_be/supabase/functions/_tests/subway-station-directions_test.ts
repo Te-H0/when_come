@@ -365,6 +365,160 @@ supabaseTest("subway-station-directions — wayList에 OBJ 정보 없으면 최�
   )
 })
 
+// ─── searchSubwaySchedule fallback ──────────────────────────────────────────
+
+// wayList/prevOBJ/nextOBJ 모두 없는 역 (stationId=143 같은 케이스)
+const MOCK_STATION_NO_DIRECTION_INFO = {
+  stationID: 143,
+  stationName: "테스트역143",
+  laneName: "수도권 1호선",
+  laneCity: "수도권",
+  subwayCode: 1,
+  // wayList, prevOBJ, nextOBJ 모두 없음
+}
+
+function odsaySubwayScheduleResponse(up: unknown[], down: unknown[]) {
+  return jsonResponse({ result: { up, down } })
+}
+
+function odsaySubwayScheduleEmpty() {
+  return jsonResponse({ error: [{ code: "-98", message: "결과 없음" }] })
+}
+
+supabaseTest(
+  "subway-station-directions — wayList/prevOBJ/nextOBJ 모두 없으면 searchSubwaySchedule fallback으로 directions 2건 반환한다",
+  async () => {
+    const ENV_WITH_SERVICE = { ...ENV, SUPABASE_SERVICE_ROLE_KEY: TEST_ENV.SUPABASE_SERVICE_ROLE_KEY }
+    await withEnv(ENV_WITH_SERVICE, () =>
+      withMockFetch(
+        multiMockFetch([
+          { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+          {
+            match: "subwayStationInfo",
+            response: () => odsaySubwayStationInfoResponse(MOCK_STATION_NO_DIRECTION_INFO),
+          },
+          {
+            match: "searchSubwaySchedule",
+            response: () =>
+              odsaySubwayScheduleResponse(
+                [{ startStationName: "소요산", endStationName: "소요산" }],
+                [{ startStationName: "신창", endStationName: "신창" }],
+              ),
+          },
+          // anomaly_logs INSERT (fire-and-forget, 실패해도 무관)
+          { match: "/rest/v1/anomaly_logs", response: () => jsonResponse(null, 201) },
+        ]),
+        async () => {
+          const req = makeRequest("GET", `${BASE}?stationId=143`, { headers: AUTH_HEADER })
+          const res = await handler(req)
+          assertEquals(res.status, 200)
+          const body = await res.json()
+          assertEquals(body.stationName, "테스트역143")
+          assertEquals(body.directions.length, 2)
+          const upDir = body.directions.find((d: { updn: string }) => d.updn === "up")
+          assertEquals(upDir?.nextStop, "소요산")
+          const downDir = body.directions.find((d: { updn: string }) => d.updn === "down")
+          assertEquals(downDir?.nextStop, "신창")
+        },
+      )
+    )
+  },
+)
+
+supabaseTest(
+  "subway-station-directions — searchSubwaySchedule도 빈 응답이면 directions 빈 배열 + 200 반환한다",
+  async () => {
+    const ENV_WITH_SERVICE = { ...ENV, SUPABASE_SERVICE_ROLE_KEY: TEST_ENV.SUPABASE_SERVICE_ROLE_KEY }
+    await withEnv(ENV_WITH_SERVICE, () =>
+      withMockFetch(
+        multiMockFetch([
+          { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+          {
+            match: "subwayStationInfo",
+            response: () => odsaySubwayStationInfoResponse(MOCK_STATION_NO_DIRECTION_INFO),
+          },
+          { match: "searchSubwaySchedule", response: () => odsaySubwayScheduleEmpty() },
+          { match: "/rest/v1/anomaly_logs", response: () => jsonResponse(null, 201) },
+        ]),
+        async () => {
+          const req = makeRequest("GET", `${BASE}?stationId=143`, { headers: AUTH_HEADER })
+          const res = await handler(req)
+          assertEquals(res.status, 200)
+          const body = await res.json()
+          assertEquals(body.stationName, "테스트역143")
+          assertEquals(body.directions.length, 0)
+        },
+      )
+    )
+  },
+)
+
+supabaseTest(
+  "subway-station-directions — subwayStationInfo invalid station(null 반환) + schedule도 빈 응답이면 404 유지",
+  async () => {
+    const ENV_WITH_SERVICE = { ...ENV, SUPABASE_SERVICE_ROLE_KEY: TEST_ENV.SUPABASE_SERVICE_ROLE_KEY }
+    await withEnv(ENV_WITH_SERVICE, () =>
+      withMockFetch(
+        multiMockFetch([
+          { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+          { match: "subwayStationInfo", response: () => odsaySubwayStationInfoEmpty() },
+          // null 반환 후 schedule fallback 시도 → 역시 빈 응답
+          { match: "searchSubwaySchedule", response: () => odsaySubwayScheduleEmpty() },
+          { match: "/rest/v1/anomaly_logs", response: () => jsonResponse(null, 201) },
+        ]),
+        async () => {
+          const req = makeRequest("GET", `${BASE}?stationId=999999`, { headers: AUTH_HEADER })
+          const res = await handler(req)
+          assertEquals(res.status, 404)
+          const body = await res.json()
+          assertEquals(body.error, "역 정보를 찾을 수 없습니다")
+        },
+      )
+    )
+  },
+)
+
+// ─── stationId=143 케이스: subwayStationInfo null이지만 schedule 유효 ──────────
+
+supabaseTest(
+  "subway-station-directions — subwayStationInfo null이어도 schedule 유효하면 directions 반환한다 (stationId=143 케이스)",
+  async () => {
+    const ENV_WITH_SERVICE = { ...ENV, SUPABASE_SERVICE_ROLE_KEY: TEST_ENV.SUPABASE_SERVICE_ROLE_KEY }
+    await withEnv(ENV_WITH_SERVICE, () =>
+      withMockFetch(
+        multiMockFetch([
+          { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+          { match: "subwayStationInfo", response: () => odsaySubwayStationInfoEmpty() },
+          {
+            match: "searchSubwaySchedule",
+            response: () =>
+              odsaySubwayScheduleResponse(
+                [{ startStationName: "소요산", endStationName: "소요산" }],
+                [{ startStationName: "광명", endStationName: "광명" }],
+              ),
+          },
+          { match: "/rest/v1/anomaly_logs", response: () => jsonResponse(null, 201) },
+        ]),
+        async () => {
+          const req = makeRequest("GET", `${BASE}?stationId=143`, { headers: AUTH_HEADER })
+          const res = await handler(req)
+          assertEquals(res.status, 200)
+          const body = await res.json()
+          // stationName은 빈 문자열, lineName/subwayCode는 null — schedule 데이터만
+          assertEquals(body.stationName, "")
+          assertEquals(body.lineName, null)
+          assertEquals(body.subwayCode, null)
+          assertEquals(body.directions.length, 2)
+          const upDir = body.directions.find((d: { updn: string }) => d.updn === "up")
+          assertEquals(upDir?.nextStop, "소요산")
+          const downDir = body.directions.find((d: { updn: string }) => d.updn === "down")
+          assertEquals(downDir?.nextStop, "광명")
+        },
+      )
+    )
+  },
+)
+
 // ─── CORS 헤더 ────────────────────────────────────────────────
 
 supabaseTest("subway-station-directions — CORS 헤더가 성공 응답에도 포함된다", async () => {
