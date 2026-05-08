@@ -1,7 +1,7 @@
 import { corsHeaders } from "../_shared/cors.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
-import { searchStation, type OdsayStation } from "../_shared/odsayClient.ts"
+import { searchStation, odsaySubwayTypeToSubwayCode, type OdsayStation } from "../_shared/odsayClient.ts"
 
 // ─── 서울 버스 API: getStationByUid 응답 타입 ───────────────────────────────
 interface SeoulBusStationByUidItem {
@@ -71,14 +71,29 @@ export async function handler(req: Request): Promise<Response> {
     const stations = isArsId ? await searchByArsId(q) : await searchStation(q, { includeSubway: true })
 
     const data = stations
-      .map((s) => ({
-        id: String(s.stationID),
-        name: s.stationName,
-        type: s.type === 2 ? "subway" : "bus",
-        lat: s.y,
-        lng: s.x,
-        arsId: s.arsID || null,
-      }))
+      .map((s) => {
+        // stationClass=2(지하철) 응답은 stationClass 필드가 있음.
+        // stationClass 미포함 구 포맷 fallback: type===2 (stationClass 미지정 단일 호출)
+        const isSubway = (s.stationClass !== undefined) ? s.stationClass === 2 : s.type === 2
+
+        const base = {
+          id: String(s.stationID),
+          name: s.stationName,
+          type: isSubway ? "subway" : "bus",
+          lat: s.y,
+          lng: s.x,
+          arsId: s.arsID || null,
+        }
+
+        if (!isSubway) return base
+
+        // 지하철 row에만 호선 정보 추가
+        return {
+          ...base,
+          laneName: s.laneName ?? null,
+          subwayCode: s.type != null ? odsaySubwayTypeToSubwayCode(s.type) : null,
+        }
+      })
       // 지하철(subway)을 버스보다 앞에 배치 — ARS 번호 검색 경로에서는 항상 bus만 있으므로 무해
       .sort((a, b) => {
         if (a.type === b.type) return 0

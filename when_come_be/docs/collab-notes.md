@@ -14,18 +14,30 @@
 
 정류장/역 검색. ODsay `searchStation` 프록시.
 
-**응답:**
+**응답 (버스 row):**
 ```json
-[
-  {
-    "id": "87103",
-    "name": "개봉역",
-    "type": "bus",
-    "lat": 37.4912,
-    "lng": 126.8628,
-    "arsId": "21003"
-  }
-]
+{
+  "id": "87103",
+  "name": "개봉역",
+  "type": "bus",
+  "lat": 37.4912,
+  "lng": 126.8628,
+  "arsId": "21003"
+}
+```
+
+**응답 (지하철 row, 2026-05-08 확장):**
+```json
+{
+  "id": "133",
+  "name": "서울역",
+  "type": "subway",
+  "lat": 37.555946,
+  "lng": 126.972317,
+  "arsId": null,
+  "laneName": "수도권 1호선",
+  "subwayCode": "1001"
+}
 ```
 
 | 필드 | 설명 |
@@ -33,6 +45,43 @@
 | `id` | ODsay stationID (문자열) — 경로탐색, odsay 도착정보에 사용 |
 | `type` | `"bus"` / `"subway"` |
 | `arsId` | 정류장 고유번호 (표지판에 적힌 번호) — 서울 버스 API 조회에 사용. 지하철역은 `null` |
+| `laneName` | 호선 전체명 (예: "수도권 1호선", "경의중앙선"). **지하철 row에만 포함**, 버스는 없음 |
+| `subwayCode` | 서울 지하철 API 형식 호선 코드 ("1001"~"1031"). **지하철 row에만 포함**. 매핑 미지원 호선은 `null` |
+
+---
+
+### GET /subway-station-directions?stationId={ODsay stationID} (신규 2026-05-08)
+
+지하철역 양방향 인접역 정보. ODsay `subwayStationInfo` 프록시.
+
+**요청 파라미터:**
+- `stationId` (필수): ODsay stationID (search-stops 응답의 `id` 필드)
+
+**응답:**
+```json
+{
+  "stationName": "서울역",
+  "lineName": "수도권 1호선",
+  "subwayCode": "1001",
+  "directions": [
+    { "updn": "up",   "nextStop": "남영" },
+    { "updn": "down", "nextStop": "시청" }
+  ]
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `stationName` | 역명 |
+| `lineName` | 호선 전체명 (`null` 가능) |
+| `subwayCode` | 서울 지하철 API 형식 코드 (`null` 가능) |
+| `directions[].updn` | `"up"` (상행/내선) / `"down"` (하행/외선) |
+| `directions[].nextStop` | 해당 방향 다음 역명 |
+
+**에러:**
+- `400`: `stationId` 파라미터 누락
+- `404`: 존재하지 않는 stationId
+- `502`: ODsay 연결 실패
 
 ---
 

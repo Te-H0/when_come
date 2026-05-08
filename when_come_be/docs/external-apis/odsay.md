@@ -2,7 +2,7 @@
 
 **Base URL:** `https://api.odsay.com/v1/api`  
 **인증:** `apiKey` 쿼리 파라미터 (URI 플랫폼 키, Referer 헤더로 도메인 인증)  
-**현재 사용 엔드포인트:** searchStation, realtimeStation, stationInfo, searchPubTransPathT
+**현재 사용 엔드포인트:** searchStation, realtimeStation, stationInfo, searchPubTransPathT, subwayStationInfo
 
 ## 에러 응답 구조
 
@@ -23,18 +23,36 @@
 ## searchStation — 정류장/역 검색
 
 ```
-GET /searchStation?lang=0&stationName={query}&apiKey={key}
+GET /searchStation?lang=0&stationName={query}&stationClass={1|2}&apiKey={key}
 ```
 
-**응답 (`result.station[]`):**
+`stationClass` 미지정 시 버스만 반환하는 quirk 있음 — 지하철 포함 검색은 `stationClass=2`로 별도 호출 필요.
+
+**버스 응답 (`result.station[]`, stationClass=1):**
 ```json
 {
   "stationID": 87103,
   "stationName": "개봉역",
   "x": 126.8628,
   "y": 37.4912,
+  "stationClass": 1,
   "type": 1,
   "arsID": "21003"
+}
+```
+
+**지하철 응답 (`result.station[]`, stationClass=2):**
+```json
+{
+  "stationID": 133,
+  "stationName": "서울역",
+  "x": 126.972317,
+  "y": 37.555946,
+  "stationClass": 2,
+  "type": 1,
+  "arsID": "133",
+  "laneName": "수도권 1호선",
+  "laneCity": "수도권"
 }
 ```
 
@@ -43,8 +61,13 @@ GET /searchStation?lang=0&stationName={query}&apiKey={key}
 | `stationID` | number | ODsay 정류장 ID |
 | `x` | number | 경도 (longitude) |
 | `y` | number | 위도 (latitude) |
-| `type` | number | **1: 버스정류장, 2: 지하철역** |
-| `arsID` | string | 서울 버스 API `arsId` |
+| `stationClass` | number | **1: 버스정류장, 2: 지하철역** (stationClass 지정 호출 시만 포함) |
+| `type` | number | 버스: 버스 노선 타입. **지하철: 호선 코드** (1=1호선, 2=2호선, 4=4호선, 22=경의중앙선, 101=공항철도, 104=경의중앙선 등) |
+| `arsID` | string | 서울 버스 ARS ID |
+| `laneName` | string | 호선 전체명 (예: "수도권 1호선"). **지하철 row에만 포함** |
+| `laneCity` | string | 지역 (예: "수도권"). **지하철 row에만 포함** |
+
+> **주의:** `type` 필드의 의미가 버스/지하철에서 다름. 버스에서 2=좌석버스이지만 지하철에서 2=2호선. 지하철 판별은 반드시 `stationClass === 2`로 할 것.
 
 ---
 
@@ -98,6 +121,66 @@ GET /stationInfo?stationID={id}&apiKey={key}
 | `busLocalBlID` | **서울 버스 API `busRouteId`** |
 | `stID` | **서울 버스 API `stId`** |
 | `stationOrd` | **서울 버스 API `ord`** (정류장 순번) |
+
+---
+
+## subwayStationInfo — 지하철역 상세 정보 (인접역, 호선) (2026-05-08 추가)
+
+```
+GET /subwayStationInfo?stationID={id}&apiKey={key}
+```
+
+**응답 (`result.station[0]`):**
+
+ODsay 응답 포맷이 역/호선에 따라 두 가지 구조로 확인됨:
+
+**포맷 A: wayList 배열 포맷**
+```json
+{
+  "stationID": 133,
+  "stationName": "서울역",
+  "laneName": "수도권 1호선",
+  "subwayCode": 1,
+  "wayList": [
+    {
+      "wayCode": 1,
+      "wayName": "소요산",
+      "prevOBJ": { "stationID": 134, "stationName": "시청" },
+      "nextOBJ": { "stationID": 132, "stationName": "남영" }
+    },
+    {
+      "wayCode": 2,
+      "wayName": "신창",
+      "prevOBJ": { "stationID": 132, "stationName": "남영" },
+      "nextOBJ": { "stationID": 134, "stationName": "시청" }
+    }
+  ]
+}
+```
+
+**포맷 B: 단일 prevOBJ/nextOBJ 포맷**
+```json
+{
+  "stationID": 133,
+  "stationName": "서울역",
+  "laneName": "수도권 1호선",
+  "subwayCode": 1,
+  "prevOBJ": { "stationID": 134, "stationName": "시청" },
+  "nextOBJ": { "stationID": 132, "stationName": "남영" }
+}
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `stationID` | number | ODsay 정류장 ID |
+| `stationName` | string | 역명 |
+| `laneName` | string | 호선 전체명 |
+| `subwayCode` | number | 호선 코드 (searchStation `type` 필드와 동일 체계) |
+| `wayList[].wayCode` | number | 1: 상행/내선, 2: 하행/외선 |
+| `wayList[].nextOBJ` | object | 해당 방향 다음 역 |
+| `prevOBJ`/`nextOBJ` | object | 포맷 B 전용: 단일 방향 인접역 |
+
+> 결과 없음: ODsay `-98`/`-99` 에러 → null 반환 → BE가 404 응답.
 
 ---
 

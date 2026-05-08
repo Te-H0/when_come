@@ -21,10 +21,13 @@ supabase/
 │   │   ├── anomaly.ts           ← fire-and-forget 이상 케이스 로거 (anomaly_logs INSERT)
 │   │   └── middleware.ts        ← withErrorLogging — 핸들러 감싸기 (unhandled 예외 안전망)
 │   ├── search-stops/            ← 정류장 검색
-│   ├── arrival-info/            ← 실시간 도착정보 (Provider 패턴 분기)
+│   ├── arrival-info/            ← 실시간 도착정보 (Provider 패턴 분기). stopId lookup: route_stops 우선 → favorite_stops fallback
 │   ├── route-search/            ← 경로탐색
 │   ├── stop-routes/             ← 정류장 노선 목록 (서울 버스 API)
-│   ├── routes/                  ← 사용자 경로 CRUD (provider 자동 매핑 포함)
+│   ├── routes/                  ← 사용자 경로 CRUD (PATCH 확장: active/displayOrder/name/stops)
+│   ├── route-stops/             ← 정류장 별명 전용 PATCH (alias 단일 변경)  [신규 2026-05-09]
+│   ├── favorite-stops/          ← 즐겨찾기 CRUD (GET/POST/PATCH/DELETE, provider 자동 매핑)  [신규 2026-05-09]
+│   ├── subway-station-directions/ ← 지하철역 양방향 인접역 (ODsay subwayStationInfo 프록시)  [신규 2026-05-08]
 │   └── sync-gbis-stations/      ← 경기도 정류소 DB 동기화 (cron용, service role 인증)
 ├── migrations/                  ← DB 스키마
 └── seed.sql
@@ -42,9 +45,12 @@ docs/
 |--------|----------|------|
 | stops | search-stops | 정류장/역 검색 (ODsay) |
 | stop-routes | stop-routes | 정류장 노선 목록 (서울 버스 API `getRouteByStation`) |
-| arrival | arrival-info | 실시간 도착정보 — Provider 패턴, 서울/경기/ODsay-fallback 분기. `?stopId={uuid}` 신 경로 + `?type=bus` legacy 호환 |
+| arrival | arrival-info | 실시간 도착정보 — Provider 패턴, 서울/경기/ODsay-fallback 분기. `?stopId={uuid}` 신 경로 + `?type=bus` legacy 호환. stopId lookup은 route_stops 우선 → favorite_stops fallback (D1, 2026-05-09~) |
 | route-search | route-search | 대중교통 경로탐색 (ODsay) |
-| routes | routes | 사용자 저장 경로 CRUD (저장 시 좌표 기반 provider 자동 매핑) |
+| routes | routes | 사용자 저장 경로 CRUD (PATCH 확장: active/displayOrder/name/stops 부분 수정, 2026-05-09~) |
+| route-stops | route-stops | 정류장 별명 전용 PATCH (`alias` 단일 변경, RLS 부모 검증, 2026-05-09~) |
+| favorites | favorite-stops | 즐겨찾기 단일 정류장 CRUD. GET/POST(provider 자동 매핑)/PATCH/DELETE. D5 노선 0개 reject. (2026-05-09~) |
+| subway-directions | subway-station-directions | 지하철역 양방향 인접역. `?stationId={ODsay stationID}` → `{ stationName, lineName, subwayCode, directions[{updn, nextStop}] }`. (2026-05-08~) |
 | sync | sync-gbis-stations | 경기도 전체 정류소를 `gbis_stations` 테이블에 upsert (일 1회 cron, GitHub Actions) |
 
 ## DB 테이블
