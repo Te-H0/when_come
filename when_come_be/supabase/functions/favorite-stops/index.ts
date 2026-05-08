@@ -228,7 +228,7 @@ async function createFavoriteStop(req: Request) {
   if (insertErr || !inserted) throw new AppError("즐겨찾기 저장 실패", 500)
 
   // favorite_stop_routes bulk INSERT
-  const routePayloads = body.routes.map((r) => ({
+  const routePayloads = body.routes.map((r, idx) => ({
     favorite_stop_id: inserted.id,
     odsay_route_id: r.odsayRouteId,
     route_name: r.routeName,
@@ -240,6 +240,7 @@ async function createFavoriteStop(req: Request) {
     gbis_route_id: r.gbisRouteId ?? null,
     gbis_sta_order: r.gbisStaOrder ?? null,
     provider: routeIdToProvider(r.odsayRouteId),
+    display_order: idx,
   }))
 
   const { error: routeErr } = await db
@@ -319,7 +320,7 @@ async function updateFavoriteStop(req: Request, id: string) {
 
     if (delErr) throw new AppError("노선 삭제 실패", 500)
 
-    const routePayloads = body.routes.map((r) => ({
+    const routePayloads = body.routes.map((r, idx) => ({
       favorite_stop_id: id,
       odsay_route_id: r.odsayRouteId,
       route_name: r.routeName,
@@ -331,6 +332,7 @@ async function updateFavoriteStop(req: Request, id: string) {
       gbis_route_id: r.gbisRouteId ?? null,
       gbis_sta_order: r.gbisStaOrder ?? null,
       provider: routeIdToProvider(r.odsayRouteId),
+      display_order: idx,
     }))
 
     const { error: insertErr } = await db

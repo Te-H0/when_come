@@ -8,6 +8,37 @@
 
 ---
 
+## 2026-05-08 — favorites-and-aliases D11 추가: 양방향 다음 역 1개씩 + 종착지 동적 노출 (D10 보강)
+
+D10 양 종착지 N개 표시 → **양방향 다음 역 1개씩**으로 단순화. ODsay `subwayStationInfo`의 `prevOBJ`/`nextOBJ`(단일 호출)로 prev/next 한 칸씩만 추출. 종착지(headsign)는 도착 카드에서 매 item `headsign`(이미 BE 응답 동봉)으로 동적 표시.
+
+- **새 endpoint:** `GET /subway-station-directions?stationId={ODsay stationID}` (anon 허용). 응답 `{ stationName, lineName, subwayId, directions: [{updn:'up'|'down', nextStop}, ...] }` (1~2개, 종착역은 1개).
+- **저장 모델 변경:** `directionUpdn` + `directionNextStop`만 저장. **`directionHeadsign`은 NULL** — 매 도착 item의 `headsign`(2026-05-08 BE 작업으로 이미 동봉)으로 카드 시점에 표시.
+- **폐기 옵션:**
+  - 옵션 A(`/subway-line-headsigns` + cron + `subway_line_headsigns` 캐시 테이블 + ODsay `searchSubwaySchedule`) — 폐기. 새 테이블/cron 만들지 않음.
+  - 옵션 C(정적 매핑) — 폐기.
+- **유지 (역할 변경):** 옵션 B(`search-stops` 응답에 `laneName`/`subwayId` 노출) — 호선 row 분리 노출용 별개 트랙으로 유지. D11과 직접 결합하지 않음.
+- **영향 task:** Phase 2-2가 단순화됨. `T10-a 조사 → T10-b 또는 T10-b'` (옵션 분기) → **단일 `T10-b'' subway-station-directions endpoint 신설`**로 통합. cron/새 테이블 마이그레이션 task 제거.
+- **FE 영향:** `<UnifiedStopPicker>`의 방향 chip은 양방향 다음 역 1개씩 (예: "시청 방향(상행)" / "남영 방향(하행)"). payload `subway.direction`은 `{updn, nextStop}` (headsign 없음).
+- **도착 카드 흐름 변경 없음:** `matchSubwayItems`는 기존 `directionUpdn` 필터링 그대로. 매 item `headsign` prefix 표시는 이미 완료된 BE 응답 + FE 표시 작업으로 노출 중.
+
+> be-agent 위임: 단일 endpoint `GET /subway-station-directions` 구현. ODsay `subwayStationInfo` 호출 → `prevOBJ`/`nextOBJ`에서 다음 역 1개씩 추출. 검증 케이스: 양방향 정상 / 종착역 단방향 / stationId 누락 400 / 미존재 404 / ODsay 장애 502 / OPTIONS preflight.
+
+---
+
+## 2026-05-08 — favorites-and-aliases D10 추가: 공용 StopPicker + 지하철 호선/방향 선택
+
+옵션 (2) 채택. 즐겨찾기 추가와 SetupRoute 수동 검색이 **동일 공용 `<UnifiedStopPicker>`**를 사용. 지하철역 결과 선택 시 **호선 → 방향 선택 단계**가 자동 이어진다. 한 즐겨찾기/노드 = 한 호선 + 한 방향. 환승역에서 두 호선 단골은 별개 카드 두 개.
+
+- 기존 SetupRoute 수동 검색의 지하철 NULL 저장 한계 해소(재등록 시점부터 정확한 `directionHeadsign`/`directionUpdn`/`subwayCode` 채워짐).
+- BE 신규 데이터 endpoint 필요: `GET /subway-station-info`(옵션 A) **또는** 기존 `search-stops` 응답에 `subwayLines` 확장(옵션 B), 또는 정적 매핑(옵션 C). 결정은 be-agent + api-expert가 ODsay/서울 지하철 API 조사 후 확정 (TASKS T10-a). spec엔 응답 스키마 셋 다 명시됨 — 채택 시 나머지 삭제.
+- 폴백: 호선/방향 정보 미제공/장애 시 FE는 사용자 동의로 NULL 저장 허용 (legacy graceful fallback).
+- 영향 task: T16 → T16-A(`<UnifiedStopPicker>`) + T16-B(SetupRoute 교체)로 분리. T10-a/T10-b/T10-b' Phase 2-2 신설. T18은 `<UnifiedStopPicker>` 의존으로 변경.
+
+> be-agent 위임: `/subway-station-info` endpoint 또는 `search-stops` 응답 확장 둘 중 하나로 호선 목록 + 호선별 양 종착지(up/down headsign)를 제공. ODsay subwayInfo / 서울 지하철 통합 API / 정적 hardcode 셋 중 가용 출처 조사 후 결정.
+
+---
+
 ## 2026-05-08 — favorites-and-aliases spec OQ 5개 결정 반영
 
 `docs/specs/favorites-and-aliases/{PRD,SDD,TASKS}.md` + `docs/api/contracts/favorites.md` 업데이트. 구현은 spec 승인 후 진행.
@@ -401,6 +432,116 @@ FE 동작:
 - BE 미배포 환경 호환을 위해 FE 타입은 `displayMsg?: string | null` (옵셔널). 양쪽 배포 완료 후 별도 커밋으로 옵셔널 제거 예정
 
 영향: 지하철 카드 폭 깨짐(긴 메시지로 호선 뱃지 잘림) 해소.
+
+---
+
+## 2026-05-09 — favorites-and-aliases Phase 2 BE Edge Functions 완료
+
+Phase 2 BE 구현 완료. FE Phase 3 착수 가능.
+
+### 신규 엔드포인트
+
+#### GET/POST/PATCH/DELETE `/favorite-stops`
+
+인증 필수 (Bearer JWT).
+
+**GET `/favorite-stops`**
+- 응답: `FavoriteStop[]` — `display_order` asc, `created_at` asc 정렬
+- 각 항목에 `favorite_stop_routes` 조인 포함
+
+**POST `/favorite-stops`**
+```json
+{
+  "odsayStopId": "106186",
+  "stopName": "강남역",
+  "stopType": "bus",
+  "lat": 37.498,
+  "lng": 127.028,
+  "arsId": "23156",
+  "alias": "회사 앞",
+  "routes": [
+    { "odsayRouteId": "100100643", "routeName": "643", "busType": 12, "stId": "106186", "busRouteId": "100100643", "stationOrd": 5, "stationName": "강남역" }
+  ]
+}
+```
+- `routes` 빈 배열 또는 누락 → 400 `FAVORITE_ROUTES_REQUIRED` (PRD D5)
+- `provider` 자동 매핑: 좌표 bounding box → Seoul/Gyeonggi/odsay_fallback
+- `display_order` 자동 부여 (현재 max + 1)
+- 응답 201: 생성된 `FavoriteStop` 전체 (favorite_stop_routes 포함)
+
+**PATCH `/favorite-stops/:id`**
+```json
+{
+  "alias": "새 별명",
+  "displayOrder": 2,
+  "routes": [...]
+}
+```
+- 각 필드 독립 수정 (부분 수정 가능)
+- `routes: []` → 400 `FAVORITE_ROUTES_REQUIRED`
+- `routes` 있으면 전체 교체 (기존 삭제 + 재삽입)
+- 응답 200: 수정된 `FavoriteStop` 전체
+
+**DELETE `/favorite-stops/:id`**
+- 응답 204 (No Content)
+- `favorite_stop_routes` cascade 자동 삭제
+
+#### PATCH `/routes/:id` 확장 (기존 엔드포인트 확장)
+
+```json
+{
+  "name": "출근길(수정)",
+  "displayOrder": 1,
+  "active": false,
+  "stops": [...]
+}
+```
+- 각 필드 독립 수정 (부분 수정 가능). 기존 PUT 시맨틱(stops 전체 교체) 포함.
+- `active` 반드시 boolean — 문자열 "true"/"false" 허용 안 함
+- `name` 빈 문자열 → 400
+- `stops: []` → 400
+- `stops` 있으면 route_stops 전체 교체 + provider 재매핑
+
+#### PATCH `/route-stops/:id` (신규)
+
+```json
+{ "alias": "출구 앞 정류장" }
+```
+- `alias` 단일 필드만 수정 (빈 문자열 → null 정규화)
+- RLS: 부모 `routes.user_id === auth.uid()` 검증
+- 응답 200: 수정된 `route_stop` 전체 (`stop_routes` 포함)
+
+#### GET `/arrival-info?stopId=` 확장 (D1)
+
+`stopId`가 `route_stops`에 없으면 `favorite_stops`를 자동으로 fallback 조회.
+- FE는 분기 없이 동일 `?stopId={uuid}` 패턴 사용
+- `favorite_stops.id`도 `stopId`로 전달 가능
+- 둘 다 없으면 404 `ARRIVAL_STOP_NOT_FOUND`
+
+### FE 다음 작업 (Phase 3)
+
+**T11 — 도메인 타입 확장** (착수 가능)
+- `TransitStop`에 `alias?: string | null` 추가
+- `SavedRoute`에 `displayOrder?: number`, `active?: boolean` 추가
+- `FavoriteStop` 타입 신규: `{ id, odsayStopId, stopName, stopType, arsId, lat, lng, provider, gbisStationId, alias, displayOrder, favoriteStopRoutes: FavoriteStopRoute[] }`
+
+**T12 — `lib/api.ts` 확장** (T11 완료 후)
+- `fetchFavoriteStops()` — GET /favorite-stops
+- `createFavoriteStop(body)` — POST /favorite-stops
+- `updateFavoriteStop(id, partial)` — PATCH /favorite-stops/:id
+- `deleteFavoriteStop(id)` — DELETE /favorite-stops/:id
+- `patchRoute(id, partial)` — PATCH /routes/:id (active/displayOrder/name/stops)
+- `patchRouteStop(id, { alias })` — PATCH /route-stops/:id
+
+**T13~T15 — `<StopName>` 공용 컴포넌트** (T11 완료 후)
+
+**T16~T19 — Favorites 페이지 + BottomNav 변경** (T12 완료 후)
+
+### 에러 코드 신설
+
+| 코드 | HTTP | 의미 |
+|------|------|------|
+| `FAVORITE_ROUTES_REQUIRED` | 400 | 즐겨찾기 노선 0개 저장 시도 (POST/PATCH) |
 
 ---
 

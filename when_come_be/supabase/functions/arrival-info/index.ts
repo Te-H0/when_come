@@ -82,8 +82,8 @@ export function extractHeadsign(
   arrmsg1: string,
   context?: { lineName?: string },
 ): string | null {
-  // 1차: trainLineNm에서 "X행" 추출
-  if (trainLineNm) {
+  // 1차: trainLineNm에서 "X행" 추출 (공백만 있는 경우 방어)
+  if (trainLineNm?.trim()) {
     const m = trainLineNm.match(/^([^\s-]+행)/)
     if (m) return m[1]
   }
@@ -356,11 +356,24 @@ function parseArrivalSec(val: unknown): number | null {
   return !isNaN(n) && n > 0 ? n : null
 }
 
+// ─── 환경변수 lazy 읽기 ────────────────────────────────────────────────────
+function getSupabaseUrl(): string {
+  const url = Deno.env.get("SUPABASE_URL")
+  if (!url) throw new AppError("SUPABASE_URL not configured", 500)
+  return url
+}
+
+function getSupabaseAnonKey(): string {
+  const key = Deno.env.get("SUPABASE_ANON_KEY")
+  if (!key) throw new AppError("SUPABASE_ANON_KEY not configured", 500)
+  return key
+}
+
 // ─── DB 클라이언트 (stopId 기반 경로용) ────────────────────────────────────
 function supabaseClient(authHeader: string) {
   return createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    getSupabaseUrl(),
+    getSupabaseAnonKey(),
     { global: { headers: { Authorization: authHeader } } },
   )
 }
@@ -464,6 +477,56 @@ function buildBaseCtx(stop: RouteStopRow): Omit<ArrivalQueryContext, "gbisRouteI
   }
 }
 
+// ─── favorite_stops row → RouteStopRow 변환 헬퍼 ─────────────────────────────
+
+interface FavoriteStopRouteRow {
+  gbis_route_id: string | null
+  gbis_sta_order: number | null
+  provider: "seoul" | "gyeonggi" | "odsay_fallback" | null
+  odsay_route_id: string | null
+}
+
+interface FavoriteStopRow {
+  id: string
+  stop_type: "bus" | "subway"
+  ars_id: string | null
+  gbis_station_id: string | null
+  provider: "seoul" | "gyeonggi" | "odsay_fallback" | null
+  odsay_stop_id: string | null
+  stop_name: string | null
+  favorite_stop_routes: FavoriteStopRouteRow[]
+}
+
+function isFavoriteStopRow(val: unknown): val is FavoriteStopRow {
+  if (typeof val !== "object" || val === null) return false
+  const row = val as Record<string, unknown>
+  if (typeof row["id"] !== "string") return false
+  if (row["stop_type"] !== "bus" && row["stop_type"] !== "subway") return false
+  if (!Array.isArray(row["favorite_stop_routes"])) return false
+  return true
+}
+
+/** favorite_stops row를 RouteStopRow 형태로 변환 (provider aggregation 로직 재사용) */
+function favStopToRouteStopRow(fav: FavoriteStopRow): RouteStopRow {
+  return {
+    id: fav.id,
+    route_id: "",  // favorite_stops는 route_id 없음 — placeholder
+    stop_type: fav.stop_type,
+    ars_id: fav.ars_id,
+    gbis_station_id: fav.gbis_station_id,
+    provider: fav.provider,
+    provider_fallback_reason: null,
+    odsay_stop_id: fav.odsay_stop_id,
+    stop_name: fav.stop_name,
+    stop_routes: fav.favorite_stop_routes.map((r) => ({
+      gbis_route_id: r.gbis_route_id,
+      gbis_sta_order: r.gbis_sta_order,
+      provider: r.provider,
+      odsay_route_id: r.odsay_route_id,
+    })),
+  }
+}
+
 // ─── 신 경로: stop_routes.provider 기반 멀티 프로바이더 aggregation ──────────
 async function fetchArrivalByStopId(
   stopId: string,
@@ -472,9 +535,8 @@ async function fetchArrivalByStopId(
   const user = await authGuard(req)
   const db = supabaseClient(req.headers.get("Authorization")!)
 
-  // route_stops + stop_routes 조회 (권한 검증: routes.user_id = auth.uid())
-  // stop_routes.provider + odsay_route_id 포함 — 노선 단위 분기 판단에 사용
-  const { data: stop, error } = await db
+  // 1차: route_stops + stop_routes 조회 (권한 검증: routes.user_id = auth.uid())
+  const { data: routeStop, error: routeStopErr } = await db
     .from("route_stops")
     .select(
       `id, route_id, stop_type, ars_id, gbis_station_id, provider, provider_fallback_reason,
@@ -486,13 +548,35 @@ async function fetchArrivalByStopId(
     .eq("routes.user_id", user.id)
     .single()
 
-  if (error || !stop) {
-    throw new AppError(
-      "경로를 찾을 수 없어요.",
-      404,
-      "ARRIVAL_STOP_NOT_FOUND" satisfies ArrivalErrorCode,
-      `route_stops.id=${stopId} not found or not owned by user`,
-    )
+  // 2차: route_stops에 없으면 favorite_stops 조회
+  let stop: unknown
+  if (routeStopErr || !routeStop) {
+    const { data: favStop, error: favErr } = await db
+      .from("favorite_stops")
+      .select(
+        `id, stop_type, ars_id, gbis_station_id, provider,
+         odsay_stop_id, stop_name,
+         favorite_stop_routes(gbis_route_id, gbis_sta_order, provider, odsay_route_id)`,
+      )
+      .eq("id", stopId)
+      .single()
+
+    if (favErr || !favStop) {
+      throw new AppError(
+        "경로를 찾을 수 없어요.",
+        404,
+        "ARRIVAL_STOP_NOT_FOUND" satisfies ArrivalErrorCode,
+        `stopId=${stopId} not found in route_stops or favorite_stops`,
+      )
+    }
+
+    if (!isFavoriteStopRow(favStop)) {
+      throw new AppError("DB row 형식 오류 (favorite_stops)", 500)
+    }
+
+    stop = favStopToRouteStopRow(favStop)
+  } else {
+    stop = routeStop
   }
 
   if (!isRouteStopRow(stop)) {

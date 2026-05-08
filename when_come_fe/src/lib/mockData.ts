@@ -49,6 +49,7 @@ export interface SavedRoute {
   to: string;
   segments: RouteSegment[];
   isActive: boolean;
+  displayOrder?: number;
 }
 
 // 모의 데이터

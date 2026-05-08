@@ -229,12 +229,20 @@ export async function searchPubTransPath(
 }
 
 // ─── subwayStationInfo 타입 ─────────────────────────────────────
+//
+// ODsay 실제 응답 구조 (2026-05-09 직접 확인):
+// prevOBJ / nextOBJ 는 직접 객체가 아니라 { station: [{ stationName, stationID, ... }] } 배열 래퍼
+// wayList 내 prevOBJ/nextOBJ도 동일한 배열 래퍼 구조임.
+
+export interface OdsaySubwayStationRef {
+  station: Array<{ stationID: number; stationName: string }>
+}
 
 export interface OdsaySubwayWayItem {
   wayCode: number         // 1: 상행/내선, 2: 하행/외선
   wayName?: string        // 종점역명
-  prevOBJ?: { stationID: number; stationName: string }
-  nextOBJ?: { stationID: number; stationName: string }
+  prevOBJ?: OdsaySubwayStationRef
+  nextOBJ?: OdsaySubwayStationRef
 }
 
 export interface OdsaySubwayStationInfo {
@@ -245,9 +253,10 @@ export interface OdsaySubwayStationInfo {
   subwayCode?: number
   // wayList 포맷: 방향별 배열 (일부 역/호선)
   wayList?: OdsaySubwayWayItem[]
-  // 단일 포맷: prevOBJ/nextOBJ가 직접 존재 (일부 포맷)
-  prevOBJ?: { stationID: number; stationName: string }
-  nextOBJ?: { stationID: number; stationName: string }
+  // 단일 포맷: prevOBJ/nextOBJ가 직접 존재 (대부분의 역)
+  // 실제 구조: { station: [{ stationName, stationID, ... }] } — 배열 래퍼
+  prevOBJ?: OdsaySubwayStationRef
+  nextOBJ?: OdsaySubwayStationRef
 }
 
 function hasSubwayStationInfo(val: unknown): val is { station: OdsaySubwayStationInfo[] } {
@@ -266,4 +275,63 @@ export async function subwayStationInfo(stationId: string): Promise<OdsaySubwayS
   )
   if (!hasSubwayStationInfo(result)) return null
   return result.station[0] ?? null
+}
+
+// ─── searchSubwaySchedule 타입 ──────────────────────────────────
+//
+// ODsay 실제 응답 구조 (2026-05-09 직접 확인):
+// result.weekdaySchedule.up[] / result.weekdaySchedule.down[]
+// 각 항목: { subwayClass, departureTime, startStationName, endStationName, firstLastFlag }
+// result에 직접 up/down 키가 없음 — weekdaySchedule 안에 있음.
+// 단, 순환선(2호선)은 endStationName이 "성수" 등으로 편향되어 방향 표시에 부적합.
+// result 자체에도 prevOBJ/nextOBJ 배열 래퍼가 존재하여 인접역 직접 참조 가능.
+
+export interface OdsaySubwayScheduleItem {
+  startStationName?: string
+  endStationName?: string
+}
+
+export interface OdsaySubwaySchedule {
+  up?: OdsaySubwayScheduleItem[]
+  down?: OdsaySubwayScheduleItem[]
+  // 인접역 (subwayStationInfo와 동일한 배열 래퍼 구조)
+  prevOBJ?: OdsaySubwayStationRef
+  nextOBJ?: OdsaySubwayStationRef
+}
+
+function hasWeekdaySchedule(val: unknown): val is {
+  weekdaySchedule?: {
+    up?: OdsaySubwayScheduleItem[]
+    down?: OdsaySubwayScheduleItem[]
+  }
+  prevOBJ?: OdsaySubwayStationRef
+  nextOBJ?: OdsaySubwayStationRef
+} {
+  return val !== null && typeof val === "object"
+}
+
+/**
+ * ODsay searchSubwaySchedule: 지하철역 시간표 조회
+ * 실제 구조: result.weekdaySchedule.up[] / result.weekdaySchedule.down[]
+ * result 자체에도 prevOBJ/nextOBJ (인접역) 포함 — 방향 표시 1차로 활용.
+ * subwayStationInfo에서 directions를 추출 못할 때 fallback으로 사용.
+ * 결과 없음(-98/-99)은 빈 객체 반환.
+ */
+export async function searchSubwaySchedule(stationId: string): Promise<OdsaySubwaySchedule> {
+  try {
+    const result = await odsayFetch(
+      `/searchSubwaySchedule?lang=0&stationID=${stationId}&apiKey=${apiKey()}`,
+    )
+    if (!hasWeekdaySchedule(result)) return {}
+    const ws = result.weekdaySchedule ?? {}
+    return {
+      up: ws.up ?? [],
+      down: ws.down ?? [],
+      prevOBJ: result.prevOBJ,
+      nextOBJ: result.nextOBJ,
+    }
+  } catch {
+    // 스케줄 조회 실패는 빈 객체로 안전하게 처리 — 메인 흐름 차단 금지
+    return {}
+  }
 }

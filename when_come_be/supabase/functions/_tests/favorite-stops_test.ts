@@ -463,10 +463,10 @@ supabaseTest("favorite-stops POST subway — 지하철 1호선 즐겨찾기 저�
           },
         }))
         assertEquals(res.status, 201)
-        // routes payload에 display_order가 없어야 함 (테이블에 컬럼 없음)
+        // routes payload에 display_order가 0으로 채워져야 함
         if (capturedRoutePayload && typeof capturedRoutePayload === "object") {
           const payload = capturedRoutePayload as Record<string, unknown>
-          assertEquals("display_order" in payload, false)
+          assertEquals(payload.display_order, 0)
           assertEquals(payload.odsay_route_id, "143")
           assertEquals(payload.route_name, "수도권 1호선")
           assertEquals(payload.provider, "odsay_fallback")
@@ -655,6 +655,115 @@ supabaseTest("favorite-stops DELETE — 인증 없으면 401을 반환한다", a
       const res = await handler(makeReq("DELETE", `/${FAV_ID}`, { auth: false }))
       assertEquals(res.status, 401)
     })
+  )
+})
+
+// ─── POST — 다중 노선 display_order 순번 검증 ────────────────────────────────
+
+supabaseTest("favorite-stops POST — 다중 노선 저장 시 display_order가 0,1,2 순으로 채워진다", async () => {
+  const capturedRoutePayloads: Array<Record<string, unknown>> = []
+
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        {
+          match: /favorite_stops\?select=display_order/,
+          response: () => mockDbMaxOrderEmpty(),
+        },
+        {
+          match: /rest\/v1\/favorite_stops/,
+          response: (_url, init) => {
+            if (init?.method === "POST") return mockDbInsertFav()
+            return mockDbSelectFav()
+          },
+        },
+        {
+          match: "favorite_stop_routes",
+          response: (_url, init) => {
+            if (init?.method === "POST") {
+              try {
+                const parsed = JSON.parse(init.body as string)
+                const items = Array.isArray(parsed) ? parsed : [parsed]
+                capturedRoutePayloads.push(...items)
+              } catch {
+                // ignore
+              }
+              return mockDbInsertRoutes()
+            }
+            return mockDbInsertRoutes()
+          },
+        },
+      ]),
+      async () => {
+        await handler(makeReq("POST", "", {
+          body: {
+            odsayStopId: "87103",
+            stopName: "광명사거리역",
+            stopType: "bus",
+            routes: [
+              { odsayRouteId: "234001", routeName: "11" },
+              { odsayRouteId: "234002", routeName: "27" },
+              { odsayRouteId: "234003", routeName: "33" },
+            ],
+          },
+        }))
+        if (capturedRoutePayloads.length === 3) {
+          assertEquals(capturedRoutePayloads[0].display_order, 0)
+          assertEquals(capturedRoutePayloads[1].display_order, 1)
+          assertEquals(capturedRoutePayloads[2].display_order, 2)
+        }
+      },
+    )
+  )
+})
+
+// ─── PATCH — routes 교체 시 display_order 재부여 검증 ────────────────────────
+
+supabaseTest("favorite-stops PATCH routes 교체 — display_order가 0,1로 재부여된다", async () => {
+  const capturedRoutePayloads: Array<Record<string, unknown>> = []
+  let favCallCount = 0
+
+  await withEnv(ENV, () =>
+    withMockFetch(
+      async (url, init) => {
+        if (url.includes("/auth/v1/user")) return mockSupabaseAuthSuccess(USER_ID)
+        if (url.includes("favorite_stop_routes")) {
+          if (init?.method === "DELETE") return mockDbDeleteRoutes()
+          if (init?.method === "POST") {
+            try {
+              const parsed = JSON.parse(init.body as string)
+              const items = Array.isArray(parsed) ? parsed : [parsed]
+              capturedRoutePayloads.push(...items)
+            } catch {
+              // ignore
+            }
+            return mockDbInsertRoutes()
+          }
+          return mockDbInsertRoutes()
+        }
+        if (url.includes("/rest/v1/favorite_stops")) {
+          favCallCount++
+          if (favCallCount === 2) return mockDbSelectFav()
+          return mockDbSelectExisting()
+        }
+        throw new Error(`Unmocked: ${url}`)
+      },
+      async () => {
+        await handler(makeReq("PATCH", `/${FAV_ID}`, {
+          body: {
+            routes: [
+              { odsayRouteId: "234010", routeName: "50" },
+              { odsayRouteId: "234011", routeName: "51" },
+            ],
+          },
+        }))
+        if (capturedRoutePayloads.length === 2) {
+          assertEquals(capturedRoutePayloads[0].display_order, 0)
+          assertEquals(capturedRoutePayloads[1].display_order, 1)
+        }
+      },
+    )
   )
 })
 

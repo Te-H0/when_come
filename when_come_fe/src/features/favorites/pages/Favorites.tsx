@@ -13,7 +13,7 @@ import AliasEditor from '@/components/AliasEditor'
 import { listFavoriteStops, updateFavoriteStop, deleteFavoriteStop } from '@/lib/api'
 import { getJwt } from '@/lib/supabase'
 import { mapApiFavoriteStopToTransitStop } from '@/lib/mappers'
-import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg, getMatchedSubwayItems } from '@/lib/arrival'
+import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg, getMatchedSubwayItems, groupSubwayItemsByDirection } from '@/lib/arrival'
 import type { ArrivalData } from '@/lib/arrival'
 import { ApiError } from '@/lib/api'
 import { getBusTypeByOdsay, getSubwayColor } from '@/utils/transitColors'
@@ -159,11 +159,6 @@ function FavoriteCard({
               {fav.direction_next_stop} 방향
             </div>
           )}
-          {stop.type === 'subway' && !fav.direction_updn && (
-            <div className="text-[11px] text-[#9CA3AF] mt-0.5">
-              방향 정보 없음 — 다시 등록하면 더 정확해요
-            </div>
-          )}
           {stop.type === 'bus'
             && arrivalData?.type === 'bus_by_stopid'
             && arrivalData.data.provider === 'odsay_fallback' && (
@@ -210,7 +205,82 @@ function FavoriteCard({
             const stopRoute = stop.stopRoutes?.find(r => r.routeName === line)
             const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null
             const subwayColorInfo = isSubway ? getSubwayColor(line) : null
+            const lineKey = `${fav.id}-${line}`
 
+            // 지하철이고 방향 NULL → 양방향 분리 UI 적용
+            const isBidirectional = isSubway && !fav.direction_updn
+            const matchedSubwayItems = isSubway ? getMatchedSubwayItems(stop, line, arrivalData) : []
+
+            if (isBidirectional) {
+              // 양방향 분리 UI — updnLine 기준으로 up/down 그룹핑
+              const grouped = groupSubwayItemsByDirection(matchedSubwayItems)
+              const allEmpty = grouped.up.length === 0 && grouped.down.length === 0 && grouped.other.length === 0
+              const dirGroups: Array<{ label: string; items: typeof grouped.up }> = []
+              if (grouped.up.length > 0) dirGroups.push({ label: '상행', items: grouped.up })
+              if (grouped.down.length > 0) dirGroups.push({ label: '하행', items: grouped.down })
+              if (grouped.other.length > 0) dirGroups.push({ label: '기타', items: grouped.other })
+
+              return (
+                <div key={line} className="px-4 py-3.5 hover:bg-[#F9FAFB] transition-colors">
+                  {/* 호선 헤더 */}
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="w-9 h-9 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 12h0"/><path d="M9.75 9.75h4.5"/><path d="M7 15h10"/>
+                        <rect x="5" y="4" width="14" height="16" rx="2"/>
+                        <path d="M8 20l-2 2"/><path d="M16 20l2 2"/>
+                      </svg>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-semibold text-[#111827]">{line}</div>
+                      <div className="text-[12px] text-[#6B7280]">전철</div>
+                    </div>
+                  </div>
+
+                  {/* 방향별 분리 표시 */}
+                  {isArrivalLoading ? (
+                    <div className="flex items-center gap-1.5 ml-[52px]">
+                      <Loader2 className="w-3.5 h-3.5 text-[#9CA3AF] animate-spin" />
+                      <span className="text-[13px] text-[#9CA3AF]">조회 중...</span>
+                    </div>
+                  ) : allEmpty ? (
+                    <div className="ml-[52px] text-[13px] text-[#9CA3AF]">도착 정보 없음</div>
+                  ) : (
+                    <div className="ml-[52px] space-y-2.5">
+                      {dirGroups.map(({ label, items }) => (
+                        <div key={label}>
+                          <div className="text-[11px] font-medium text-[#9CA3AF] mb-1">{label}</div>
+                          <div className="space-y-1">
+                            {items.slice(0, 2).map((item, itemIdx) => {
+                              const rawMsg = item.displayMsg ?? item.arrmsg1
+                              const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway')
+                              const { time: timeOnly, stops: stopsB } = splitArrival(msg)
+                              const minVal = item.displayMsg != null ? 0 : (rawMsg.match(/(\d+)분/) ? parseInt(rawMsg.match(/(\d+)분/)![1]) : null)
+                              const isUrgentItem = minVal !== null && minVal < 3
+                              return (
+                                <div key={itemIdx} className="flex items-center gap-1.5">
+                                  {item.headsign && (
+                                    <span className="text-[11px] text-[#6B7280] whitespace-nowrap font-medium">{item.headsign}행</span>
+                                  )}
+                                  <span className={`text-[14px] font-bold tabular-nums whitespace-nowrap ${itemIdx === 0 && isUrgentItem ? 'text-[#DC2626]' : itemIdx === 0 ? 'text-[#111827]' : 'text-[#9CA3AF]'}`}>
+                                    {timeOnly}
+                                  </span>
+                                  {stopsB && (
+                                    <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsB}</span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            // 단방향 또는 버스 — 기존 흐름
             const transitMode = isSubway ? 'subway' : 'bus'
             const rawMsg1 = getArrivalDisplay(stop, line, arrivalData)
             const rawMsg2 = getArrivalDisplay2(stop, line, arrivalData)
@@ -224,12 +294,9 @@ function FavoriteCard({
             const { time: arrivalTimeOnly, stops: stopsBefore } = splitArrival(arrivalText)
             const { time: arrivalTimeOnly2, stops: stopsBefore2 } = splitArrival(arrivalText2)
 
-            // 지하철: 매칭된 item의 행선지
-            const matchedSubwayItems = isSubway ? getMatchedSubwayItems(stop, line, arrivalData) : []
             const item1Headsign = isSubway && matchedSubwayItems[0]?.headsign ? matchedSubwayItems[0].headsign : null
             const item2Headsign = isSubway && matchedSubwayItems[1]?.headsign ? matchedSubwayItems[1].headsign : null
             const hasMoreItems = isSubway && matchedSubwayItems.length > 2
-            const lineKey = `${fav.id}-${line}`
             const isLineExpanded = expandedLines[lineKey] ?? false
             const extraItems = hasMoreItems && isLineExpanded ? matchedSubwayItems.slice(2) : []
 

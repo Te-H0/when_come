@@ -1,6 +1,6 @@
 # TASKS — 즐겨찾기 + 별명 (favorites-and-aliases)
 
-- **상태:** Phase 1 완료 (2026-05-09) — Phase 2(BE EF) 착수 가능
+- **상태:** Phase 2 완료 (2026-05-09) — Phase 2-2(D11 subway-station-directions endpoint) + Phase 3(FE) 착수 가능. PRD D10 추가 (2026-05-08)로 T16 분리 + Phase 2-2 신설. **D11 추가 (2026-05-08)로 Phase 2-2 단순화 — T10-a/T10-b/T10-b' → T10-b'' 단일 task로 통합**
 - **선행 문서:** `PRD.md`, `SDD.md`, `docs/api/contracts/favorites.md` (예정)
 - **승인 후 위임:** be-agent (Phase 1~2) → fe-agent (Phase 3~5) → 정리 (Phase 6)
 
@@ -82,6 +82,7 @@
   - OPTIONS preflight
 - 의존: T1
 - 분량: M
+- [x] 완료 (2026-05-09)
 
 ### T5. `favorite-stops` POST (생성) + provider 매핑
 - 같은 파일에 메서드 추가
@@ -96,6 +97,7 @@
   - favorite_stop_routes bulk insert 트랜잭션 검증 (실패 시 favorite_stops도 롤백)
 - 의존: T1, T4
 - 분량: L
+- [x] 완료 (2026-05-09)
 
 ### T6. `favorite-stops` PATCH (수정)
 - 같은 파일에 메서드 추가
@@ -108,6 +110,7 @@
   - 401 / 404 (없는 id) / RLS (다른 사용자 id)
 - 의존: T1, T5
 - 분량: M
+- [x] 완료 (2026-05-09)
 
 ### T7. `favorite-stops` DELETE
 - 같은 파일에 메서드 추가
@@ -117,6 +120,7 @@
   - 401 / 404 / RLS
 - 의존: T1
 - 분량: S
+- [x] 완료 (2026-05-09)
 
 ### T8. `routes` PATCH 확장
 - 파일: `supabase/functions/routes/index.ts`, `_tests/routes_patch_test.ts`
@@ -129,6 +133,7 @@
   - 401 / 404 / RLS
 - 의존: T3, T3-a
 - 분량: M
+- [x] 완료 (2026-05-09)
 
 ### T9. `route-stops` PATCH (별명 전용)
 - 파일: `supabase/functions/route-stops/index.ts`, `_tests/route-stops_patch_test.ts`
@@ -138,6 +143,7 @@
   - 401 / 404 / RLS (해당 route_stop의 부모 routes의 user_id 검증)
 - 의존: T2
 - 분량: S
+- [x] 완료 (2026-05-09)
 
 ### T10. `arrival-info` 확장 — favorite_stops lookup
 - 파일: `supabase/functions/arrival-info/index.ts`, 기존 테스트 확장
@@ -148,6 +154,39 @@
   - 기존 route_stops 케이스 회귀 (변경 없음)
 - 의존: T1
 - 분량: M
+- [x] 완료 (2026-05-09)
+
+---
+
+## Phase 2-2 — 지하철 호선/방향 정보 endpoint (be-agent, PRD D10 + D11)
+
+> Phase 3 FE의 T16-A(`<UnifiedStopPicker>`) 호선/방향 단계가 의존하는 BE 데이터. Phase 3 진입 전 또는 병렬로 진행.
+>
+> **D11 단순화 (2026-05-08):** ODsay `subwayStationInfo` 단일 호출로 prev/next 다음 역 1개씩 추출. 새 테이블/cron 불필요. 옵션 A/B/C 폐기 → 단일 task로 통합.
+
+### T10-b''. `subway-station-directions` endpoint 신설 (D11)
+- 파일: `supabase/functions/subway-station-directions/index.ts`, `_tests/subway-station-directions_test.ts`
+- 내용: SDD §3.7-pre 채택안 — `GET /subway-station-directions?stationId={odsayStationId}`
+  - ODsay `subwayStationInfo` 호출 → `prevOBJ`/`nextOBJ`에서 다음 역 1개씩 추출
+  - 응답: `{ stationName, lineName, subwayId, directions: [{updn,nextStop}, ...] }` (1~2개)
+  - 종착역은 한 방향만 존재 → `directions.length === 1`
+  - 인증 정책: 검색 흐름의 일부 → anon 허용 (search-stops와 동일)
+- **테스트:**
+  - 정상 — 양방향 (`directions.length === 2`)
+  - 종착역 — 단방향 (`directions.length === 1`)
+  - `stationId` 누락 → 400
+  - 존재하지 않는 stationId → 404 `STATION_NOT_FOUND`
+  - 외부 ODsay API 장애 → 502 `ARRIVAL_PROVIDER_ERROR`
+  - OPTIONS preflight
+  - 응답에 `stationName`/`lineName`/`subwayId` 모두 동봉 검증 (FE 호선 row 노출용)
+- 의존: 없음 (Phase 1 마이그레이션 무관 — DB 스키마 변경 없음)
+- 분량: M
+
+> **제거됨 (2026-05-08 D11):**
+> - ~~T10-a 호선/방향 데이터 출처 조사 (api-expert)~~ — D11로 ODsay `subwayStationInfo` 단일 호출 확정. 별도 조사 task 불필요.
+> - ~~T10-b 옵션 A 구현 (`/subway-line-headsigns` + cron)~~ — 폐기.
+> - ~~T10-b' 옵션 B 구현 (`/search-stops` 응답 확장 — `subwayLines: [{terminals}]`)~~ — D11으로 양 종착지 N개 표시 자체가 사라짐. search-stops `laneName`/`subwayId` 노출은 별개 트랙.
+> - ~~`subway_line_headsigns` 테이블 마이그레이션~~ — 신설 안 함 (Phase 1에 추가하지 않은 상태).
 
 ---
 
@@ -206,13 +245,34 @@
 
 ## Phase 4 — FE 즐겨찾기 페이지 (fe-agent)
 
-### T16. 검색 UI 추출 — `<StopSearchPanel>`
-- 파일: `src/features/setup/components/StopSearchPanel.tsx`
-- 내용: SetupRoute의 검색 부분 추출. SetupRoute는 이 컴포넌트를 사용하도록 수정.
+### T16-A. `<UnifiedStopPicker>` 공용 컴포넌트 (PRD D10 + D11 — 기존 T16 재정의)
+- 파일: `src/features/stop-picker/components/UnifiedStopPicker.tsx`
+- 내용: SDD §4.2 `<UnifiedStopPicker>` — 검색 → 결과 선택 → (지하철) 호선/방향 / (버스) 노선 다중 선택. payload 산출까지.
+- **상태 머신:** `searching → resultSelected (bus) | lineSelecting → directionSelecting (subway) → done`
 - **수용 기준:**
-  - SetupRoute 동작 회귀 없음 (검색 → 노드 추가 흐름)
-  - AddFavorite에서도 사용 가능한 인터페이스
-- 의존: 없음 (병렬 가능)
+  - 검색 단계: 기존 SetupRoute 검색 입력 UX와 동등 (debounce, 결과 리스트)
+  - 버스 결과 선택: 노선 다중 체크 → 1개 이상 선택 시 done
+  - 지하철 결과 선택 (단일호선역): 호선 단계 자동 통과 → 방향 chip 노출 → 선택 시 done
+  - 지하철 결과 선택 (환승역): 호선 chip 노출 → 선택 → 방향 chip → 선택 시 done
+  - **방향 chip 표시 (D11): 양방향 다음 역 1개씩** (예: "시청 방향(상행)" / "남영 방향(하행)"). 종착역은 단방향 1개.
+  - 호선/방향 정보 fetch 실패: 확인 다이얼로그 → 사용자 동의 시 NULL payload로 done
+  - payload 형식: `{ stop, routes, subway? }` — SDD §4.2의 `StopPickerPayload`와 일치. `subway.direction`은 `{updn, nextStop}` (headsign 없음 — D11)
+  - onCancel 핸들러 호출 정상
+- **의존 데이터:** T10-b'' (subway-station-directions endpoint)
+- 의존: T10-b''
+- 분량: L
+
+### T16-B. SetupRoute 수동 검색을 `<UnifiedStopPicker>`로 교체
+- 파일: `src/features/setup/pages/SetupRoute.tsx`
+- 내용:
+  - 기존 inline 검색 UI 제거 → `<UnifiedStopPicker>` 사용
+  - done payload 도착 시 RouteNodeCard 추가 → picker는 검색 단계로 자동 리셋(연속 추가 UX 보존)
+  - 지하철 노드는 `subwayCode`/`directionHeadsign`/`directionUpdn`/`directionNextStop`을 정상 채워 저장
+- **수용 기준:**
+  - 기존 수동 검색 흐름 회귀 없음 (정류장/지하철 추가 후 저장 → GET /routes에서 정상 노출)
+  - 신규: 지하철 노드의 `direction_*` 필드가 NULL이 아닌 정상 값으로 저장됨
+  - route-search 결과 일괄 추가 분기는 영향 없음 (별도 흐름 유지)
+- 의존: T16-A
 - 분량: M
 
 ### T17. `Favorites.tsx` 페이지
@@ -227,15 +287,16 @@
 
 ### T18. `AddFavorite.tsx` 추가 화면
 - 파일: `src/features/favorite/pages/AddFavorite.tsx`
-- 내용: SDD §4.2 — 검색 → 노선 선택 → 별명 입력 → 저장
+- 내용: SDD §4.2 — `<UnifiedStopPicker>` 사용 → 별명 입력 → 저장
 - **수용 기준:**
-  - `<StopSearchPanel>` 재사용
-  - 버스: 노선 다중 체크 / 지하철: 자동 단일
+  - `<UnifiedStopPicker>` 재사용 (T16-A)
+  - 버스: 노선 다중 체크 / 지하철: 호선 + 방향 단계 정상 동작
+  - **지하철 즐겨찾기에 `directionHeadsign` / `directionUpdn` / `subwayCode`가 정상 저장됨 (PRD D10) — 호선/방향 정보 미제공 폴백 시에만 NULL 저장 허용**
   - 별명 input (선택)
   - **저장 버튼 disabled 조건 (PRD D5): 노선 선택 0개일 때 저장 불가. 정류장 미선택일 때도 disabled.**
   - 저장 후 /favorites navigate
   - 에러 토스트 (BE의 `FAVORITE_ROUTES_REQUIRED` 응답 포함 핸들링)
-- 의존: T16, T12
+- 의존: T16-A, T12
 - 분량: L
 
 ### T19. 라우트 추가 + BottomNav 변경
@@ -383,12 +444,17 @@
 ```
 T1 ─┬─ T4 ─ T5 ─ T6 ─┐         T11 ─ T12 ─┬─ T13 ─ T14 ─ T15
     └─ T7              │                    │
-                       │                    └─ T16 (병렬)
 T2 ─── T9              │
-                       │       T17 ─ T18 ─ T19
-T3 ─┬─ T8 ─── T22 ─── T23
-T3-a┘                  │       T20-pre ─┬─ T20 (T12 + T20-pre)
-T1 ─── T10             │                └─ T21 (T17 + T20-pre)
+T3 ─┬─ T8              │       T10-b'' ────┐
+T3-a┘                  │                    │
+T1 ─── T10             │                    │
+                       │            T16-A ◀─┘
+                       │            T16-A ─┬─ T16-B (SetupRoute 교체)
+                       │                   └─ T18 (AddFavorite)
+                       │            T17 ─ T19
+                       │            T20-pre ─┬─ T20 (T12 + T20-pre)
+                       │                     └─ T21 (T17 + T20-pre)
+                       │            T22 ─ T23
                        │
                        └─ T24 ~ T27 ~ T31
 ```
@@ -396,6 +462,9 @@ T1 ─── T10             │                └─ T21 (T17 + T20-pre)
 병렬 가능:
 - Phase 1 (T1·T2·T3·T3-a) 동시 적용
 - Phase 2 BE (T4~T10)와 Phase 3 FE 컴포넌트 (T11~T15)는 계약서 확정 후 병렬
-- T16 검색 UI 추출은 T17/T18 진입 전에 끝내야 함
+- **Phase 2-2 (T10-b'' subway-station-directions)는 Phase 3 FE 컴포넌트(T11~T15)와 병렬 가능. T16-A 진입 전엔 endpoint 배포 필요**
+- T16-A는 T17/T18/T16-B 진입 전에 완료 — 공용 컴포넌트라 후속 모두가 의존
+- T16-B(SetupRoute 교체)는 T16-A 완료 후 단독 진행 가능 — T18과 병렬
 - T20-pre는 Phase 5 진입 전 1회 — T20/T21의 선행
 - T22/T23은 순차 (RouteManagement → SetupRoute 편집 모드)
+- **T16-B와 T23은 순차 권장:** 둘 다 SetupRoute 수정. T16-B(수동 검색 교체) → T23(편집 모드) 순서로 가면 충돌 적음

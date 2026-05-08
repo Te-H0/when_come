@@ -8,6 +8,19 @@
 
 ---
 
+### 2026-05-08 | 회귀 fix 묶음 (Critical + Major)
+
+FE 영향: **없음** (내부 버그 수정 + 응답 필드 추가만).
+
+1. **GET /routes — active, display_order, route_stops.alias 컬럼 추가**: listRoutes SELECT에 3개 컬럼이 누락되어 있어 active 토글/드래그 정렬/별명이 항상 undefined로 왔던 버그 수정. 이제 정상 반환. ORDER BY도 `display_order ASC, created_at DESC`로 변경.
+2. **GET /arrival-info — env var lazy throw 적용**: `SUPABASE_URL`/`SUPABASE_ANON_KEY`가 `?? ""`로 fallback되어 있어 미설정 시 runtime 오류가 발생했던 버그 수정. 다른 EF 패턴과 통일.
+3. **PATCH /routes/:id stops 교체 시 GBIS 매핑 추가**: stops를 교체할 때 GBIS 매핑이 수행되지 않아 경기 버스 경로 수정 후 도착정보가 깨지던 버그 수정.
+4. **extractHeadsign 공백 trim**: trainLineNm이 `"  "` 등 공백만 있을 때 truthy로 통과하던 버그 수정. `trim()` 방어 추가.
+5. **subway-station-directions authGuard 추가**: ODsay 프록시 EF 패턴 통일. 인증 없는 요청은 401 반환. FE는 기존 auth 헤더 포함 요청에서 변경 없음.
+6. **subway-station-directions lineName nullable 명시**: ODsay laneName 누락 시 `null` 반환 — 응답 스키마 `lineName: string | null`.
+
+---
+
 ## 현재 API 스펙 요약 (2026-04-21 기준)
 
 ### GET /search-stops?q={query}

@@ -60,6 +60,14 @@ interface PatchRouteResponse {
   ok: true
 }
 
+// ─── PATCH 요청 DTO ─────────────────────────────────────────────────────────
+interface UpdateRouteRequest {
+  name?: string
+  displayOrder?: number
+  active?: boolean
+  stops?: RouteStopInput[]
+}
+
 // ─── 노선 ID → provider 추론 ──────────────────────────────────────────────────
 /**
  * ODsay 노선 ID 첫 자리로 provider를 결정한다.
@@ -173,11 +181,12 @@ async function listRoutes(req: Request) {
     .select(`
       id, name, origin_name, destination_name,
       origin_coords, destination_coords, is_active,
+      active, display_order,
       created_at, updated_at,
       route_stops (
         id, step_group, odsay_stop_id, stop_name, stop_type, sequence, ars_id,
         direction_headsign, direction_updn, direction_next_stop,
-        provider, gbis_station_id,
+        provider, gbis_station_id, alias,
         stop_routes (
           id, odsay_route_id, route_name, bus_type,
           st_id, bus_route_id, station_ord, station_name,
@@ -186,6 +195,7 @@ async function listRoutes(req: Request) {
       )
     `)
     .eq("user_id", user.id)
+    .order("display_order", { ascending: true })
     .order("created_at", { ascending: false })
     .limit(50)
 
@@ -402,20 +412,175 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
   const user = await authGuard(req)
   const db = supabaseClient(req.headers.get("Authorization")!)
 
-  let body: { is_active?: boolean }
+  let body: UpdateRouteRequest
   try {
     body = await req.json()
   } catch {
     throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400)
   }
 
-  if (typeof body.is_active !== "boolean") {
-    throw new AppError("is_active(boolean) 이 필요합니다", 400)
+  // stops 전체 교체 — 기존 PUT 동작 위임
+  if (body.stops !== undefined) {
+    // stops 교체는 PUT 동작과 동일: route_stops + stop_routes 재생성
+    // 간단화: stops 있으면 기존 createRoute 로직을 재사용하지 않고
+    // 직접 DELETE + INSERT 처리
+    const { stops } = body
+
+    if (!Array.isArray(stops) || stops.length === 0) {
+      throw new AppError("stops는 1개 이상의 배열이어야 합니다", 400)
+    }
+
+    // 기존 route 존재 확인
+    const { data: routeRow, error: routeErr } = await db
+      .from("routes")
+      .select("id")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .single()
+
+    if (routeErr || !routeRow) throw new AppError("경로를 찾을 수 없습니다", 404)
+
+    // 기존 route_stops 삭제 (cascade로 stop_routes 자동 삭제)
+    const { error: delErr } = await db
+      .from("route_stops")
+      .delete()
+      .eq("route_id", id)
+
+    if (delErr) throw new AppError("기존 정류장 삭제 실패", 500)
+
+    // provider 결정 후 route_stops INSERT
+    const resolvedStops = await Promise.all(
+      stops.map(async (s) => {
+        try {
+          const resolved = await resolveStopWithProvider(db, s)
+          return { stop: s, resolved }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          console.warn(
+            JSON.stringify({ level: "warn", event: "resolve-stop-failed-patch", stopName: s.stopName, error: msg }),
+          )
+          return {
+            stop: s,
+            resolved: {
+              provider: "seoul" as const,
+              fallbackReason: null,
+              arsId: s.arsId ?? null,
+              gbisStationId: null,
+              gbisStationSigunNm: null,
+              odsayStopId: s.odsayStopId,
+            },
+          }
+        }
+      }),
+    )
+
+    const stopsPayload = resolvedStops.map(({ stop, resolved }) => ({
+      route_id: id,
+      step_group: stop.stepGroup,
+      odsay_stop_id: stop.odsayStopId,
+      stop_name: stop.stopName,
+      stop_type: stop.stopType,
+      sequence: stop.sequence,
+      ars_id: resolved.arsId,
+      direction_headsign: stop.directionHeadsign ?? null,
+      direction_updn:
+        stop.directionUpdn === "up" || stop.directionUpdn === "down" ? stop.directionUpdn : null,
+      direction_next_stop: stop.directionNextStop ?? null,
+      provider: resolved.provider,
+      gbis_station_id: resolved.gbisStationId,
+      provider_fallback_reason: resolved.fallbackReason ?? null,
+    }))
+
+    const { data: insertedStops, error: stopsErr } = await db
+      .from("route_stops")
+      .insert(stopsPayload)
+      .select("id, sequence, step_group")
+
+    if (stopsErr || !insertedStops) throw new AppError(`정류장 저장 실패: ${stopsErr?.message ?? "no data"}`, 500)
+
+    // stop_routes INSERT (GBIS 매핑 포함 — POST createRoute와 동일 로직)
+    const stopRoutePayloads = await Promise.all(
+      insertedStops.map(async (inserted) => {
+        const found = resolvedStops.find(
+          (r) => r.stop.stepGroup === inserted.step_group && r.stop.sequence === inserted.sequence,
+        )
+        if (!found) throw new AppError("정류장 매핑 불일치", 500)
+        const { stop, resolved } = found
+        const baseRoutes = stop.stopRoutes ?? []
+
+        // gyeonggi provider이면 GBIS 노선 매핑 시도
+        let mappedRoutes = baseRoutes.map((sr) => ({
+          ...sr,
+          gbisRouteId: sr.gbisRouteId ?? null,
+          gbisStaOrder: sr.gbisStaOrder ?? null,
+        }))
+
+        if (resolved.provider === "gyeonggi" && resolved.gbisStationId) {
+          try {
+            const stationCandidate: GbisStationCandidate = {
+              stationId: resolved.gbisStationId,
+              stationName: found.stop.stopName,
+              x: found.stop.lng ?? 0,
+              y: found.stop.lat ?? 0,
+              sigunNm: resolved.gbisStationSigunNm,
+            }
+            mappedRoutes = await mapGbisRoutes(stationCandidate, baseRoutes)
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e)
+            console.warn(
+              JSON.stringify({ level: "warn", event: "gbis-route-map-failed-patch", error: msg }),
+            )
+          }
+        }
+
+        return mappedRoutes.map((sr) => ({
+          stop_id: inserted.id,
+          odsay_route_id: sr.odsayRouteId,
+          route_name: sr.routeName,
+          bus_type: sr.busType ?? null,
+          st_id: sr.stId ?? null,
+          bus_route_id: sr.busRouteId ?? null,
+          station_ord: sr.stationOrd ?? null,
+          station_name: sr.stationName ?? null,
+          gbis_route_id: sr.gbisRouteId ?? null,
+          gbis_sta_order: sr.gbisStaOrder ?? null,
+          provider: resolveStopRouteProviderOnSave(sr.odsayRouteId, resolved.provider, sr.busType),
+        }))
+      }),
+    )
+
+    const flat = stopRoutePayloads.flat()
+    if (flat.length > 0) {
+      const { error: srErr } = await db.from("stop_routes").insert(flat)
+      if (srErr) throw new AppError("노선 저장 실패", 500)
+    }
+
+    return { ok: true }
+  }
+
+  // 단순 필드 업데이트 (name / displayOrder / active)
+  const updatePayload: Record<string, unknown> = {}
+
+  if (body.name !== undefined) {
+    if (!body.name.trim()) throw new AppError("name이 비어 있습니다", 400)
+    updatePayload.name = body.name.trim()
+  }
+  if (body.displayOrder !== undefined) {
+    if (body.displayOrder < 0) throw new AppError("displayOrder는 0 이상이어야 합니다", 400)
+    updatePayload.display_order = body.displayOrder
+  }
+  if (body.active !== undefined) {
+    if (typeof body.active !== "boolean") throw new AppError("active는 boolean이어야 합니다", 400)
+    updatePayload.active = body.active
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    throw new AppError("수정할 필드가 없습니다", 400)
   }
 
   const { data, error } = await db
     .from("routes")
-    .update({ is_active: body.is_active })
+    .update(updatePayload)
     .eq("id", id)
     .eq("user_id", user.id)
     .select("id")

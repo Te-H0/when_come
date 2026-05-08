@@ -18,7 +18,7 @@ export interface ApiStop {
 
 export interface SubwayStationDirectionsResponse {
   stationName: string
-  lineName: string
+  lineName: string | null
   subwayCode: string | null
   directions: Array<{ updn: 'up' | 'down'; nextStop: string }>
 }
@@ -108,6 +108,7 @@ export interface ApiRoute {
   origin_coords: { lat: number; lng: number } | null
   destination_coords: { lat: number; lng: number } | null
   is_active: boolean
+  display_order?: number | null
   created_at: string
   route_stops: ApiRouteStop[]
 }

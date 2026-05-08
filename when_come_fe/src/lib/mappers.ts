@@ -28,6 +28,7 @@ export function mapApiFavoriteStopToTransitStop(fav: ApiFavoriteStop): TransitSt
     directionUpdn: fav.direction_updn ?? null,
     directionNextStop: fav.direction_next_stop ?? null,
     provider: fav.provider ?? null,
+    alias: fav.alias ?? null,
   }
 }
 
@@ -38,6 +39,7 @@ export function mapApiRoute(route: ApiRoute): SavedRoute {
     from: route.origin_name,
     to: route.destination_name,
     isActive: route.is_active,
+    displayOrder: route.display_order ?? undefined,
     segments: route.route_stops
       .slice()
       .sort((a, b) => (a.step_group ?? 0) - (b.step_group ?? 0) || a.sequence - b.sequence)

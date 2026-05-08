@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Plus, MoreVertical, Trash2, Bus, Train, Loader2,
-  Pencil, Star, Map, MapPin,
+  Pencil, Star, Map as MapIcon, MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -252,11 +252,6 @@ function RouteCard({
                           initialAlias={segment.stop.alias ?? null}
                           onSave={(alias) => onUpdateStopAlias(segment.id, alias)}
                         />
-                        {group.length === 1 && (
-                          <span className="text-[12px] text-[#9CA3AF] flex-shrink-0">
-                            {segment.order}단계
-                          </span>
-                        )}
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {segment.stop.lines.map(line => (
@@ -521,7 +516,7 @@ export default function RouteManagement() {
         <div className="max-w-2xl mx-auto px-4 pb-0 flex border-b border-black/5">
           {(
             [
-              { key: 'routes' as TabKey, label: '경로', icon: Map },
+              { key: 'routes' as TabKey, label: '경로', icon: MapIcon },
               { key: 'favorites' as TabKey, label: '즐겨찾기', icon: Star },
             ] as const
           ).map(({ key, label, icon: Icon }) => (

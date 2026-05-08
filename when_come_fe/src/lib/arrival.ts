@@ -55,6 +55,25 @@ function matchSubwayItems(
   return filtered.length > 0 ? filtered : sameLine
 }
 
+// 지하철 item 목록을 방향별로 분류 (updnLine 기준)
+// 상행/내선 → up, 하행/외선 → down, 그 외 → other
+export function groupSubwayItemsByDirection(items: ApiSubwayArrivalItem[]): {
+  up: ApiSubwayArrivalItem[]
+  down: ApiSubwayArrivalItem[]
+  other: ApiSubwayArrivalItem[]
+} {
+  const up: ApiSubwayArrivalItem[] = []
+  const down: ApiSubwayArrivalItem[] = []
+  const other: ApiSubwayArrivalItem[] = []
+  for (const item of items) {
+    const code = mapsUpdnLineToCode(item.updnLine)
+    if (code === 'up') up.push(item)
+    else if (code === 'down') down.push(item)
+    else other.push(item)
+  }
+  return { up, down, other }
+}
+
 // 지하철 매칭 item 전체를 외부에서 사용할 수 있도록 export
 export function getMatchedSubwayItems(
   stop: TransitStop,

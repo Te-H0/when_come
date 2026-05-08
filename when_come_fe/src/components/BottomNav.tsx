@@ -1,4 +1,4 @@
-import { Home, PlusCircle, List } from "lucide-react";
+import { Home, Star, List } from "lucide-react";
 import { useNavigate, useLocation } from "react-router";
 
 export default function BottomNav() {
@@ -7,7 +7,7 @@ export default function BottomNav() {
 
   const navItems = [
     { icon: Home, label: "홈", path: "/" },
-    { icon: PlusCircle, label: "경로 등록", path: "/setup" },
+    { icon: Star, label: "즐겨찾기", path: "/favorites" },
     { icon: List, label: "내 경로", path: "/routes" },
   ];
 

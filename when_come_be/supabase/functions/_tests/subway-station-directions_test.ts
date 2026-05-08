@@ -31,7 +31,14 @@ function odsaySubwayStationInfoEmpty() {
   return jsonResponse({ error: [{ code: "-98", message: "결과 없음" }] })
 }
 
-// 양방향이 있는 정상 역 (서울역 1호선)
+// ─── prevOBJ/nextOBJ 배열 래퍼 생성 헬퍼 ──────────────────────────────────
+// ODsay 실제 응답: prevOBJ/nextOBJ는 { station: [{ stationID, stationName, ... }] } 래퍼
+
+function stationRef(stationID: number, stationName: string) {
+  return { station: [{ stationID, stationName }] }
+}
+
+// 양방향이 있는 정상 역 (서울역 1호선) — 실제 ODsay 응답 구조 반영
 const MOCK_STATION_BIDIRECTIONAL = {
   stationID: 133,
   stationName: "서울역",
@@ -42,27 +49,27 @@ const MOCK_STATION_BIDIRECTIONAL = {
     {
       wayCode: 1,
       wayName: "소요산",
-      prevOBJ: { stationID: 134, stationName: "시청" },
-      nextOBJ: { stationID: 132, stationName: "남영" },
+      prevOBJ: stationRef(134, "시청"),
+      nextOBJ: stationRef(132, "남영"),
     },
     {
       wayCode: 2,
       wayName: "신창",
-      prevOBJ: { stationID: 132, stationName: "남영" },
-      nextOBJ: { stationID: 134, stationName: "시청" },
+      prevOBJ: stationRef(132, "남영"),
+      nextOBJ: stationRef(134, "시청"),
     },
   ],
 }
 
-// prevOBJ/nextOBJ가 단일 레벨 (일부 API 포맷)
+// prevOBJ/nextOBJ 단일 포맷 (wayList 없이 최상위에 인접역 — 실제 ODsay 응답 구조)
 const MOCK_STATION_SINGLE_DIRECTION = {
   stationID: 133,
   stationName: "서울역",
   laneName: "수도권 1호선",
   laneCity: "수도권",
   subwayCode: 1,
-  prevOBJ: { stationID: 134, stationName: "시청" },
-  nextOBJ: { stationID: 132, stationName: "남영" },
+  prevOBJ: stationRef(134, "시청"),
+  nextOBJ: stationRef(132, "남영"),
 }
 
 // laneName 없는 역 (일부 ODsay 응답에서 laneName 누락)
@@ -75,8 +82,8 @@ const MOCK_STATION_NO_LANENAME = {
     {
       wayCode: 1,
       wayName: "소요산",
-      prevOBJ: { stationID: 1000, stationName: "다음역A" },
-      nextOBJ: { stationID: 998, stationName: "다음역B" },
+      prevOBJ: stationRef(1000, "다음역A"),
+      nextOBJ: stationRef(998, "다음역B"),
     },
   ],
 }
@@ -92,19 +99,19 @@ const MOCK_STATION_WAYLIST_NO_NEXTOBJ = {
     {
       wayCode: 1,
       wayName: "소요산",
-      prevOBJ: { stationID: 141, stationName: "오류동" },
+      prevOBJ: stationRef(141, "오류동"),
       // nextOBJ 없음
     },
     {
       wayCode: 2,
       wayName: "신창",
-      prevOBJ: { stationID: 139, stationName: "온수" },
+      prevOBJ: stationRef(139, "온수"),
       // nextOBJ 없음
     },
   ],
 }
 
-// wayList는 있지만 prevOBJ/nextOBJ 모두 없는 경우 → 포맷 B fallback
+// wayList는 있지만 prevOBJ/nextOBJ 모두 없는 경우 → 최상위 prevOBJ/nextOBJ fallback
 const MOCK_STATION_WAYLIST_EMPTY_OBJS = {
   stationID: 141,
   stationName: "오류동",
@@ -115,8 +122,8 @@ const MOCK_STATION_WAYLIST_EMPTY_OBJS = {
     { wayCode: 1, wayName: "소요산" },
     { wayCode: 2, wayName: "신창" },
   ],
-  prevOBJ: { stationID: 142, stationName: "개봉" },
-  nextOBJ: { stationID: 140, stationName: "구일" },
+  prevOBJ: stationRef(142, "개봉"),
+  nextOBJ: stationRef(140, "구일"),
 }
 
 // ─── CORS ────────────────────────────────────────────────────
@@ -377,8 +384,21 @@ const MOCK_STATION_NO_DIRECTION_INFO = {
   // wayList, prevOBJ, nextOBJ 모두 없음
 }
 
-function odsaySubwayScheduleResponse(up: unknown[], down: unknown[]) {
-  return jsonResponse({ result: { up, down } })
+// schedule 응답: result.weekdaySchedule.up/down 구조 (실제 ODsay 응답 형식)
+// prevOBJ/nextOBJ는 인접역(배열 래퍼) — schedule fallback 1차 소스
+function odsaySubwayScheduleResponse(
+  up: unknown[],
+  down: unknown[],
+  prevStation?: { id: number; name: string },
+  nextStation?: { id: number; name: string },
+) {
+  return jsonResponse({
+    result: {
+      weekdaySchedule: { up, down },
+      ...(prevStation ? { prevOBJ: stationRef(prevStation.id, prevStation.name) } : {}),
+      ...(nextStation ? { nextOBJ: stationRef(nextStation.id, nextStation.name) } : {}),
+    },
+  })
 }
 
 function odsaySubwayScheduleEmpty() {
@@ -386,7 +406,7 @@ function odsaySubwayScheduleEmpty() {
 }
 
 supabaseTest(
-  "subway-station-directions — wayList/prevOBJ/nextOBJ 모두 없으면 searchSubwaySchedule fallback으로 directions 2건 반환한다",
+  "subway-station-directions — wayList/prevOBJ/nextOBJ 모두 없으면 searchSubwaySchedule prevOBJ/nextOBJ로 directions 2건 반환한다",
   async () => {
     const ENV_WITH_SERVICE = { ...ENV, SUPABASE_SERVICE_ROLE_KEY: TEST_ENV.SUPABASE_SERVICE_ROLE_KEY }
     await withEnv(ENV_WITH_SERVICE, () =>
@@ -403,9 +423,51 @@ supabaseTest(
               odsaySubwayScheduleResponse(
                 [{ startStationName: "소요산", endStationName: "소요산" }],
                 [{ startStationName: "신창", endStationName: "신창" }],
+                { id: 142, name: "소요산" },   // prevOBJ → up
+                { id: 144, name: "신창" },     // nextOBJ → down
               ),
           },
           // anomaly_logs INSERT (fire-and-forget, 실패해도 무관)
+          { match: "/rest/v1/anomaly_logs", response: () => jsonResponse(null, 201) },
+        ]),
+        async () => {
+          const req = makeRequest("GET", `${BASE}?stationId=143`, { headers: AUTH_HEADER })
+          const res = await handler(req)
+          assertEquals(res.status, 200)
+          const body = await res.json()
+          assertEquals(body.stationName, "테스트역143")
+          assertEquals(body.directions.length, 2)
+          const upDir = body.directions.find((d: { updn: string }) => d.updn === "up")
+          assertEquals(upDir?.nextStop, "소요산")
+          const downDir = body.directions.find((d: { updn: string }) => d.updn === "down")
+          assertEquals(downDir?.nextStop, "신창")
+        },
+      )
+    )
+  },
+)
+
+supabaseTest(
+  "subway-station-directions — schedule prevOBJ/nextOBJ 없으면 weekdaySchedule endStationName으로 fallback한다",
+  async () => {
+    const ENV_WITH_SERVICE = { ...ENV, SUPABASE_SERVICE_ROLE_KEY: TEST_ENV.SUPABASE_SERVICE_ROLE_KEY }
+    await withEnv(ENV_WITH_SERVICE, () =>
+      withMockFetch(
+        multiMockFetch([
+          { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess() },
+          {
+            match: "subwayStationInfo",
+            response: () => odsaySubwayStationInfoResponse(MOCK_STATION_NO_DIRECTION_INFO),
+          },
+          {
+            match: "searchSubwaySchedule",
+            // prevOBJ/nextOBJ 없이 weekdaySchedule만 있는 경우
+            response: () =>
+              odsaySubwayScheduleResponse(
+                [{ startStationName: "소요산", endStationName: "소요산" }],
+                [{ startStationName: "신창", endStationName: "신창" }],
+              ),
+          },
           { match: "/rest/v1/anomaly_logs", response: () => jsonResponse(null, 201) },
         ]),
         async () => {

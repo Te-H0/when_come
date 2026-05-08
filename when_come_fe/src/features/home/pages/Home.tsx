@@ -662,10 +662,6 @@ export default function Home() {
 
                                 // T22: 지하철 방향 배지 (기존 방향 배지용)
                                 const headsign = isSubway ? (seg.stop.directionHeadsign ?? null) : null;
-                                // T23: 방향 정보 없음 안내
-                                const showNoDirection = isSubway
-                                  && !seg.stop.directionHeadsign
-                                  && !seg.stop.directionUpdn;
 
                                 // 지하철: 매칭된 모든 item
                                 const matchedSubwayItems = isSubway
@@ -733,11 +729,6 @@ export default function Home() {
                                               </span>
                                             )}
                                           </div>
-                                          {showNoDirection && (
-                                            <div className="text-[10px] text-[#9CA3AF] mt-0.5">
-                                              방향 정보 없음
-                                            </div>
-                                          )}
                                         </div>
                                       </div>
 
@@ -854,12 +845,6 @@ export default function Home() {
                                           <div className="text-[13px] text-[#6B7280] whitespace-nowrap">
                                             {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
                                           </div>
-                                          {/* T23: 방향 정보 없음 안내 */}
-                                          {showNoDirection && (
-                                            <div className="text-[11px] text-[#9CA3AF] mt-0.5">
-                                              방향 정보 없음 — 경로를 다시 등록하면 더 정확해요
-                                            </div>
-                                          )}
                                         </div>
                                       </div>
 
