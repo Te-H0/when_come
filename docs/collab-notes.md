@@ -404,6 +404,29 @@ FE 동작:
 
 ---
 
+## 2026-05-09 — favorites-and-aliases Phase 1 마이그레이션 완료
+
+Phase 1 DB 마이그레이션 4개 파일 적용 완료. FE 영향 없음. Edge Function(Phase 2)은 다음 PR.
+
+**적용된 마이그레이션:**
+- `20260509000000_create_favorite_stops.sql` — `favorite_stops` + `favorite_stop_routes` 테이블 + RLS (T1)
+- `20260509000100_add_alias_to_route_stops.sql` — `route_stops.alias text` nullable 추가 (T2)
+- `20260509000200_add_display_order_to_routes.sql` — `routes.display_order int NOT NULL DEFAULT 0` + 기존 row 0-based 백필 + 인덱스 (T3)
+- `20260509000300_add_active_to_routes.sql` — `routes.active boolean NOT NULL DEFAULT true` + 기존 row true 백필 + 인덱스 (T3-a)
+
+**검증 완료:**
+- `routes.active` NULL 0개, 기존 row 모두 true 백필
+- `routes.display_order` NULL 0개, default 0 적용
+- `favorite_stops` stop_type/direction_updn/provider check 제약 동작
+- `favorite_stop_routes` cascade delete (favorite_stops 삭제 시 자동 삭제)
+- RLS 정책: owner read(SELECT) + owner write(ALL) 정상 등록
+
+**FE 영향:** 없음 (additive — 기존 GET /routes 응답에 `display_order`, `active` 필드 추가됨. 현재 FE가 무시해도 동작 무관).
+
+**Phase 2 착수 사전 준비:** 마이그레이션 완료로 T4~T10 EF 개발 가능. `favorite_stops`, `favorite_stop_routes` 테이블 존재 확인됨.
+
+---
+
 ## 2026-05-08 — favorites-and-aliases spec 작성 (구현 별도)
 
 FavoriteStops(단일 정류장 즐겨찾기) 도메인 + 정류장/역 별명(alias) + 경로/즐겨찾기 정렬을 위한 PRD/SDD/TASKS/계약서 작성. 구현은 사용자 승인 후 별도 Phase로 진행.
