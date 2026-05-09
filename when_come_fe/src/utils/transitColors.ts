@@ -1,3 +1,9 @@
+// ODsay 원본 노선 라벨("수도권 1호선", "경기 광역버스") → 표시/매칭용 정규화("1호선")
+// "수도권 " / "경기 " 같은 지역 접두사(공백 포함)만 제거. "수인분당선"·"신분당선" 등 공백 없는 이름은 보존.
+export function normalizeSubwayLineName(label: string): string {
+  return label.replace(/^(수도권|경기|인천|부산|대구|광주|대전)\s+/, '')
+}
+
 // 지하철 API lineName 코드("1002") → 호선 이름("2호선")
 export const subwayApiCodeToLineName = (lineName: string): string => {
   const map: Record<string, string> = {

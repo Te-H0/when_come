@@ -17,6 +17,7 @@ interface FavoriteStopRouteInput {
   stationName?: string | null
   gbisRouteId?: string | null
   gbisStaOrder?: number | null
+  subwayCode?: string | null
 }
 
 interface CreateFavoriteStopRequest {
@@ -90,7 +91,7 @@ async function fetchFavoriteStop(
       favorite_stop_routes (
         id, favorite_stop_id, odsay_route_id, route_name, bus_type,
         st_id, bus_route_id, station_ord, station_name,
-        gbis_route_id, gbis_sta_order, provider
+        gbis_route_id, gbis_sta_order, provider, subway_code
       )
     `)
     .eq("id", id)
@@ -115,7 +116,7 @@ async function listFavoriteStops(req: Request) {
       favorite_stop_routes (
         id, favorite_stop_id, odsay_route_id, route_name, bus_type,
         st_id, bus_route_id, station_ord, station_name,
-        gbis_route_id, gbis_sta_order, provider
+        gbis_route_id, gbis_sta_order, provider, subway_code
       )
     `)
     .order("display_order", { ascending: true })
@@ -241,6 +242,7 @@ async function createFavoriteStop(req: Request) {
     gbis_sta_order: r.gbisStaOrder ?? null,
     provider: routeIdToProvider(r.odsayRouteId),
     display_order: idx,
+    subway_code: r.subwayCode ?? null,
   }))
 
   const { error: routeErr } = await db
@@ -333,6 +335,7 @@ async function updateFavoriteStop(req: Request, id: string) {
       gbis_sta_order: r.gbisStaOrder ?? null,
       provider: routeIdToProvider(r.odsayRouteId),
       display_order: idx,
+      subway_code: r.subwayCode ?? null,
     }))
 
     const { error: insertErr } = await db

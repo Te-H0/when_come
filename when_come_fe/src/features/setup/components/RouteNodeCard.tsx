@@ -29,6 +29,8 @@ export interface RouteNode {
   // UnifiedStopPicker 경유 수동 추가 시 직접 저장
   directionUpdn?: 'up' | 'down' | null;
   directionNextStop?: string | null;
+  /** 지하철 노선 매칭 키 — ODsay subwayCode. 버스 노드는 undefined. */
+  subwayCode?: string | null;
 }
 
 interface RouteNodeCardProps {

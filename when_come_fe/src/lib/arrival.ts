@@ -1,7 +1,7 @@
 import { getSubwayArrival, getBusArrival, getOdsayArrival, getArrivalByStopId, ApiError } from '@/lib/api'
 import type { TransitStop } from '@/lib/mockData'
 import type { ApiSubwayArrivalItem, ApiBusArrival, ApiOdsayArrival, ApiBusArrivalByStopId } from '@/types/api'
-import { subwayApiCodeToLineName } from '@/utils/transitColors'
+import { subwayApiCodeToLineName, normalizeSubwayLineName } from '@/utils/transitColors'
 
 // T18: 서울 지하철 API의 updnLine 값을 'up'/'down'으로 정규화
 // 상행/내선 → 'up', 하행/외선 → 'down', 그 외 → null
@@ -36,9 +36,14 @@ function matchSubwayItems(
   items: ApiSubwayArrivalItem[],
   line: string,
   direction: SubwayDirection,
+  subwayCode?: string | null,
 ): ApiSubwayArrivalItem[] {
   const deduped = dedupeSubwayItems(items)
-  const sameLine = deduped.filter(i => subwayApiCodeToLineName(i.lineName) === line)
+  // 1차 (신): subwayCode 있으면 item.lineName과 직접 비교 (서울 지하철 API 형식 "1001" 등)
+  // 2차 (legacy fallback): subwayCode 없으면 normalize 비교 — 백필 완료 후 별도 PR(T21)에서 제거
+  const sameLine = subwayCode
+    ? deduped.filter(i => i.lineName === subwayCode)
+    : deduped.filter(i => subwayApiCodeToLineName(i.lineName) === normalizeSubwayLineName(line))
   if (sameLine.length === 0) return []
 
   // 방향 정보가 없으면 전체 반환 (기존 경로 fallback)
@@ -85,7 +90,9 @@ export function getMatchedSubwayItems(
     headsign: stop.directionHeadsign ?? null,
     updn: stop.directionUpdn ?? null,
   }
-  return matchSubwayItems(arrival.items, line, direction)
+  const stopRoute = stop.stopRoutes?.find(r => r.routeName === line)
+  const subwayCode = stopRoute?.subwayCode ?? null
+  return matchSubwayItems(arrival.items, line, direction, subwayCode)
 }
 
 export type ArrivalData =
@@ -157,7 +164,9 @@ function getRawArrmsg(stop: TransitStop, line: string, arrival: ArrivalData, whi
       headsign: stop.directionHeadsign ?? null,
       updn: stop.directionUpdn ?? null,
     }
-    const matched = matchSubwayItems(arrival.items, line, direction)
+    const stopRoute = stop.stopRoutes?.find(r => r.routeName === line)
+    const subwayCode = stopRoute?.subwayCode ?? null
+    const matched = matchSubwayItems(arrival.items, line, direction, subwayCode)
     // which === 1 → 첫 번째 매칭 item의 arrmsg1
     // which === 2 → 두 번째 매칭 item의 arrmsg1 (다음 차량)
     // displayMsg가 있으면(짧은 상태 라벨) 우선 사용 — 카운트다운 미적용
@@ -210,7 +219,9 @@ export function getArrivalMin(stop: TransitStop, line: string, arrival: ArrivalD
       headsign: stop.directionHeadsign ?? null,
       updn: stop.directionUpdn ?? null,
     }
-    const matched = matchSubwayItems(arrival.items, line, direction)
+    const stopRoute = stop.stopRoutes?.find(r => r.routeName === line)
+    const subwayCode = stopRoute?.subwayCode ?? null
+    const matched = matchSubwayItems(arrival.items, line, direction, subwayCode)
     const item = matched[0]
     if (!item) return null
     // displayMsg가 있으면 진입중/도착/출발 등 도착 임박 상태 → 0분으로 간주해 isUrgent 강조 동작 유지

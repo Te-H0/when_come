@@ -58,6 +58,8 @@ function apiRouteToSearchResult(route: ApiRouteOption): SearchRouteResult {
         way: seg.way ?? null,
         wayCode: seg.wayCode ?? null,
         endName: seg.endName ?? null,
+        // route-search 응답의 subwayCode를 노드에 보존 — 저장 시 stopRoute로 복사됨
+        subwayCode: line?.subwayCode ?? null,
       }
     }
     return {
@@ -199,6 +201,8 @@ export default function SetupRoute() {
         // UnifiedStopPicker에서 받은 방향 정보 — 저장 시 우선 사용
         directionUpdn: dir.updn,
         directionNextStop: dir.nextStop || null,
+        // ODsay search-stops 응답의 stop 단위 subwayCode 복사
+        subwayCode: stop.subwayCode ?? null,
       };
       setNodes(prev => [...prev, newNode]);
       setAddingAlternativeToStep(null);
@@ -262,6 +266,7 @@ export default function SetupRoute() {
       way: node.way ?? null,
       wayCode: node.wayCode ?? null,
       endName: node.endName ?? null,
+      subwayCode: node.subwayCode ?? null,
     };
     setNodes(prev => [...prev, baseNode]);
 
@@ -392,6 +397,7 @@ export default function SetupRoute() {
               odsayRouteId: node.stopId ?? node.id,
               routeName: node.subwayLine ?? '',
               stationName: node.name,
+              subwayCode: node.subwayCode ?? null,
             }]
           : (node.busNumbers ?? []).map(busNum => {
               const lineInfo = node.busLines?.find(l => l.routeName === busNum);

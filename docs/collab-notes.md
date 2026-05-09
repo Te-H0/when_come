@@ -8,6 +8,35 @@
 
 ---
 
+## 2026-05-09 — subway_code 필드 추가 (non-breaking)
+
+`stop_routes` / `favorite_stop_routes` 응답에 `subway_code` 필드가 추가됨.
+
+- **영향 엔드포인트:** `GET /routes`, `GET /favorite-stops`
+- **변경 내용:** `stop_routes[].subway_code` (string | null), `favorite_stop_routes[].subway_code` (string | null)
+- **값 형식:** 서울 지하철 API `lineName` 형식 (`"1001"` ~ `"1031"`). bus 노선 row는 `null`.
+- **FE 요청 시 추가:** `POST /routes` → `stops[].stopRoutes[].subwayCode` 전달, `POST /favorite-stops` / `PATCH /favorite-stops/:id` → `routes[].subwayCode` 전달
+- **[non-breaking]** 기존 row의 `subway_code`는 NULL (백필 전). FE는 null인 경우 기존 호선명 문자열 매칭 로직으로 폴백.
+- 기존 row 백필: `scripts/backfill-subway-code.ts` 참고 (`docs/tech-notes/subway-code-backfill.md`)
+
+---
+
+## 2026-05-09 — headsign 계약 변경: BE 순수 역명 반환, FE가 "행" 접미사 추가
+
+**[BREAKING]** `arrival-info` 지하철 응답의 `headsign` 필드가 **"행" 접미사를 포함하지 않는 순수 역명**으로 변경됨.
+
+- 변경 전: `headsign: "방화행"`, `"온수행"`, `"인천행"`
+- 변경 후: `headsign: "방화"`, `"온수"`, `"인천"`
+- **FE 대응 필수:** `Home.tsx`의 `{headsign}행` 표시 패턴 유지하면 올바르게 "방화행"으로 렌더링됨 — 별도 수정 불필요. 하지만 `headsign` 그대로 렌더링하던 코드가 있다면 "행"을 붙이도록 수정 필요.
+- 근원 버그: BE가 "방화행"을 반환하고 FE가 `{headsign}행`으로 붙여 "방화행행"이 되던 이중 접미사 버그 수정.
+- 수정 파일: `arrival-info/index.ts` `extractHeadsign()` 함수
+
+**`favorite_stops` direction 컬럼 SELECT 추가 (non-breaking)**
+
+`arrival-info`의 `favorite_stops` fallback lookup에서 `direction_headsign`, `direction_updn`, `direction_next_stop` 3개 컬럼이 SELECT에서 누락되어 있던 버그 수정. `route_stops` lookup과 동등하게 맞춤. 즐겨찾기 지하철 stop의 방향 정보(`direction_headsign`, `direction_updn`)가 `RouteStopRow`로 정상 전달됨.
+
+---
+
 ## 2026-05-08 — favorites-and-aliases D11 추가: 양방향 다음 역 1개씩 + 종착지 동적 노출 (D10 보강)
 
 D10 양 종착지 N개 표시 → **양방향 다음 역 1개씩**으로 단순화. ODsay `subwayStationInfo`의 `prevOBJ`/`nextOBJ`(단일 호출)로 prev/next 한 칸씩만 추출. 종착지(headsign)는 도착 카드에서 매 item `headsign`(이미 BE 응답 동봉)으로 동적 표시.

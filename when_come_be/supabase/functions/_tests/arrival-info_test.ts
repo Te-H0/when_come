@@ -582,7 +582,7 @@ Deno.test("arrival-info subway — arvlCd 없는 item은 displayMsg null로 grac
 
 // ─── headsign 통합 테스트 ────────────────────────────────────────────────────
 
-Deno.test("arrival-info subway — trainLineNm '온수행 - 역삼방면' → headsign '온수행'", async () => {
+Deno.test("arrival-info subway — trainLineNm '온수행 - 역삼방면' → headsign '온수' (행 제외)", async () => {
   await withEnv(ENV, () =>
     withMockFetch(async () =>
       jsonResponse({
@@ -598,12 +598,12 @@ Deno.test("arrival-info subway — trainLineNm '온수행 - 역삼방면' → he
       const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=강남`))
       assertEquals(res.status, 200)
       const body = await res.json()
-      assertEquals(body[0].headsign, "온수행")
+      assertEquals(body[0].headsign, "온수")
     })
   )
 })
 
-Deno.test("arrival-info subway — arvlCd '99' + '[2]번째 전역 (온수)' → displayMsg '2개역 전', headsign '온수행'", async () => {
+Deno.test("arrival-info subway — arvlCd '99' + '[2]번째 전역 (온수)' → displayMsg '2개역 전', headsign '온수' (행 제외)", async () => {
   await withEnv(ENV, () =>
     withMockFetch(async () =>
       jsonResponse({
@@ -620,12 +620,12 @@ Deno.test("arrival-info subway — arvlCd '99' + '[2]번째 전역 (온수)' →
       assertEquals(res.status, 200)
       const body = await res.json()
       assertEquals(body[0].displayMsg, "2개역 전")
-      assertEquals(body[0].headsign, "온수행")
+      assertEquals(body[0].headsign, "온수")
     })
   )
 })
 
-Deno.test("arrival-info subway — arvlCd '99' + '5분 30초 후 (인천)' → displayMsg null, headsign '인천행'", async () => {
+Deno.test("arrival-info subway — arvlCd '99' + '5분 30초 후 (인천)' → displayMsg null, headsign '인천' (행 제외)", async () => {
   await withEnv(ENV, () =>
     withMockFetch(async () =>
       jsonResponse({
@@ -642,12 +642,12 @@ Deno.test("arrival-info subway — arvlCd '99' + '5분 30초 후 (인천)' → d
       assertEquals(res.status, 200)
       const body = await res.json()
       assertEquals(body[0].displayMsg, null)
-      assertEquals(body[0].headsign, "인천행")
+      assertEquals(body[0].headsign, "인천")
     })
   )
 })
 
-Deno.test("arrival-info subway — trainLineNm '광명행 - 급행' → headsign '광명행' (arrmsg '[1]번째 전역 (인천)' 무시)", async () => {
+Deno.test("arrival-info subway — trainLineNm '광명행 - 급행' → headsign '광명' (행 제외, arrmsg '[1]번째 전역 (인천)' 무시)", async () => {
   await withEnv(ENV, () =>
     withMockFetch(async () =>
       jsonResponse({
@@ -663,13 +663,13 @@ Deno.test("arrival-info subway — trainLineNm '광명행 - 급행' → headsign
       const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=구로`))
       assertEquals(res.status, 200)
       const body = await res.json()
-      assertEquals(body[0].headsign, "광명행")
+      assertEquals(body[0].headsign, "광명")
       assertEquals(body[0].displayMsg, "1개역 전")
     })
   )
 })
 
-Deno.test("arrival-info subway — arvlCd '0' → displayMsg '진입중', headsign trainLineNm에서 추출", async () => {
+Deno.test("arrival-info subway — arvlCd '0' → displayMsg '진입중', headsign '성수' (행 제외, trainLineNm에서 추출)", async () => {
   await withEnv(ENV, () =>
     withMockFetch(async () =>
       jsonResponse({
@@ -686,7 +686,7 @@ Deno.test("arrival-info subway — arvlCd '0' → displayMsg '진입중', headsi
       assertEquals(res.status, 200)
       const body = await res.json()
       assertEquals(body[0].displayMsg, "진입중")
-      assertEquals(body[0].headsign, "성수행")
+      assertEquals(body[0].headsign, "성수")
     })
   )
 })

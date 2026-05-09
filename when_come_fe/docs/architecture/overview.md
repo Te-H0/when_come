@@ -111,13 +111,23 @@ fetchArrival(stop)
 관련 설계: `docs/api/contracts/route-direction-design.md`, `docs/decisions/ADR-001-subway-direction-model.md`.
 
 ```
-matchSubwayItems(items, line, { headsign, updn })
-  ├─ 1차: lineName === line (호선 일치)
-  ├─ 2차: directionUpdn 있으면 updnLine 정규화 비교
-  │       ("상행"|"내선" → up, "하행"|"외선" → down)
-  ├─ 3차: directionHeadsign 있으면 trainLineNm.startsWith(headsign)
+matchSubwayItems(items, line, { headsign, updn }, subwayCode?)
+  ├─ 호선 필터 (신/legacy 분기, 2026-05-09~):
+  │   ├─ 1차 (신): subwayCode 있으면 item.lineName === subwayCode (직접 비교)
+  │   └─ 2차 (legacy fallback): subwayCode 없으면 subwayApiCodeToLineName(lineName) === normalizeSubwayLineName(line)
+  │       → 백필 완료 + 1주일 모니터링 후 별도 PR(T21)에서 제거 예정
+  ├─ 방향 필터 (기존 동일):
+  │   ├─ directionUpdn 있으면 updnLine 정규화 비교
+  │   │   ("상행"|"내선" → up, "하행"|"외선" → down)
+  │   └─ directionHeadsign 있으면 trainLineNm.startsWith(headsign)
   └─ 매칭 0건 → 호선만 일치하는 전체로 fallback
 ```
+
+subwayCode 저장 흐름:
+- ODsay search-stops 응답: `stop.subwayCode` (예: "1004")
+- 저장 시: stop 단위 subwayCode → stopRoute(지하철)의 `subwayCode` 필드로 복사
+- GET 응답: `stop_routes.subway_code` → mapper에서 camelCase `subwayCode`로 변환
+- 매칭 시: `stop.stopRoutes.find(r => r.routeName === line)?.subwayCode` 추출 후 전달
 
 - 두 방향 키 모두 있으면 둘 다 만족하는 item만, 한쪽만 있으면 그것만 적용
 - 매칭 0건이면 호선 일치 전체로 fallback — legacy 데이터(방향 NULL) 안전망

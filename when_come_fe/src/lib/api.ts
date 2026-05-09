@@ -157,6 +157,8 @@ export interface SaveRouteStop {
     stationOrd?: number
     stationName?: string
     busType?: number | null
+    /** 지하철 노선 매칭 키. 버스 row는 null/undefined. */
+    subwayCode?: string | null
   }>
 }
 
@@ -212,6 +214,8 @@ export interface FavoriteStopRouteInput {
   stationName?: string | null
   gbisRouteId?: string | null
   gbisStaOrder?: number | null
+  /** 지하철 노선 매칭 키. 버스 row는 null/undefined. */
+  subwayCode?: string | null
 }
 
 export interface CreateFavoriteStopRequest {

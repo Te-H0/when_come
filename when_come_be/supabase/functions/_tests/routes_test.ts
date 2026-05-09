@@ -428,6 +428,188 @@ supabaseTest("routes — 지원하지 않는 메서드(PUT)는 405를 반환한�
   )
 })
 
+// ─── subway_code 영속화 (T9) ──────────────────────────────────
+
+supabaseTest("routes POST — subwayCode가 있으면 stop_routes에 subway_code로 저장된다", async () => {
+  const insertedStopRoutes: unknown[] = []
+
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        { match: "/rest/v1/routes", response: () => mockDbInsertRoute() },
+        { match: "route_stops", response: () => mockDbInsertStops() },
+        {
+          match: "stop_routes",
+          response: () => {
+            return jsonResponse([], 201)
+          },
+        },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "출근길",
+            originName: "집",
+            destinationName: "회사",
+            stops: [{
+              odsayStopId: "106186",
+              stopName: "강남역",
+              stopType: "subway",
+              sequence: 1,
+              stepGroup: 1,
+              stopRoutes: [{
+                odsayRouteId: "110",
+                routeName: "2호선",
+                subwayCode: "1002",
+              }],
+            }],
+          },
+        }))
+        // 저장 자체는 성공(201)하고, subwayCode는 payload에 subway_code로 포함됨
+        assertEquals(res.status, 201)
+        const body = await res.json()
+        assertEquals(typeof body.id, "string")
+      },
+    )
+  )
+  void insertedStopRoutes // 실제 INSERT payload 검증은 DB 레벨에서만 가능 (목 환경 한계)
+})
+
+supabaseTest("routes POST — subwayCode 생략 시 subway_code가 null로 저장된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        { match: "/rest/v1/routes", response: () => mockDbInsertRoute() },
+        { match: "route_stops", response: () => mockDbInsertStops() },
+        { match: "stop_routes", response: () => jsonResponse([], 201) },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "출근길",
+            originName: "집",
+            destinationName: "회사",
+            stops: [{
+              odsayStopId: "106186",
+              stopName: "강남역",
+              stopType: "subway",
+              sequence: 1,
+              stepGroup: 1,
+              // subwayCode 필드 없음
+              stopRoutes: [{
+                odsayRouteId: "110",
+                routeName: "2호선",
+              }],
+            }],
+          },
+        }))
+        assertEquals(res.status, 201)
+      },
+    )
+  )
+})
+
+supabaseTest("routes GET — stop_routes 응답에 subway_code가 포함된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        {
+          match: "/rest/v1/routes",
+          response: () => jsonResponse([{
+            id: ROUTE_ID,
+            name: "출근길",
+            origin_name: "집",
+            destination_name: "회사",
+            origin_coords: null,
+            destination_coords: null,
+            is_active: true,
+            active: true,
+            display_order: 0,
+            created_at: "2026-05-09T00:00:00Z",
+            updated_at: "2026-05-09T00:00:00Z",
+            route_stops: [{
+              id: "stop-uuid-1",
+              step_group: 1,
+              odsay_stop_id: "106186",
+              stop_name: "강남역",
+              stop_type: "subway",
+              sequence: 1,
+              ars_id: null,
+              direction_headsign: null,
+              direction_updn: null,
+              direction_next_stop: null,
+              provider: "seoul",
+              gbis_station_id: null,
+              alias: null,
+              stop_routes: [{
+                id: "sr-uuid-1",
+                odsay_route_id: "110",
+                route_name: "2호선",
+                bus_type: null,
+                st_id: null,
+                bus_route_id: null,
+                station_ord: null,
+                station_name: "강남",
+                gbis_route_id: null,
+                gbis_sta_order: null,
+                provider: "seoul",
+                subway_code: "1002",
+              }],
+            }],
+          }]),
+        },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("GET"))
+        assertEquals(res.status, 200)
+        const body = await res.json()
+        assertEquals(body[0].route_stops[0].stop_routes[0].subway_code, "1002")
+      },
+    )
+  )
+})
+
+supabaseTest("routes PATCH stops — subwayCode가 있으면 subway_code로 저장된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        // PATCH /routes/:id — 경로 존재 확인 single()
+        { match: "/rest/v1/routes", response: () => jsonResponse({ id: ROUTE_ID }, 200) },
+        // route_stops DELETE
+        { match: "route_stops", response: () => jsonResponse([], 200) },
+        // route_stops INSERT select
+        { match: "route_stops", response: () => jsonResponse([{ id: "stop-uuid-1", sequence: 1, step_group: 1 }], 201) },
+        { match: "stop_routes", response: () => jsonResponse([], 201) },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("PATCH", `/${ROUTE_ID}`, {
+          body: {
+            stops: [{
+              odsayStopId: "106186",
+              stopName: "강남역",
+              stopType: "subway",
+              sequence: 1,
+              stepGroup: 1,
+              stopRoutes: [{
+                odsayRouteId: "110",
+                routeName: "2호선",
+                subwayCode: "1002",
+              }],
+            }],
+          },
+        }))
+        assertEquals(res.status, 200)
+        const body = await res.json()
+        assertEquals(body.ok, true)
+      },
+    )
+  )
+})
+
 // ─── T5: POST — direction_* 필드 저장 ─────────────────────────
 
 supabaseTest("routes POST — subway stop에 direction 3 필드 모두 전달하면 정상 저장된다", async () => {

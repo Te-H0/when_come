@@ -79,6 +79,8 @@ export interface ApiStopRoute {
   // multi-region (신규)
   gbis_route_id?: string | null
   gbis_sta_order?: number | null
+  /** 지하철 노선 매칭 키 — 서울 지하철 API lineName 형식 ("1001"~"1031"). 버스 row는 null. */
+  subway_code?: string | null
 }
 
 export interface ApiRouteStop {
@@ -180,6 +182,8 @@ export interface ApiFavoriteStopRoute {
   gbis_route_id: string | null
   gbis_sta_order: number | null
   provider: 'seoul' | 'gyeonggi' | 'odsay_fallback' | null
+  /** 지하철 노선 매칭 키 — 서울 지하철 API lineName 형식 ("1001"~"1031"). 버스 row는 null. */
+  subway_code?: string | null
 }
 
 export interface ApiFavoriteStop {

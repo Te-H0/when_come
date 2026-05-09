@@ -18,6 +18,7 @@ interface StopRouteInput {
   // 신규 (FE hint 또는 BE 매핑 결과)
   gbisRouteId?: string | null
   gbisStaOrder?: number | null
+  subwayCode?: string | null
 }
 
 interface RouteStopInput {
@@ -190,7 +191,7 @@ async function listRoutes(req: Request) {
         stop_routes (
           id, odsay_route_id, route_name, bus_type,
           st_id, bus_route_id, station_ord, station_name,
-          gbis_route_id, gbis_sta_order, provider
+          gbis_route_id, gbis_sta_order, provider, subway_code
         )
       )
     `)
@@ -377,6 +378,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
         gbis_route_id: sr.gbisRouteId ?? null,
         gbis_sta_order: sr.gbisStaOrder ?? null,
         provider: resolveStopRouteProviderOnSave(sr.odsayRouteId, resolved.provider, sr.busType),
+        subway_code: sr.subwayCode ?? null,
       }))
     }),
   )
@@ -545,6 +547,7 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
           gbis_route_id: sr.gbisRouteId ?? null,
           gbis_sta_order: sr.gbisStaOrder ?? null,
           provider: resolveStopRouteProviderOnSave(sr.odsayRouteId, resolved.provider, sr.busType),
+          subway_code: sr.subwayCode ?? null,
         }))
       }),
     )

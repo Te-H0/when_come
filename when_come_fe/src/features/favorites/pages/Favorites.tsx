@@ -16,7 +16,7 @@ import { mapApiFavoriteStopToTransitStop } from '@/lib/mappers'
 import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg, getMatchedSubwayItems, groupSubwayItemsByDirection } from '@/lib/arrival'
 import type { ArrivalData } from '@/lib/arrival'
 import { ApiError } from '@/lib/api'
-import { getBusTypeByOdsay, getSubwayColor } from '@/utils/transitColors'
+import { getBusTypeByOdsay, getSubwayColor, normalizeSubwayLineName } from '@/utils/transitColors'
 import type { ApiFavoriteStop } from '@/types/api'
 import type { TransitStop } from '@/lib/mockData'
 
@@ -202,9 +202,10 @@ function FavoriteCard({
         ) : (
           stop.lines.map((line) => {
             const isSubway = stop.type === 'subway'
+            const displayLine = isSubway ? normalizeSubwayLineName(line) : line
             const stopRoute = stop.stopRoutes?.find(r => r.routeName === line)
             const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null
-            const subwayColorInfo = isSubway ? getSubwayColor(line) : null
+            const subwayColorInfo = isSubway ? getSubwayColor(displayLine) : null
             const lineKey = `${fav.id}-${line}`
 
             // 지하철이고 방향 NULL → 양방향 분리 UI 적용
@@ -232,7 +233,7 @@ function FavoriteCard({
                       </svg>
                     </div>
                     <div className="min-w-0">
-                      <div className="text-[14px] font-semibold text-[#111827]">{line}</div>
+                      <div className="text-[14px] font-semibold text-[#111827]">{displayLine}</div>
                       <div className="text-[12px] text-[#6B7280]">전철</div>
                     </div>
                   </div>
@@ -324,7 +325,7 @@ function FavoriteCard({
                     )}
                     <div className="min-w-0">
                       <div className="text-[14px] font-semibold text-[#111827]">
-                        {isSubway ? line : `${line}번`}
+                        {isSubway ? displayLine : `${line}번`}
                       </div>
                       <div className="text-[12px] text-[#6B7280]">
                         {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}

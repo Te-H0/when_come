@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Loader2, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -64,7 +65,7 @@ function BusRouteSelectStep({
         ) : busLines.length === 0 ? (
           <p className="text-[13px] text-[#9CA3AF] py-2">이 정류장의 노선 정보를 불러올 수 없어요</p>
         ) : (
-          <div className="rounded-xl border border-black/10 overflow-hidden">
+          <div className="max-h-96 overflow-y-auto rounded-xl border border-black/10">
             {busLines.map((line) => {
               const busInfo = getBusTypeByOdsay(
                 seoulBisTypeToOdsayBusType(line.busRouteType),
@@ -223,6 +224,7 @@ type PageStep =
 
 export default function AddFavorite() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [pageStep, setPageStep] = useState<PageStep>({ kind: 'picking' })
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([])
   const [alias, setAlias] = useState('')
@@ -300,6 +302,7 @@ export default function AddFavorite() {
         },
         jwt,
       )
+      queryClient.invalidateQueries({ queryKey: ['favorite-stops'] })
       toast.success('즐겨찾기에 추가됐어요')
       navigate('/favorites')
     } catch (e) {
@@ -336,11 +339,14 @@ export default function AddFavorite() {
               odsayRouteId: stop.id,
               routeName: lineName,
               busType: null,
+              // ODsay search-stops 응답의 stop 단위 subwayCode 복사
+              subwayCode: stop.subwayCode ?? null,
             },
           ],
         },
         jwt,
       )
+      queryClient.invalidateQueries({ queryKey: ['favorite-stops'] })
       toast.success('즐겨찾기에 추가됐어요')
       navigate('/favorites')
     } catch (e) {

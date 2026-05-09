@@ -19,6 +19,8 @@ export interface SearchNodeData {
   way?: string | null;
   wayCode?: 1 | 2 | null;
   endName?: string | null;
+  /** 지하철 노선 매칭 키 — ODsay subwayCode. 버스 노드는 undefined. */
+  subwayCode?: string | null;
 }
 
 interface SearchResultNodeProps {

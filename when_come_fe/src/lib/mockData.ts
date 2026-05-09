@@ -6,6 +6,8 @@ export interface StopRouteInfo {
   stationOrd?: number | null
   stationName?: string | null
   busType?: number | null
+  /** 지하철 노선 매칭 키 — 서울 지하철 API lineName 형식 ("1001"~"1031"). 버스 row는 null. */
+  subwayCode?: string | null
 }
 
 export interface TransitStop {

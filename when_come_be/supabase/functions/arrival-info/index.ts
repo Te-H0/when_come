@@ -72,9 +72,12 @@ export interface SubwayArrivalItem {
 /**
  * trainLineNm, arrmsg1에서 행선지를 추출한다. best-effort — 실패하면 null.
  *
+ * 반환값은 **순수 역명** (예: "방화", "온수"). "행" 접미사를 포함하지 않는다.
+ * FE가 표시 시점에 "행"을 붙여서 "방화행"으로 렌더링한다.
+ *
  * 우선순위:
- * 1. trainLineNm의 첫 번째 "X행" 패턴: /^([^\s-]+행)/ → "온수행", "광명행"
- * 2. arrmsg1의 괄호 안 텍스트: /\(([^)]+)\)/ → "온수" → "온수행"으로 가공
+ * 1. trainLineNm의 "X행" 패턴에서 역명 캡처: /^([^\s-]+?)행/ → "방화", "온수"
+ * 2. arrmsg1의 괄호 안 텍스트에서 "행" 제거 후 반환 → "온수", "장암"
  * 3. 둘 다 실패 → null + anomaly_logs 기록
  */
 export function extractHeadsign(
@@ -82,19 +85,19 @@ export function extractHeadsign(
   arrmsg1: string,
   context?: { lineName?: string },
 ): string | null {
-  // 1차: trainLineNm에서 "X행" 추출 (공백만 있는 경우 방어)
+  // 1차: trainLineNm에서 "X행" 패턴의 역명 부분만 캡처 ("행" 제외)
   if (trainLineNm?.trim()) {
-    const m = trainLineNm.match(/^([^\s-]+행)/)
+    const m = trainLineNm.match(/^([^\s-]+?)행/)
     if (m) return m[1]
   }
 
-  // 2차: arrmsg1 괄호 안 텍스트 → "X행"으로 가공
+  // 2차: arrmsg1 괄호 안 텍스트에서 "행" 제거 후 순수 역명 반환
   const m2 = arrmsg1.match(/\(([^)]+)\)/)
   if (m2 && m2[1]) {
     const candidate = m2[1].trim()
     if (candidate.length > 0) {
-      // 이미 "행"으로 끝나면 그대로, 아니면 "행" 접미사 추가
-      return candidate.endsWith("행") ? candidate : `${candidate}행`
+      // "행" 접미사 제거 — FE에서 표시 시 붙임
+      return candidate.endsWith("행") ? candidate.slice(0, -1) : candidate
     }
   }
 
@@ -494,6 +497,9 @@ interface FavoriteStopRow {
   provider: "seoul" | "gyeonggi" | "odsay_fallback" | null
   odsay_stop_id: string | null
   stop_name: string | null
+  direction_headsign: string | null
+  direction_updn: string | null
+  direction_next_stop: string | null
   favorite_stop_routes: FavoriteStopRouteRow[]
 }
 
@@ -518,6 +524,8 @@ function favStopToRouteStopRow(fav: FavoriteStopRow): RouteStopRow {
     provider_fallback_reason: null,
     odsay_stop_id: fav.odsay_stop_id,
     stop_name: fav.stop_name,
+    direction_headsign: fav.direction_headsign,
+    direction_updn: fav.direction_updn,
     stop_routes: fav.favorite_stop_routes.map((r) => ({
       gbis_route_id: r.gbis_route_id,
       gbis_sta_order: r.gbis_sta_order,
@@ -556,6 +564,7 @@ async function fetchArrivalByStopId(
       .select(
         `id, stop_type, ars_id, gbis_station_id, provider,
          odsay_stop_id, stop_name,
+         direction_headsign, direction_updn, direction_next_stop,
          favorite_stop_routes(gbis_route_id, gbis_sta_order, provider, odsay_route_id)`,
       )
       .eq("id", stopId)

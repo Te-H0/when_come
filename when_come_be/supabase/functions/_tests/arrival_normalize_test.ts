@@ -5,6 +5,10 @@
  * - extractHeadsign — trainLineNm 우선, arrmsg 괄호 fallback, 둘 다 실패 null
  * - normalizeArrmsg — "[N]번째 전역" → "N개역 전", 시간 카운트다운 → null, 실패 null
  * - anomaly_logs mock INSERT 검증 (실패 케이스)
+ *
+ * headsign 계약 (2026-05-09~):
+ * - BE는 순수 역명만 반환 ("방화", "온수"). "행" 접미사 포함 금지.
+ * - FE가 표시 시점에 "행"을 붙여서 "방화행"으로 렌더링.
  */
 import { assertEquals } from "@std/assert"
 import { extractHeadsign, normalizeArrmsg } from "../arrival-info/index.ts"
@@ -24,42 +28,65 @@ function resetAnomalyMock() {
 // fire-and-forget이라 함수 자체를 mock으로 감싸지 않아도 결과(null 반환)는 동일.
 // 여기서는 반환값과 호출 부작용만 검증.
 
-// ─── extractHeadsign ──────────────────────────────────────────────────────
+// ─── extractHeadsign — 반환값은 "행" 접미사 없는 순수 역명 ───────────────────
 
-Deno.test("extractHeadsign — trainLineNm '온수행 - 인천 급행' → '온수행'", () => {
+Deno.test("extractHeadsign — trainLineNm '온수행 - 인천 급행' → '온수' (행 제외)", () => {
   const result = extractHeadsign("온수행 - 인천 급행", "[2]번째 전역 (온수)")
-  assertEquals(result, "온수행")
+  assertEquals(result, "온수")
 })
 
-Deno.test("extractHeadsign — trainLineNm '광명행' → '광명행'", () => {
+Deno.test("extractHeadsign — trainLineNm '광명행' → '광명' (행 제외)", () => {
   const result = extractHeadsign("광명행", "[1]번째 전역 (인천)")
-  assertEquals(result, "광명행")
+  assertEquals(result, "광명")
 })
 
-Deno.test("extractHeadsign — trainLineNm '동묘앞행' → '동묘앞행'", () => {
+Deno.test("extractHeadsign — trainLineNm '동묘앞행' → '동묘앞' (행 제외)", () => {
   const result = extractHeadsign("동묘앞행", "5분 30초 후")
-  assertEquals(result, "동묘앞행")
+  assertEquals(result, "동묘앞")
 })
 
-Deno.test("extractHeadsign — trainLineNm '광명행 - 급행' 우선 (arrmsg '[1]번째 전역 (인천)') → '광명행'", () => {
-  // trainLineNm 우선 — arrmsg 괄호 '인천'이 아닌 '광명행' 반환해야 함
+Deno.test("extractHeadsign — trainLineNm '방화행' → '방화' ('방화행행' 버그 수정)", () => {
+  // 핵심 버그 케이스: FE가 headsign + "행"을 붙이므로 BE는 "행" 없이 반환해야 함
+  const result = extractHeadsign("방화행", "5분 30초 후")
+  assertEquals(result, "방화")
+})
+
+Deno.test("extractHeadsign — trainLineNm '방화행 - 5호선' → '방화' (행 제외)", () => {
+  const result = extractHeadsign("방화행 - 5호선", "5분 후")
+  assertEquals(result, "방화")
+})
+
+Deno.test("extractHeadsign — trainLineNm '도봉산행' → '도봉산' (행 제외)", () => {
+  const result = extractHeadsign("도봉산행", "3분 후")
+  assertEquals(result, "도봉산")
+})
+
+Deno.test("extractHeadsign — trainLineNm '광명행 - 급행' 우선 (arrmsg '[1]번째 전역 (인천)') → '광명'", () => {
+  // trainLineNm 우선 — arrmsg 괄호 '인천'이 아닌 '광명'(행 제외) 반환해야 함
   const result = extractHeadsign("광명행 - 급행", "[1]번째 전역 (인천)")
-  assertEquals(result, "광명행")
+  assertEquals(result, "광명")
 })
 
-Deno.test("extractHeadsign — trainLineNm null, arrmsg '5분 30초 후 (인천)' → '인천행'", () => {
+Deno.test("extractHeadsign — trainLineNm null, arrmsg '5분 30초 후 (인천)' → '인천' (괄호 fallback, 행 제외)", () => {
   const result = extractHeadsign(null, "5분 30초 후 (인천)")
-  assertEquals(result, "인천행")
+  assertEquals(result, "인천")
 })
 
-Deno.test("extractHeadsign — trainLineNm null, arrmsg '[2]번째 전역 (온수)' → '온수행'", () => {
+Deno.test("extractHeadsign — trainLineNm null, arrmsg '[2]번째 전역 (온수)' → '온수' (행 제외)", () => {
   const result = extractHeadsign(null, "[2]번째 전역 (온수)")
-  assertEquals(result, "온수행")
+  assertEquals(result, "온수")
 })
 
-Deno.test("extractHeadsign — arrmsg 괄호 안에 이미 '행' 접미사 있으면 중복 추가 안 함 → '장암행'", () => {
+Deno.test("extractHeadsign — arrmsg 괄호 안에 '행' 접미사 있으면 제거 후 반환 → '장암'", () => {
+  // 수정 전: "장암행" (중복 없음이지만 "행" 포함)
+  // 수정 후: "장암" (FE가 표시 시 "행" 추가)
   const result = extractHeadsign(null, "3분 후 (장암행)")
-  assertEquals(result, "장암행")
+  assertEquals(result, "장암")
+})
+
+Deno.test("extractHeadsign — trainLineNm '사당행' → '사당' (이미 '행' 없는 역명처럼 처리)", () => {
+  const result = extractHeadsign("사당행", "2분 후")
+  assertEquals(result, "사당")
 })
 
 Deno.test("extractHeadsign — trainLineNm null, arrmsg 괄호 없음 → null + anomaly", () => {
@@ -151,14 +178,14 @@ Deno.test("통합 — arvlCd '99' + '5분 30초 후 (인천)': displayMsg null (
   assertEquals(displayMsg, null)
 })
 
-Deno.test("통합 — arvlCd '99' + arrmsg, headsign: '인천행'", () => {
+Deno.test("통합 — arvlCd '99' + arrmsg, headsign: '인천' (행 제외)", () => {
   const headsign = extractHeadsign(null, "5분 30초 후 (인천)")
-  assertEquals(headsign, "인천행")
+  assertEquals(headsign, "인천")
 })
 
-Deno.test("통합 — trainLineNm '온수행 - 인천 급행', arrmsg '[2]번째 전역 (온수)': headsign '온수행', displayMsg '2개역 전'", () => {
+Deno.test("통합 — trainLineNm '온수행 - 인천 급행', arrmsg '[2]번째 전역 (온수)': headsign '온수', displayMsg '2개역 전'", () => {
   const headsign = extractHeadsign("온수행 - 인천 급행", "[2]번째 전역 (온수)")
-  assertEquals(headsign, "온수행")
+  assertEquals(headsign, "온수")
 
   const base = arvlCdToDisplayMsg("99")
   const { displayMsg } = base !== null
