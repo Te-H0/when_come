@@ -96,3 +96,25 @@ lat/lng 좌표 → detectRegion (bounding box)
   gyeonggi → GBIS 정류소 검색 → verifyGbisMapping → 'gyeonggi' 또는 'odsay_fallback'
   unknown  → 'odsay_fallback'
 ```
+
+## 지하철 도착정보 역명 fallback 전략 (getSubwayArrival, 2026-05-09~)
+
+서울 지하철 API는 역명 등록 방식이 불일치 (예: "서울역" → GTX-A만 반환, 1/4호선은 "서울"로 등록).
+`getSubwayArrival(stationName, expectedSubwayCode?)` 시그니처로 대응.
+
+```
+getSubwayArrival(stationName, expectedSubwayCode?)
+  1차: applySubwayNameOverride(stationName) 로 API 호출
+  needsFallback 조건 (OR):
+    - 1차 응답 0건
+    - expectedSubwayCode 제공됐는데 1차 응답에 해당 코드 매칭 0건
+  needsFallback=false → 1차 결과 그대로 반환
+  needsFallback=true:
+    2차: stripSubwayNameDecorations → applySubwayNameOverride → API 호출
+    1차가 비어있으면 2차 결과만 반환
+    1차에 결과 있으면 merge + dedupe (key: lineName|updnLine|arrmsg1|direction)
+```
+
+- `?type=subway&subwayCode=1004` 쿼리 파라미터로 FE가 전달 가능 (optional, `/^10\d{2}$/` 검증)
+- `fetchArrivalByStopId` subway stop 분기: stop_routes[0].subway_code 추출 → 자동 전달
+- 임시 패치 (subway_code NULL인 기존 stop은 효과 없음 → backlog #9에서 전체 정비 예정)

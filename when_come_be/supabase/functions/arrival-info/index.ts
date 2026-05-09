@@ -332,26 +332,71 @@ async function fetchSubwayArrivalRaw(name: string): Promise<SubwayArrivalItem[]>
   })
 }
 
-async function getSubwayArrival(stationName: string): Promise<SubwayArrivalItem[]> {
+/** (lineName, updnLine, arrmsg1, trainLineNm) 조합으로 중복 제거 */
+function dedupeSubwayItems(items: SubwayArrivalItem[]): SubwayArrivalItem[] {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    const key = `${item.lineName}|${item.updnLine}|${item.arrmsg1}|${item.direction}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+/**
+ * 지하철 도착정보 조회.
+ *
+ * expectedSubwayCode: 서울 지하철 API lineName 형식("1004" 등).
+ * 전달 시 1차 응답에서 해당 코드 매칭이 0건이면 fallback을 추가로 시도하고
+ * 1차 + 2차 결과를 merge(dedupe)하여 반환.
+ * 이는 "서울역"처럼 API가 역명 변형마다 다른 노선을 반환하는 케이스 대응.
+ * 미전달 시 기존 동작 유지 (0건일 때만 fallback).
+ */
+async function getSubwayArrival(
+  stationName: string,
+  expectedSubwayCode?: string | null,
+): Promise<SubwayArrivalItem[]> {
   // 1차: OVERRIDES 적용한 명칭으로 호출
   const primary = applySubwayNameOverride(stationName)
-  let items = await fetchSubwayArrivalRaw(primary)
-  if (items.length > 0) return items
+  let primaryItems = await fetchSubwayArrivalRaw(primary)
+
+  // fallback 필요 여부 판단
+  const needsFallback = primaryItems.length === 0 ||
+    (
+      expectedSubwayCode != null &&
+      !primaryItems.some((item) => item.lineName === expectedSubwayCode)
+    )
+
+  if (!needsFallback) return primaryItems
 
   // 2차: 괄호/역 제거 → 다시 OVERRIDES 한 번 더
   const stripped = stripSubwayNameDecorations(primary)
   const fallback = applySubwayNameOverride(stripped)
-  if (fallback !== primary) {
-    items = await fetchSubwayArrivalRaw(fallback)
-    if (items.length > 0) return items
+  if (fallback === primary) {
+    // fallback 시도할 이름이 없음 — 1차 결과 그대로 반환
+    if (primaryItems.length === 0) {
+      console.warn(
+        `[subway-arrival] no result after fallback: input="${stationName}" primary="${primary}" fallback="${fallback}"`,
+      )
+    }
+    return primaryItems
   }
 
-  // 모든 fallback 실패 — 메트릭용 warn 로그
-  // 운영 모니터링으로 새 별칭 케이스 발견 시 SUBWAY_NAME_OVERRIDES에 추가
-  console.warn(
-    `[subway-arrival] no result after fallback: input="${stationName}" primary="${primary}" fallback="${fallback}"`,
-  )
-  return []
+  const fallbackItems = await fetchSubwayArrivalRaw(fallback)
+
+  // 1차가 완전히 비어있으면 2차만 반환
+  if (primaryItems.length === 0) {
+    if (fallbackItems.length === 0) {
+      console.warn(
+        `[subway-arrival] no result after fallback: input="${stationName}" primary="${primary}" fallback="${fallback}"`,
+      )
+    }
+    return fallbackItems
+  }
+
+  // 1차에 expected code가 없어서 fallback을 추가로 호출한 경우 — merge + dedupe
+  const merged = dedupeSubwayItems([...primaryItems, ...fallbackItems])
+  return merged
 }
 
 function parseArrivalSec(val: unknown): number | null {
@@ -425,6 +470,7 @@ interface StopRouteRow {
   gbis_sta_order: number | null
   provider: "seoul" | "gyeonggi" | "odsay_fallback" | null
   odsay_route_id: string | null
+  subway_code: string | null
 }
 
 interface RouteStopRow {
@@ -487,6 +533,7 @@ interface FavoriteStopRouteRow {
   gbis_sta_order: number | null
   provider: "seoul" | "gyeonggi" | "odsay_fallback" | null
   odsay_route_id: string | null
+  subway_code: string | null
 }
 
 interface FavoriteStopRow {
@@ -531,6 +578,7 @@ function favStopToRouteStopRow(fav: FavoriteStopRow): RouteStopRow {
       gbis_sta_order: r.gbis_sta_order,
       provider: r.provider,
       odsay_route_id: r.odsay_route_id,
+      subway_code: r.subway_code,
     })),
   }
 }
@@ -550,7 +598,7 @@ async function fetchArrivalByStopId(
       `id, route_id, stop_type, ars_id, gbis_station_id, provider, provider_fallback_reason,
        odsay_stop_id, stop_name,
        routes!inner(user_id),
-       stop_routes(gbis_route_id, gbis_sta_order, provider, odsay_route_id)`,
+       stop_routes(gbis_route_id, gbis_sta_order, provider, odsay_route_id, subway_code)`,
     )
     .eq("id", stopId)
     .eq("routes.user_id", user.id)
@@ -565,7 +613,7 @@ async function fetchArrivalByStopId(
         `id, stop_type, ars_id, gbis_station_id, provider,
          odsay_stop_id, stop_name,
          direction_headsign, direction_updn, direction_next_stop,
-         favorite_stop_routes(gbis_route_id, gbis_sta_order, provider, odsay_route_id)`,
+         favorite_stop_routes(gbis_route_id, gbis_sta_order, provider, odsay_route_id, subway_code)`,
       )
       .eq("id", stopId)
       .single()
@@ -595,6 +643,21 @@ async function fetchArrivalByStopId(
   const stopRow: RouteStopRow = stop
   const stopRoutes = stopRow.stop_routes ?? []
   const baseCtx = buildBaseCtx(stopRow)
+
+  // 지하철 stop: subway_code를 stop_routes 첫 행에서 추출하여 정확도 향상
+  if (stopRow.stop_type === "subway") {
+    const stationName = stopRow.stop_name ?? ""
+    if (!stationName) {
+      throw new AppError("지하철 정류장 이름이 없습니다", 500)
+    }
+    const subwayCode = stopRoutes[0]?.subway_code ?? null
+    const items = await getSubwayArrival(stationName, subwayCode ?? undefined)
+    return {
+      items: items as unknown as BusArrivalItem[],
+      provider: "seoul",
+      fetchedAt: new Date().toISOString(),
+    }
+  }
 
   // stop_routes가 없으면 route_stops.provider로 단일 provider 호출 (legacy 호환)
   if (stopRoutes.length === 0) {
@@ -778,7 +841,10 @@ export async function handler(req: Request): Promise<Response> {
     if (legacyType === "subway") {
       const stationName = searchParams.get("stationName")
       if (!stationName) throw new AppError("subway 타입은 stationName 이 필요합니다", 400)
-      const data = await getSubwayArrival(stationName)
+      // subwayCode: /^10\d{2}$/ 형식만 유효. 잘못된 형식은 무시(undefined 처리).
+      const rawSubwayCode = searchParams.get("subwayCode")
+      const subwayCode = rawSubwayCode && /^10\d{2}$/.test(rawSubwayCode) ? rawSubwayCode : undefined
+      const data = await getSubwayArrival(stationName, subwayCode)
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })

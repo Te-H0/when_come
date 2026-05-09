@@ -690,3 +690,199 @@ Deno.test("arrival-info subway — arvlCd '0' → displayMsg '진입중', headsi
     })
   )
 })
+
+// ─── subwayCode fallback 테스트 (expectedSubwayCode) ─────────────────────────
+
+/**
+ * "서울역" 케이스: 1차 "서울역" 호출 → GTX-A(1032)만 반환.
+ * expectedSubwayCode=1004(4호선)이 없으므로 fallback 트리거 → "서울"로 재호출.
+ * 결과는 1차(GTX) + 2차(1호선/4호선) merge.
+ */
+Deno.test("arrival-info subway — subwayCode 있고 1차 응답에 해당 코드 없으면 fallback 호출(2회) + merge", async () => {
+  let fetchCallCount = 0
+  const capturedUrls: string[] = []
+  await withEnv(ENV, () =>
+    withMockFetch(async (url) => {
+      fetchCallCount++
+      capturedUrls.push(url)
+      const decoded = decodeURIComponent(url.split("/").pop() ?? "")
+      if (decoded === "서울역") {
+        // 1차: GTX-A만 응답
+        return jsonResponse({
+          realtimeArrivalList: [{
+            subwayId: "1032",
+            trainLineNm: "수서행",
+            arvlMsg2: "3분 후",
+            arvlMsg3: "공덕",
+            arvlCd: "99",
+            updnLine: "하행",
+          }],
+        })
+      }
+      if (decoded === "서울") {
+        // 2차: 1호선 + 4호선 응답
+        return jsonResponse({
+          realtimeArrivalList: [
+            {
+              subwayId: "1001",
+              trainLineNm: "소요산행",
+              arvlMsg2: "2분 후",
+              arvlMsg3: "남영",
+              arvlCd: "99",
+              updnLine: "상행",
+            },
+            {
+              subwayId: "1004",
+              trainLineNm: "당고개행",
+              arvlMsg2: "5분 후",
+              arvlMsg3: "숙대입구",
+              arvlCd: "99",
+              updnLine: "상행",
+            },
+          ],
+        })
+      }
+      return jsonResponse({ realtimeArrivalList: [] })
+    }, async () => {
+      const url = `${BASE}?type=subway&stationName=${encodeURIComponent("서울역")}&subwayCode=1004`
+      const res = await handler(makeRequest("GET", url))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      // 1차 1건(GTX) + 2차 2건(1호선, 4호선) = 3건 merge
+      assertEquals(body.length, 3)
+      assertEquals(fetchCallCount, 2)
+      // 1차: "서울역"
+      assertEquals(capturedUrls[0].includes(encodeURIComponent("서울역")), true)
+      // 2차: "서울" (역 접미사 제거)
+      assertEquals(capturedUrls[1].includes(encodeURIComponent("서울")), true)
+      // GTX, 1호선, 4호선 모두 포함 확인
+      const lineNames = body.map((item: { lineName: string }) => item.lineName)
+      assertEquals(lineNames.includes("1032"), true)
+      assertEquals(lineNames.includes("1001"), true)
+      assertEquals(lineNames.includes("1004"), true)
+    })
+  )
+})
+
+Deno.test("arrival-info subway — subwayCode 있고 1차 응답에 해당 코드 이미 있으면 fallback 안 함(1회)", async () => {
+  let fetchCallCount = 0
+  await withEnv(ENV, () =>
+    withMockFetch(async () => {
+      fetchCallCount++
+      return jsonResponse({
+        realtimeArrivalList: [
+          {
+            subwayId: "1004",
+            trainLineNm: "당고개행",
+            arvlMsg2: "3분 후",
+            arvlMsg3: "공덕",
+            arvlCd: "99",
+            updnLine: "상행",
+          },
+        ],
+      })
+    }, async () => {
+      const url = `${BASE}?type=subway&stationName=${encodeURIComponent("서울역")}&subwayCode=1004`
+      const res = await handler(makeRequest("GET", url))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      assertEquals(body.length, 1)
+      assertEquals(body[0].lineName, "1004")
+      // expected code가 1차에 있으므로 fetch 1회만
+      assertEquals(fetchCallCount, 1)
+    })
+  )
+})
+
+Deno.test("arrival-info subway — subwayCode 미전달 시 기존 동작 유지(0건일 때만 fallback)", async () => {
+  let fetchCallCount = 0
+  await withEnv(ENV, () =>
+    withMockFetch(async () => {
+      fetchCallCount++
+      // 1차: 1032만 있음
+      return jsonResponse({
+        realtimeArrivalList: [{
+          subwayId: "1032",
+          trainLineNm: "수서행",
+          arvlMsg2: "3분 후",
+          arvlMsg3: "공덕",
+          arvlCd: "99",
+          updnLine: "하행",
+        }],
+      })
+    }, async () => {
+      // subwayCode 없음 → 1차에 결과 있으면 fallback 안 함
+      const url = `${BASE}?type=subway&stationName=${encodeURIComponent("서울역")}`
+      const res = await handler(makeRequest("GET", url))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      assertEquals(body.length, 1)
+      assertEquals(fetchCallCount, 1)
+    })
+  )
+})
+
+Deno.test("arrival-info subway — 잘못된 형식의 subwayCode는 무시(기존 동작)", async () => {
+  let fetchCallCount = 0
+  await withEnv(ENV, () =>
+    withMockFetch(async () => {
+      fetchCallCount++
+      return jsonResponse({
+        realtimeArrivalList: [{
+          subwayId: "1032",
+          trainLineNm: "수서행",
+          arvlMsg2: "2분 후",
+          arvlMsg3: "공덕",
+          arvlCd: "99",
+          updnLine: "하행",
+        }],
+      })
+    }, async () => {
+      // subwayCode 형식 불일치 → 무시 → 1차 결과 있으면 그대로 반환
+      const url = `${BASE}?type=subway&stationName=강남&subwayCode=INVALID`
+      const res = await handler(makeRequest("GET", url))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      assertEquals(body.length, 1)
+      assertEquals(fetchCallCount, 1)
+    })
+  )
+})
+
+Deno.test("arrival-info subway — dedupe: 1차+2차 merge 시 같은 key 항목은 중복 제거", async () => {
+  // 시나리오: 1차에 1004 없음 → fallback 트리거.
+  // 2차 결과에 1차에 이미 있던 1032와 동일한 key 항목이 섞여 반환될 때 dedupe 검증.
+  let fetchCallCount = 0
+  await withEnv(ENV, () =>
+    withMockFetch(async (url) => {
+      fetchCallCount++
+      const decoded = decodeURIComponent(url.split("/").pop() ?? "")
+      const gtxItem = { subwayId: "1032", trainLineNm: "수서행", arvlMsg2: "3분 후", arvlMsg3: "공덕", arvlCd: "99", updnLine: "하행" }
+      if (decoded === "서울역") {
+        // 1차: 1032(GTX)만 반환, 1004 없음 → needsFallback=true
+        return jsonResponse({ realtimeArrivalList: [gtxItem] })
+      }
+      if (decoded === "서울") {
+        // 2차: 1032(GTX) 동일 item + 1004 추가
+        return jsonResponse({
+          realtimeArrivalList: [
+            gtxItem,  // 1차와 완전히 같은 key → dedupe 제거 대상
+            { subwayId: "1004", trainLineNm: "당고개행", arvlMsg2: "5분 후", arvlMsg3: "숙대입구", arvlCd: "99", updnLine: "상행" },
+          ],
+        })
+      }
+      return jsonResponse({ realtimeArrivalList: [] })
+    }, async () => {
+      const url = `${BASE}?type=subway&stationName=${encodeURIComponent("서울역")}&subwayCode=1004`
+      const res = await handler(makeRequest("GET", url))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      // 1032(1차) + 1032(2차 중복 제거) + 1004 = 2건
+      assertEquals(body.length, 2)
+      assertEquals(fetchCallCount, 2)
+      const lineNames = body.map((item: { lineName: string }) => item.lineName)
+      assertEquals(lineNames.includes("1032"), true)
+      assertEquals(lineNames.includes("1004"), true)
+    })
+  )
+})

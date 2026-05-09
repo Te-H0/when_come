@@ -662,4 +662,19 @@ FavoriteStops(단일 정류장 즐겨찾기) 도메인 + 정류장/역 별명(al
 - 기존: 현재 스텝만 `useQueries`
 - 변경: `nonPastSegments` (현재+이후 전체) 동시 조회
 - 다음 스텝 카드: 최소 도착 시간 표시 + accordion 상세
+
+---
+
+## 2026-05-09 — 지하철 도착정보 subwayCode 파라미터 추가 (non-breaking)
+
+**대상:** `GET /arrival-info?type=subway&stationName=...`
+
+**변경 내용:** `subwayCode` 쿼리 파라미터 추가 (optional).
+
+- **형식:** `/^10\d{2}$/` (서울 지하철 API lineName 형식, 예: `"1004"`)
+- **동작:** 전달 시 1차 응답에 해당 코드 매칭이 0건이면 역명 strip(괄호/역 제거) fallback을 추가로 시도하고 1차 + 2차 결과를 merge(dedupe)하여 반환.
+  - 예: `stationName=서울역&subwayCode=1004` → 1차 "서울역"(GTX-A만) + 2차 "서울"(1호선/4호선) merge
+- **[non-breaking]** 미전달 시 기존 동작 유지 (0건일 때만 fallback). 잘못된 형식은 무시.
+- **FE 권장:** `arrival-info` 지하철 호출 시 `stop.subwayCode`(route_stops → stop_routes[0].subway_code)를 함께 전달하면 정확도 향상. 없어도 기존 동작 유지.
+- **임시 해결책 주의:** backlog #9 (subway_code 전체 정비) 완료 전까지의 임시 패치. subway_code가 NULL인 기존 stop은 효과 없음.
 - 영향 컴포넌트: `Home.tsx`
