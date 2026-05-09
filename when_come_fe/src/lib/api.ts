@@ -76,6 +76,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       : `HTTP ${res.status}`
     throw new ApiError('UNKNOWN', msg, res.status)
   }
+  if (res.status === 204 || res.headers.get('Content-Length') === '0') {
+    return undefined as T
+  }
   return res.json() as Promise<T>
 }
 
@@ -124,10 +127,10 @@ export function getArrivalByStopId(stopId: string): Promise<ApiBusArrivalByStopI
   )
 }
 
-export function getSubwayArrival(stationName: string): Promise<ApiSubwayArrivalItem[]> {
-  return apiFetch<ApiSubwayArrivalItem[]>(
-    `/arrival-info?type=subway&stationName=${encodeURIComponent(stationName)}`,
-  )
+export function getSubwayArrival(stationName: string, subwayCode?: string | null): Promise<ApiSubwayArrivalItem[]> {
+  const params = new URLSearchParams({ type: 'subway', stationName })
+  if (subwayCode) params.set('subwayCode', subwayCode)
+  return apiFetch<ApiSubwayArrivalItem[]>(`/arrival-info?${params.toString()}`)
 }
 
 export function listRoutes(jwt: string): Promise<ApiRoute[]> {

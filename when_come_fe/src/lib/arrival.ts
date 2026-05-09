@@ -251,7 +251,8 @@ export function getArrivalMin(stop: TransitStop, line: string, arrival: ArrivalD
 
 export async function fetchArrival(stop: TransitStop): Promise<ArrivalData> {
   if (stop.type === 'subway') {
-    const items = await getSubwayArrival(stop.name)
+    const subwayCode = stop.stopRoutes?.[0]?.subwayCode ?? null
+    const items = await getSubwayArrival(stop.name, subwayCode)
     return { type: 'subway', items }
   }
 

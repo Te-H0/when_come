@@ -213,13 +213,13 @@ function FavoriteCard({
             const matchedSubwayItems = isSubway ? getMatchedSubwayItems(stop, line, arrivalData) : []
 
             if (isBidirectional) {
-              // 양방향 분리 UI — updnLine 기준으로 up/down 그룹핑
+              // 양방향 분리 UI — updnLine 기준으로 up/down 그룹핑, 좌우 2열 그리드
               const grouped = groupSubwayItemsByDirection(matchedSubwayItems)
               const allEmpty = grouped.up.length === 0 && grouped.down.length === 0 && grouped.other.length === 0
-              const dirGroups: Array<{ label: string; items: typeof grouped.up }> = []
-              if (grouped.up.length > 0) dirGroups.push({ label: '상행', items: grouped.up })
-              if (grouped.down.length > 0) dirGroups.push({ label: '하행', items: grouped.down })
-              if (grouped.other.length > 0) dirGroups.push({ label: '기타', items: grouped.other })
+
+              // 좌우 2열에 배치할 그룹 (up + down, other는 별도 처리)
+              const leftItems = grouped.up.length > 0 ? grouped.up : grouped.other.slice(0, Math.ceil(grouped.other.length / 2))
+              const rightItems = grouped.down.length > 0 ? grouped.down : grouped.up.length > 0 ? [] : grouped.other.slice(Math.ceil(grouped.other.length / 2))
 
               return (
                 <div key={line} className="px-4 py-3.5 hover:bg-[#F9FAFB] transition-colors">
@@ -238,7 +238,7 @@ function FavoriteCard({
                     </div>
                   </div>
 
-                  {/* 방향별 분리 표시 */}
+                  {/* 방향별 좌우 분리 표시 */}
                   {isArrivalLoading ? (
                     <div className="flex items-center gap-1.5 ml-[52px]">
                       <Loader2 className="w-3.5 h-3.5 text-[#9CA3AF] animate-spin" />
@@ -247,34 +247,55 @@ function FavoriteCard({
                   ) : allEmpty ? (
                     <div className="ml-[52px] text-[13px] text-[#9CA3AF]">도착 정보 없음</div>
                   ) : (
-                    <div className="ml-[52px] space-y-2.5">
-                      {dirGroups.map(({ label, items }) => (
-                        <div key={label}>
-                          <div className="text-[11px] font-medium text-[#9CA3AF] mb-1">{label}</div>
-                          <div className="space-y-1">
-                            {items.slice(0, 2).map((item, itemIdx) => {
-                              const rawMsg = item.displayMsg ?? item.arrmsg1
-                              const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway')
-                              const { time: timeOnly, stops: stopsB } = splitArrival(msg)
-                              const minVal = item.displayMsg != null ? 0 : (rawMsg.match(/(\d+)분/) ? parseInt(rawMsg.match(/(\d+)분/)![1]) : null)
-                              const isUrgentItem = minVal !== null && minVal < 3
-                              return (
-                                <div key={itemIdx} className="flex items-center gap-1.5">
-                                  {item.headsign && (
-                                    <span className="text-[11px] text-[#6B7280] whitespace-nowrap font-medium">{item.headsign}행</span>
-                                  )}
-                                  <span className={`text-[14px] font-bold tabular-nums whitespace-nowrap ${itemIdx === 0 && isUrgentItem ? 'text-[#DC2626]' : itemIdx === 0 ? 'text-[#111827]' : 'text-[#9CA3AF]'}`}>
-                                    {timeOnly}
-                                  </span>
-                                  {stopsB && (
-                                    <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsB}</span>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                    <div className="ml-[52px] grid grid-cols-2 gap-0 divide-x divide-black/5">
+                      {/* 왼쪽 열 — 상행 */}
+                      <div className="pr-3 space-y-1">
+                        {leftItems.slice(0, 2).map((item, itemIdx) => {
+                          const rawMsg = item.displayMsg ?? item.arrmsg1
+                          const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway')
+                          const { time: timeOnly } = splitArrival(msg)
+                          const minVal = item.displayMsg != null ? 0 : (rawMsg.match(/(\d+)분/) ? parseInt(rawMsg.match(/(\d+)분/)![1]) : null)
+                          const isUrgentItem = minVal !== null && minVal < 3
+                          const isSecondRow = itemIdx === 1
+                          return (
+                            <div key={itemIdx} className="flex items-baseline gap-1.5 min-w-0">
+                              {item.headsign && (
+                                <span className={`${isSecondRow ? 'text-[10px]' : 'text-[11px]'} text-[#9CA3AF] shrink-0`}>{item.headsign}행</span>
+                              )}
+                              <span className={`${isSecondRow ? 'text-[12px] font-medium' : 'text-[14px] font-bold'} tabular-nums leading-tight ${itemIdx === 0 && isUrgentItem ? 'text-[#DC2626]' : itemIdx === 0 ? 'text-[#111827]' : 'text-[#9CA3AF]'}`}>
+                                {timeOnly}
+                              </span>
+                            </div>
+                          )
+                        })}
+                        {leftItems.length === 0 && (
+                          <div className="text-[12px] text-[#D1D5DB]">정보 없음</div>
+                        )}
+                      </div>
+                      {/* 오른쪽 열 — 하행 */}
+                      <div className="pl-3 space-y-1">
+                        {rightItems.slice(0, 2).map((item, itemIdx) => {
+                          const rawMsg = item.displayMsg ?? item.arrmsg1
+                          const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway')
+                          const { time: timeOnly } = splitArrival(msg)
+                          const minVal = item.displayMsg != null ? 0 : (rawMsg.match(/(\d+)분/) ? parseInt(rawMsg.match(/(\d+)분/)![1]) : null)
+                          const isUrgentItem = minVal !== null && minVal < 3
+                          const isSecondRow = itemIdx === 1
+                          return (
+                            <div key={itemIdx} className="flex items-baseline gap-1.5 min-w-0">
+                              {item.headsign && (
+                                <span className={`${isSecondRow ? 'text-[10px]' : 'text-[11px]'} text-[#9CA3AF] shrink-0`}>{item.headsign}행</span>
+                              )}
+                              <span className={`${isSecondRow ? 'text-[12px] font-medium' : 'text-[14px] font-bold'} tabular-nums leading-tight ${itemIdx === 0 && isUrgentItem ? 'text-[#DC2626]' : itemIdx === 0 ? 'text-[#111827]' : 'text-[#9CA3AF]'}`}>
+                                {timeOnly}
+                              </span>
+                            </div>
+                          )
+                        })}
+                        {rightItems.length === 0 && (
+                          <div className="text-[12px] text-[#D1D5DB]">정보 없음</div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -344,9 +365,9 @@ function FavoriteCard({
                         <span className="text-[13px] text-[#9CA3AF]">도착 정보 없음</span>
                       ) : (
                         <>
-                          <div className="flex items-center gap-1.5 justify-end">
+                          <div className="flex items-baseline gap-1.5 justify-end">
                             {item1Headsign && (
-                              <span className="text-[11px] text-[#6B7280] whitespace-nowrap font-medium">{item1Headsign}행</span>
+                              <span className="text-[11px] text-[#6B7280] whitespace-nowrap">{item1Headsign}행</span>
                             )}
                             <ArrivalText
                               msg={arrivalTimeOnly}
@@ -357,7 +378,7 @@ function FavoriteCard({
                             )}
                           </div>
                           {arrivalText2 && (
-                            <div className="flex items-center gap-1.5 justify-end">
+                            <div className="flex items-baseline gap-1.5 justify-end">
                               {item2Headsign && (
                                 <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{item2Headsign}행</span>
                               )}
@@ -555,10 +576,10 @@ export default function Favorites() {
       const jwt = await getJwt()
       if (!jwt) throw new Error('인증 실패')
       await deleteFavoriteStop(fav.id, jwt)
-      refetch()
+      queryClient.invalidateQueries({ queryKey: ['favorite-stops'] })
       toast.success('즐겨찾기를 삭제했어요')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : '삭제에 실패했어요')
+    } catch {
+      toast.error('삭제에 실패했어요')
     }
   }
 
@@ -586,7 +607,7 @@ export default function Favorites() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F6F7F9] pb-24">
+    <div className="h-dvh overflow-y-auto bg-[#F6F7F9] pb-24">
       {/* 헤더 */}
       <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">

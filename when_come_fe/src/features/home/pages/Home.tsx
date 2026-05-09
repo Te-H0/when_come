@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/card";
 import BottomNav from "@/components/BottomNav";
 import EmptyState from "@/components/EmptyState";
 import StopName from "@/components/StopName";
-import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
+import { getBusTypeByOdsay, getSubwayColor, normalizeSubwayLineName } from "@/utils/transitColors";
 import { listRoutes, updateRoute } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { mapApiRoute } from "@/lib/mappers";
@@ -379,8 +379,8 @@ export default function Home() {
         err.code !== 'ARRIVAL_MAPPING_FAILED' &&
         err.code !== 'ARRIVAL_VERIFY_FAILED'
       ) {
-        // UNKNOWN 또는 기타 — BE message를 그대로 toast
-        toast.error(err.message, { id: `arrival-error-${err.code}` })
+        // UNKNOWN 또는 기타 — 사용자에게 원시 메시지(URL 등) 노출 방지
+        toast.error('도착 정보를 불러오지 못했어요', { id: `arrival-error-${err.code}` })
       }
       // UNSUPPORTED_REGION / MAPPING_FAILED / VERIFY_FAILED 는 inline 처리 (toast 없음)
     })
@@ -646,9 +646,10 @@ export default function Home() {
                             ) : (
                               seg.stop.lines.map((line, idx) => {
                                 const isSubway = seg.stop.type === 'subway';
+                                const displayLine = isSubway ? normalizeSubwayLineName(line) : line;
                                 const stopRoute = seg.stop.stopRoutes?.find(r => r.routeName === line);
                                 const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null;
-                                const subwayColorInfo = isSubway ? getSubwayColor(line) : null;
+                                const subwayColorInfo = isSubway ? getSubwayColor(displayLine) : null;
 
                                 const transitMode = isSubway ? 'subway' : 'bus';
                                 const rawMsg1 = getArrivalDisplay(seg.stop, line, segArrivalData);
@@ -711,7 +712,7 @@ export default function Home() {
                                         </div>
                                         <div className="min-w-0">
                                           <div className="text-[13px] font-semibold text-[#111827]">
-                                            {isSubway ? line : `${line}번`}
+                                            {isSubway ? displayLine : `${line}번`}
                                           </div>
                                           <div className="flex items-center gap-1 mt-0.5">
                                             <span className="text-[11px] text-[#6B7280]">
@@ -828,7 +829,7 @@ export default function Home() {
                                           {/* T22: 호선명 + 헤드사인 배지 */}
                                           <div className="flex items-center gap-1.5 flex-wrap">
                                             <div className="text-[15px] font-semibold text-[#111827] truncate max-w-[80px]">
-                                              {isSubway ? line : `${line}번`}
+                                              {isSubway ? displayLine : `${line}번`}
                                             </div>
                                             {headsign && (
                                               <span
@@ -996,9 +997,10 @@ export default function Home() {
                             ) : (
                               seg.stop.lines.map((line, idx) => {
                                 const isSubway = seg.stop.type === 'subway'
+                                const displayLine = isSubway ? normalizeSubwayLineName(line) : line
                                 const stopRoute = seg.stop.stopRoutes?.find(r => r.routeName === line)
                                 const busTypeInfo = !isSubway ? getBusTypeByOdsay(stopRoute?.busType, line) : null
-                                const subwayColorInfo = isSubway ? getSubwayColor(line) : null
+                                const subwayColorInfo = isSubway ? getSubwayColor(displayLine) : null
                                 const rawMsg1 = getArrivalDisplay(seg.stop, line, arrData)
                                 const rawMsg2 = getArrivalDisplay2(seg.stop, line, arrData)
                                 const miniMode = isSubway ? 'subway' : 'bus'
@@ -1011,7 +1013,7 @@ export default function Home() {
                                       <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: isSubway ? subwayColorInfo?.color : busTypeInfo?.color ?? '#9CA3AF' }} />
                                       <div className="min-w-0">
                                         <div className="text-[13px] font-medium text-[#374151]">
-                                          {isSubway ? line : `${line}번`}
+                                          {isSubway ? displayLine : `${line}번`}
                                         </div>
                                         <div className="text-[11px] text-[#9CA3AF]">
                                           {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}

@@ -16,6 +16,7 @@
 - [ ] #6 | [chore] 매칭용 사전 데이터 일괄 저장 + 미커버 노선 검증 (주말 작업) — 1) 괄호 별칭 역명(군자→군자(능동) 류) 사전 차단 스크립트(`#3`과 통합 가능). 2) 경기 버스 노선/정류소 사전 인덱스 — `gbis_stations` 외에 `gbis_routes`도 일 1회 동기화. 3) 지하철 도착정보 미커버 노선 실 검증 — 인천 1/2호선(인천교통공사), 코레일 외곽 1호선 신창 방면, GTX-A. 서울 열린데이터 통합 API에 응답이 들어오는지 / 별도 API 필요한지 확인. | 2026-05-08
 - [ ] #7 | [refactor] SetupRoute `handleAddNodeFromSearch` stepGroup 결정 책임 정리 — 현재 `forcedNewGroup` 인자로 stale 클로저 회피 중인데, 이는 "stale closure 문제의 증거". `setNodes`를 functional 패턴(`setNodes(prev => [...prev, makeNode(prev, node, opts)])`) + `getStopBuses` await을 별도 effect로 분리 리팩터. post-prod. | 2026-05-08
 - [ ] #8 | [refactor] `getArrivalDisplay` 반환값에 isStatusLabel 플래그 명시 — 현재 displayMsg("진입중" 등)와 시간 메시지("5분 후")를 같은 string으로 반환하고 caller가 `applyCountdownToArrmsg`로 무차별 처리. 분/초 정규식 미스 의존이라 implicit. `{ text, isStatusLabel }` 객체 반환으로 명시화. | 2026-05-08
+- [ ] #9 | [chore] ODsay stationID ↔ 서울 지하철 API statnId 매핑 인프라 (주말 작업, #6과 통합 가능) — 도착정보 호출의 stationName 의존 제거. "서울역 4호선" 같은 환승역에서 stationNm="서울역" 호출 시 GTX-A만 매칭되는 quirk 근본 해결. 매핑 데이터 빌드: 서울 열린데이터 `SearchInfoBySubwayNameService`로 전체 역 statnId 확보 → ODsay 검색 응답과 좌표/이름 fuzzy match → `route_stops`/`favorite_stops`에 `subway_statn_id` 컬럼 추가해 영속화. 임시 해결(stationName + subwayCode fallback 트리거 — 2026-05-09)이 동작하는 동안 별도 트랙. | 2026-05-09
 
 ## 🟢 Low
 
