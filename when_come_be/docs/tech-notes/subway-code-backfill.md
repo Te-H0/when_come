@@ -6,6 +6,16 @@
 마이그레이션 `20260509000600_add_subway_code_to_stop_routes.sql`로 추가됨.
 기존 row는 NULL 상태이며, 이 스크립트로 채운다.
 
+## 동작 범위 (idempotent)
+
+- `WHERE stop_type='subway' AND subway_code IS NULL`인 row만 대상.
+- 이미 값이 채워진 row는 건드리지 않으므로 여러 번 실행해도 안전.
+- 신규 데이터는 BE 저장 흐름(`POST /routes`, `POST /favorite-stops`)이 자동으로 채움 → 백필이 다시 필요할 일 없음.
+
+## 1회성 스크립트 — 다음 배포 때 제거 가능
+
+운영 백필 완료 + 잔여 NULL 카운트 0 확인 후, 다음 배포 사이클에 스크립트(`scripts/backfill-subway-code.ts`)와 본 가이드는 삭제해도 됨. backlog #9 (statnId 매핑 인프라) 작업과 함께 정리 권장.
+
 ## 환경변수 설정
 
 ```bash

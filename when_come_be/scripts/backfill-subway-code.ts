@@ -32,25 +32,47 @@ const ODSAY_API_KEY = requireEnv("ODSAY_API_KEY")
 
 const ODSAY_BASE_URL = "https://api.odsay.com/v1/api"
 
-// ─── DB 헬퍼 ─────────────────────────────────────────────────────────────────
+// ─── DB 헬퍼 (PostgREST embed) ────────────────────────────────────────────────
 
-async function dbQuery<T>(sql: string): Promise<T[]> {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/run_sql`, {
-    method: "POST",
+interface ParentStop {
+  stop_name: string
+  odsay_stop_id: string | null
+  routes: Array<{ id: string; route_name: string; subway_code: string | null }>
+}
+
+async function fetchSubwayParents(
+  parentTable: "route_stops" | "favorite_stops",
+  childTable: "stop_routes" | "favorite_stop_routes",
+): Promise<ParentStop[]> {
+  const url =
+    `${SUPABASE_URL}/rest/v1/${parentTable}?select=stop_name,odsay_stop_id,routes:${childTable}(id,route_name,subway_code)&stop_type=eq.subway`
+  const res = await fetch(url, {
     headers: {
-      "Content-Type": "application/json",
       "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
       "apikey": SERVICE_ROLE_KEY,
     },
-    body: JSON.stringify({ query: sql }),
   })
-
   if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`DB 쿼리 실패 (${res.status}): ${text}`)
+    throw new Error(`PostgREST ${parentTable} 조회 실패 ${res.status}: ${await res.text()}`)
   }
+  return res.json() as Promise<ParentStop[]>
+}
 
-  return res.json() as Promise<T[]>
+function flattenTargets(parents: ParentStop[]): TargetRow[] {
+  const out: TargetRow[] = []
+  for (const p of parents) {
+    for (const r of p.routes) {
+      if (r.subway_code === null) {
+        out.push({
+          row_id: r.id,
+          route_name: r.route_name,
+          stop_name: p.stop_name,
+          odsay_stop_id: p.odsay_stop_id,
+        })
+      }
+    }
+  }
+  return out
 }
 
 // ─── ODsay searchStation ──────────────────────────────────────────────────────
@@ -147,26 +169,12 @@ interface TargetRow {
 // ─── 메인 ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  // 단계 1: 대상 row 조회
-  const stopRoutesQuery = `
-    SELECT sr.id AS row_id, sr.route_name, rs.stop_name, rs.odsay_stop_id
-    FROM stop_routes sr
-    JOIN route_stops rs ON rs.id = sr.stop_id
-    WHERE rs.stop_type = 'subway' AND sr.subway_code IS NULL
-  `
-
-  const favStopRoutesQuery = `
-    SELECT fsr.id AS row_id, fsr.route_name, fs.stop_name, fs.odsay_stop_id
-    FROM favorite_stop_routes fsr
-    JOIN favorite_stops fs ON fs.id = fsr.favorite_stop_id
-    WHERE fs.stop_type = 'subway' AND fsr.subway_code IS NULL
-  `
-
   let stopRouteRows: TargetRow[] = []
   let favStopRouteRows: TargetRow[] = []
 
   try {
-    stopRouteRows = await dbQuery<TargetRow>(stopRoutesQuery)
+    const parents = await fetchSubwayParents("route_stops", "stop_routes")
+    stopRouteRows = flattenTargets(parents)
     console.error(`[INFO] stop_routes 대상: ${stopRouteRows.length}행`)
   } catch (e) {
     console.error(`[ERROR] stop_routes 조회 실패: ${e instanceof Error ? e.message : e}`)
@@ -174,7 +182,8 @@ async function main() {
   }
 
   try {
-    favStopRouteRows = await dbQuery<TargetRow>(favStopRoutesQuery)
+    const parents = await fetchSubwayParents("favorite_stops", "favorite_stop_routes")
+    favStopRouteRows = flattenTargets(parents)
     console.error(`[INFO] favorite_stop_routes 대상: ${favStopRouteRows.length}행`)
   } catch (e) {
     console.error(`[ERROR] favorite_stop_routes 조회 실패: ${e instanceof Error ? e.message : e}`)
