@@ -105,8 +105,8 @@ export interface ApiRouteStop {
 export interface ApiRoute {
   id: string
   name: string
-  origin_name: string
-  destination_name: string
+  origin_name: string | null
+  destination_name: string | null
   origin_coords: { lat: number; lng: number } | null
   destination_coords: { lat: number; lng: number } | null
   is_active: boolean

@@ -47,8 +47,9 @@ export interface RouteSegment {
 export interface SavedRoute {
   id: string;
   name: string;
-  from: string;
-  to: string;
+  /** null이면 출발지 명시 안 함 (수동 등록). 헤더 표시 시 nullish이면 hide. */
+  from: string | null;
+  to: string | null;
   segments: RouteSegment[];
   isActive: boolean;
   displayOrder?: number;

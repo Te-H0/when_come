@@ -8,6 +8,17 @@
 
 ---
 
+## 2026-05-10 — `routes.origin_name` / `destination_name` nullable
+
+수동 등록 시 출발지/도착지를 명시하지 않아도 되도록 nullable로 전환.
+
+- **DB 마이그레이션:** `20260510000100_routes_origin_destination_nullable.sql` — `NOT NULL` 제거 + 기존 placeholder string `'출발지'`/`'도착지'`이고 coords IS NULL인 row를 NULL로 정리 (coords 있는 row는 사용자가 진짜 명명한 케이스로 보존).
+- **BE:** `POST /routes`, `PATCH /routes/:id`에서 `originName`/`destinationName` optional + nullable. 공백/빈 문자열도 NULL 저장. PATCH는 `"originName" in body` 체크로 명시적 null 전달과 미전송 구분.
+- **FE:** `SaveRouteRequest`/`SavedRoute`/`ApiRoute` 타입을 `string | null`로 갱신. `SetupRoute.handleSave` placeholder 폴백(`?? '도착지'`) 제거. `Home.tsx` 헤더 badge, `RouteManagement.tsx` 카드의 `from → to` 줄에서 nullish이면 hide.
+- 영향 컴포넌트: `Home.tsx`, `RouteManagement.tsx`, `SetupRoute.tsx`, `lib/api.ts`, `lib/mockData.ts`, `types/api.ts`.
+
+---
+
 ## 2026-05-10 — FE 클라이언트 에러 텔레메트리 endpoint 추가
 
 FE 클라이언트 에러 텔레메트리 endpoint `/client-log` 추가, anomaly_logs.source='client'로 누적. JWT 선택적 (익명/네트워크 실패 포함). 항상 204 반환 — catch 블록에서 호출해도 안전.

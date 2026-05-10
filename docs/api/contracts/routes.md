@@ -6,6 +6,24 @@
 
 ---
 
+## 0-A. 변경 요약 (2026-05-10) — origin/destination nullable
+
+수동 등록 모드에서 출발지/도착지를 명시하지 않을 수 있도록 `routes.origin_name` / `routes.destination_name`을 nullable로 변경.
+
+| 변경 | 종류 | Breaking? |
+|------|------|-----------|
+| DB `routes.origin_name` `NOT NULL` 제거 | 스키마 | No (기존 row는 그대로 유지) |
+| DB `routes.destination_name` `NOT NULL` 제거 | 스키마 | No |
+| `POST /routes` `originName`/`destinationName` optional + `null` 허용 | 완화 | No (기존 require 폼도 통과) |
+| `PATCH /routes/:id` `originName`/`destinationName` 단독 patch 가능 (`null` 명시 → DB도 NULL) | 추가 | No |
+| `GET /routes` `origin_name`/`destination_name` 응답 타입 `string \| null` | 타입 | No (런타임 동작 동일) |
+
+**FE 처리:** 헤더(`Home.tsx`), 카드(`RouteManagement.tsx`)에서 `origin_name`/`destination_name`이 nullish이면 도착지/출발지 표기 자체를 hide.
+
+**기존 placeholder 정리:** 마이그레이션이 `origin_name = '출발지' AND origin_coords IS NULL` (그리고 destination 동일) 조건의 row를 NULL로 정리. coords가 있는 row(=PlacePicker로 진짜 명명)는 안전하게 보존.
+
+---
+
 ## 0. 변경 요약 (2026-05-02)
 
 `POST /routes` 입력 DTO에 **provider 매핑을 위한 좌표(`lat`/`lng`) 필수 추가**, 그리고 BE 자동 매핑 결과를 `GET /routes` 응답에 노출. `provider`/`gbis_*` 필드는 BE가 매핑 알고리즘으로 채움 — FE는 좌표만 보내면 됨.
@@ -34,6 +52,11 @@ Bearer JWT 필수.
 ```ts
 interface CreateRouteRequest {
   name: string
+  /** 2026-05-10~: optional + nullable. 빈 문자열/공백/미전송 → DB NULL. */
+  originName?: string | null
+  destinationName?: string | null
+  originCoords?: { lat: number; lng: number }
+  destinationCoords?: { lat: number; lng: number }
   stops: RouteStopInput[]
 }
 

@@ -409,8 +409,9 @@ export default function SetupRoute() {
             }),
       }));
 
-      const originName = startPlace?.name ?? '출발지';
-      const destinationName = endPlace?.name ?? '도착지';
+      // 수동 등록 시 startPlace/endPlace는 null일 수 있음 → null로 전송 (placeholder string 저장 금지)
+      const originName = startPlace?.name?.trim() || null;
+      const destinationName = endPlace?.name?.trim() || null;
 
       await saveRoute({
         name: routeName.trim(),
@@ -581,7 +582,7 @@ export default function SetupRoute() {
               </p>
               <Button
                 onClick={handleAutoSearch}
-                className="w-full bg-text-primary hover:bg-text-primary/90 rounded-control h-11 text-body font-medium"
+                className="w-full bg-text-primary hover:bg-text-primary/90 rounded-control h-11 text-body font-medium text-white"
                 disabled={!startPlace || !endPlace || isSearching}
               >
                 {isSearching ? (

@@ -117,7 +117,7 @@ function RouteRenameDialog({
           <Button
             onClick={handleSubmit}
             disabled={isPending || !value.trim()}
-            className="bg-text-primary hover:bg-text-primary/90 rounded-control flex-1"
+            className="bg-text-primary hover:bg-text-primary/90 rounded-control flex-1 text-white"
           >
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}
           </Button>
@@ -175,9 +175,11 @@ function RouteCard({
                 </span>
               )}
             </div>
-            <p className="text-body text-text-secondary">
-              {route.from} → {route.to}
-            </p>
+            {(route.from || route.to) && (
+              <p className="text-body text-text-secondary">
+                {route.from ?? '—'} → {route.to ?? '—'}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
@@ -519,7 +521,7 @@ export default function RouteManagement() {
                 queryClient.invalidateQueries({ queryKey: ['routes'] });
                 queryClient.invalidateQueries({ queryKey: ['favorite-stops'] });
               }}
-              className="mt-4 bg-text-primary hover:bg-text-primary/90 rounded-control"
+              className="mt-4 bg-text-primary hover:bg-text-primary/90 rounded-control text-white"
             >
               다시 시도
             </Button>

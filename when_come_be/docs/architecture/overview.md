@@ -2,6 +2,8 @@
 
 > 아키텍처 변경 시 자동 업데이트됨
 >
+> 2026-05-10: routes.origin_name / destination_name nullable 전환 (수동 등록 모드 대응). POST/PATCH /routes 검증 완화 — name만 required, origin/destination optional + nullable. 기존 placeholder string row(`'출발지'`/`'도착지'` AND coords IS NULL)는 마이그레이션이 NULL로 정리.
+>
 > 2026-05-10: CORS Allow-Methods에 PATCH 추가. POST /routes, POST /favorite-stops에서 display_order = max+1 자동 부여.
 
 ## 레이어 구조
@@ -61,7 +63,7 @@ docs/
 ## DB 테이블
 | 테이블 | 설명 |
 |--------|------|
-| routes | 사용자 저장 출퇴근 경로. `display_order int NOT NULL DEFAULT 0` (정렬용, 2026-05-09~). `active boolean NOT NULL DEFAULT true` (활성화 토글, 2026-05-09~). |
+| routes | 사용자 저장 출퇴근 경로. `display_order int NOT NULL DEFAULT 0` (정렬용, 2026-05-09~). `active boolean NOT NULL DEFAULT true` (활성화 토글, 2026-05-09~). `origin_name`/`destination_name`은 nullable (수동 등록 모드 대응, 2026-05-10~). |
 | route_stops | 경로 내 정류장/역 (순서 있음). `provider` (seoul/gyeonggi/odsay_fallback), `gbis_station_id` 컬럼 보유. 지하철 stop은 방향 컬럼 3개 보유: `direction_headsign`, `direction_updn` (`up`/`down`), `direction_next_stop`. 모두 nullable. `alias text` 컬럼 보유 (별명, nullable, 2026-05-09~). |
 | stop_routes | 정류장에서 탈 수 있는 노선 목록. `gbis_route_id`, `gbis_sta_order` 컬럼 보유 (경기 버스 provider용). `provider` 컬럼 보유 (seoul/gyeonggi/odsay_fallback) — 노선 단위 분기 기준 (2026-05-03~). `subway_code text NULL` — 서울 지하철 API lineName 형식 ("1001"~"1031"), bus row는 NULL (2026-05-09~). |
 | gbis_stations | 경기도 전체 정류소 캐시 (일 1회 cron 동기화). ARS 번호, 좌표, 시군명 보유. anon select 가능, write는 service role only. |

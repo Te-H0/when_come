@@ -45,8 +45,8 @@ interface RouteStopInput {
 
 interface CreateRouteRequest {
   name: string
-  originName: string
-  destinationName: string
+  originName?: string | null
+  destinationName?: string | null
   originCoords?: { lat: number; lng: number }
   destinationCoords?: { lat: number; lng: number }
   stops: RouteStopInput[]
@@ -68,6 +68,8 @@ interface PatchRouteResponse {
 // ─── PATCH 요청 DTO ─────────────────────────────────────────────────────────
 interface UpdateRouteRequest {
   name?: string
+  originName?: string | null
+  destinationName?: string | null
   displayOrder?: number
   active?: boolean
   stops?: RouteStopInput[]
@@ -230,8 +232,8 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
 
   const { name, originName, destinationName, originCoords, destinationCoords, stops } = body
 
-  if (!name?.trim() || !originName?.trim() || !destinationName?.trim()) {
-    throw new AppError("name, originName, destinationName 이 필요합니다", 400, "ROUTE_NAME_REQUIRED" satisfies RouteErrorCode)
+  if (!name?.trim()) {
+    throw new AppError("name 이 필요합니다", 400, "ROUTE_NAME_REQUIRED" satisfies RouteErrorCode)
   }
   if (!stops || stops.length === 0) {
     throw new AppError("정류장이 최소 1개 이상 필요합니다", 400, "ROUTE_STOPS_REQUIRED" satisfies RouteErrorCode)
@@ -278,8 +280,8 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
     .insert({
       user_id: user.id,
       name: name.trim(),
-      origin_name: originName.trim(),
-      destination_name: destinationName.trim(),
+      origin_name: originName?.trim() || null,
+      destination_name: destinationName?.trim() || null,
       origin_coords: originCoords ?? null,
       destination_coords: destinationCoords ?? null,
       display_order: nextDisplayOrder,
@@ -576,12 +578,18 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
     return { ok: true }
   }
 
-  // 단순 필드 업데이트 (name / displayOrder / active)
+  // 단순 필드 업데이트 (name / originName / destinationName / displayOrder / active)
   const updatePayload: Record<string, unknown> = {}
 
   if (body.name !== undefined) {
     if (!body.name.trim()) throw new AppError("name이 비어 있습니다", 400, "ROUTE_NAME_EMPTY" satisfies RouteErrorCode)
     updatePayload.name = body.name.trim()
+  }
+  if ("originName" in body) {
+    updatePayload.origin_name = body.originName?.trim() || null
+  }
+  if ("destinationName" in body) {
+    updatePayload.destination_name = body.destinationName?.trim() || null
   }
   if (body.displayOrder !== undefined) {
     if (body.displayOrder < 0) throw new AppError("displayOrder는 0 이상이어야 합니다", 400, "ROUTE_DISPLAY_ORDER_NEGATIVE" satisfies RouteErrorCode)

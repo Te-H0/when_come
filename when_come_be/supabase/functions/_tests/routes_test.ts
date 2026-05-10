@@ -190,6 +190,43 @@ supabaseTest("routes GET — is_active=false 경로도 목록에 포함된다", 
   )
 })
 
+supabaseTest("routes GET — origin_name/destination_name이 NULL인 경로도 정상 반환한다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        {
+          match: "/rest/v1/routes",
+          response: () => jsonResponse([
+            {
+              id: ROUTE_ID,
+              name: "수동등록",
+              origin_name: null,
+              destination_name: null,
+              origin_coords: null,
+              destination_coords: null,
+              is_active: true,
+              active: true,
+              display_order: 0,
+              created_at: "2026-05-10T00:00:00Z",
+              updated_at: "2026-05-10T00:00:00Z",
+              route_stops: [],
+            },
+          ]),
+        },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("GET"))
+        assertEquals(res.status, 200)
+        const body = await res.json()
+        assertEquals(body.length, 1)
+        assertEquals(body[0].origin_name, null)
+        assertEquals(body[0].destination_name, null)
+      },
+    )
+  )
+})
+
 // ─── POST /routes 검증 ────────────────────────────────────────
 
 supabaseTest("routes POST — name 없으면 400을 반환한다", async () => {
@@ -205,13 +242,16 @@ supabaseTest("routes POST — name 없으면 400을 반환한다", async () => {
   )
 })
 
-supabaseTest("routes POST — originName 없으면 400을 반환한다", async () => {
+supabaseTest("routes POST — originName 없어도 name만 있으면 400이 아니다 (stops 검증으로 진행)", async () => {
   await withEnv(ENV, () =>
     withMockFetch(async () => mockSupabaseAuthSuccess(), async () => {
       const res = await handler(makeRouteRequest("POST", "", {
-        body: { name: "출근길", destinationName: "회사", stops: [{}] },
+        body: { name: "출근길", stops: [] },
       }))
+      // stops가 비어 있어서 400이지만 originName 누락 때문이 아님
       assertEquals(res.status, 400)
+      const body = await res.json()
+      assertEquals(body.error.code, "ROUTE_STOPS_REQUIRED")
     })
   )
 })
@@ -1006,6 +1046,113 @@ supabaseTest("routes GET — route_stops.alias 필드가 응답에 포함된다"
         const body = await res.json()
         const stop = body[0].route_stops[0]
         assertEquals(stop.alias, "회사 앞")
+      },
+    )
+  )
+})
+
+// ─── originName/destinationName nullable (2026-05-10) ─────────────────────────
+
+supabaseTest("routes POST — originName/destinationName 없어도 name+stops만 있으면 201로 저장된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        { match: "/rest/v1/routes", response: () => mockDbInsertRoute() },
+        { match: "route_stops", response: () => mockDbInsertStops() },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "출근길",
+            // originName, destinationName 미전송
+            stops: [{
+              odsayStopId: "106186",
+              stopName: "강남역",
+              stopType: "subway",
+              sequence: 1,
+              stepGroup: 1,
+              stopRoutes: [],
+            }],
+          },
+        }))
+        assertEquals(res.status, 201)
+        const body = await res.json()
+        assertEquals(typeof body.id, "string")
+      },
+    )
+  )
+})
+
+supabaseTest("routes POST — originName=null/destinationName=null 이어도 201로 저장된다", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(
+      multiMockFetch([
+        { match: "/auth/v1/user", response: () => mockSupabaseAuthSuccess(USER_ID) },
+        { match: "/rest/v1/routes", response: () => mockDbInsertRoute() },
+        { match: "route_stops", response: () => mockDbInsertStops() },
+      ]),
+      async () => {
+        const res = await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "출근길",
+            originName: null,
+            destinationName: null,
+            stops: [{
+              odsayStopId: "106186",
+              stopName: "강남역",
+              stopType: "subway",
+              sequence: 1,
+              stepGroup: 1,
+              stopRoutes: [],
+            }],
+          },
+        }))
+        assertEquals(res.status, 201)
+      },
+    )
+  )
+})
+
+supabaseTest("routes POST — originName='' (공백 포함) 이어도 null로 저장되어 201을 반환한다", async () => {
+  let capturedPayload: Record<string, unknown> | null = null
+
+  await withEnv(ENV, () =>
+    withMockFetch(
+      async (url, init) => {
+        if (url.includes("/auth/v1/user")) return mockSupabaseAuthSuccess(USER_ID)
+        if (url.includes("/rest/v1/routes")) {
+          if ((init?.method ?? "GET") === "GET" || !init?.method) return jsonResponse(null, 200)
+          try {
+            const b = JSON.parse(init?.body as string)
+            capturedPayload = Array.isArray(b) ? b[0] : b
+          } catch { /* ignore */ }
+          return mockDbInsertRoute()
+        }
+        if (url.includes("route_stops")) return mockDbInsertStops()
+        throw new Error(`Unmocked: ${url}`)
+      },
+      async () => {
+        const res = await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "출근길",
+            originName: "   ", // 공백만 있는 문자열 → null로 저장되어야 함
+            destinationName: "",
+            stops: [{
+              odsayStopId: "106186",
+              stopName: "강남역",
+              stopType: "subway",
+              sequence: 1,
+              stepGroup: 1,
+              stopRoutes: [],
+            }],
+          },
+        }))
+        assertEquals(res.status, 201)
+        if (capturedPayload) {
+          assertEquals(capturedPayload.origin_name, null)
+          assertEquals(capturedPayload.destination_name, null)
+        }
       },
     )
   )

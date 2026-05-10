@@ -223,8 +223,9 @@ export interface SaveRouteStop {
 
 export interface SaveRouteRequest {
   name: string
-  originName: string
-  destinationName: string
+  /** null이면 출발지 명시 안 함 (수동 등록). placeholder string 저장 금지. */
+  originName: string | null
+  destinationName: string | null
   originCoords?: { lat: number; lng: number }
   destinationCoords?: { lat: number; lng: number }
   stops: SaveRouteStop[]
