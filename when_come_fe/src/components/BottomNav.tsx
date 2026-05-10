@@ -19,7 +19,7 @@ export default function BottomNav() {
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      <div className="max-w-2xl mx-auto px-4 py-2">
+      <div className="max-w-2xl mx-auto px-4 py-1">
         <div className="flex items-center justify-around">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
@@ -29,14 +29,14 @@ export default function BottomNav() {
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`flex flex-col items-center gap-1 px-6 py-2 rounded-control transition-colors ${
+                className={`flex flex-col items-center gap-0.5 px-6 py-1 rounded-control transition-colors ${
                   isActive
                     ? "text-text-primary"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
-                <Icon className="w-7 h-7" strokeWidth={isActive ? 2.5 : 2} />
-                <span className={`text-body ${isActive ? 'font-semibold' : 'font-normal'}`}>
+                <Icon className="w-[22px] h-[22px]" strokeWidth={isActive ? 2.5 : 2} />
+                <span className={`text-caption ${isActive ? 'font-semibold text-text-primary' : 'font-normal'}`}>
                   {item.label}
                 </span>
               </button>

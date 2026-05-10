@@ -91,7 +91,7 @@
   --ease-emphasis: cubic-bezier(0.3, 0, 0.8, 0.15);
 
   /* Layout */
-  --bottom-nav-height: 64px;
+  --bottom-nav-height: 56px;
   --bottom-nav-total: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
   --page-header-height: 56px;
   --page-max-width: 42rem;
