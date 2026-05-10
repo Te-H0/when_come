@@ -95,7 +95,7 @@ export default function SearchResultNode({ node, routeIndex, onAdd }: SearchResu
         <Button
           size="sm"
           onClick={() => onAdd(node)}
-          className="flex-shrink-0 h-8 px-3 rounded-chip bg-text-primary hover:bg-text-primary/90 text-caption"
+          className="flex-shrink-0 h-8 px-3 rounded-chip bg-text-primary hover:bg-text-primary/90 text-caption text-white"
         >
           <Plus className="w-3.5 h-3.5 mr-1" strokeWidth={2} />
           추가

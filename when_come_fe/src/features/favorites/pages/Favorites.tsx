@@ -573,7 +573,7 @@ export default function Favorites() {
         <div className="flex-1 flex items-center justify-center p-4 py-16">
           <Card className="max-w-md w-full p-8 text-center rounded-card border border-border-subtle shadow-card bg-surface-card">
             <p className="text-text-danger text-body mb-4">즐겨찾기를 불러오지 못했습니다</p>
-            <Button onClick={() => refetch()} className="bg-text-primary hover:bg-text-primary/90 rounded-control">
+            <Button onClick={() => refetch()} className="bg-text-primary hover:bg-text-primary/90 rounded-control text-white">
               다시 시도
             </Button>
           </Card>

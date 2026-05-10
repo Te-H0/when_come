@@ -23,11 +23,11 @@ src/
 ├── components/
 │   ├── ui/                   ← shadcn/ui 컴포넌트
 │   ├── BottomNav.tsx         ← 공유 내비게이션 (아이콘 22px + 라벨 text-caption, height 56px, indicator 없음, --bottom-nav-total로 PageShell padding과 정합)
-│   ├── PageShell.tsx         ← 페이지 래퍼 (h-dvh flex-col, main을 flex-1 overflow-y-auto 스크롤 컨테이너로)
+│   ├── PageShell.tsx         ← 페이지 래퍼 (h-dvh flex-col, main padding-bottom = --bottom-nav-total + 24px breathing, reserveStickyFooter면 +56px)
 │   ├── PageHeader.tsx        ← 스티키 헤더 (뒤로가기/제목/배지/우측슬롯/하단슬롯)
 │   ├── EmptyState.tsx        ← 공용 빈 상태 UI (아이콘+제목+설명+CTA 카드)
 │   ├── StopName.tsx          ← 정류장/역 이름 표시 (별명 병기 지원)
-│   ├── AliasEditor.tsx       ← 별명 인라인 편집 컴포넌트
+│   ├── AliasEditor.tsx       ← 별명 인라인 편집 컴포넌트 (외부 클릭 시 cancel + 닫기, mousedown 감지)
 │   ├── StopRouteChips.tsx    ← 정류장 노선 chip 렌더링 공용 컴포넌트 (버스/지하철 transitColors 적용)
 │   └── figma/
 │       └── ImageWithFallback.tsx
@@ -109,12 +109,16 @@ fetchArrival(stop)
 - **신 경로(2026-05-02~):** `stop.id`(= `route_stops.id`) 하나만 전달 — FE는 provider를 모름. BE 미배포 시 자동으로 legacy fallback.
 - `provider === 'odsay_fallback'`인 stop 카드에 inline 안내 노출: "도착 정보가 부정확할 수 있어요 (제휴 데이터 사용)"
 - `subwayCode`는 서울 지하철 API 형식(`"1002"`) 사용 — arrival `lineName`과 직접 비교
-- **도착정보 조회 범위 (2026-05-03~):** 현재 + 이후 모든 스텝(non-past)을 동시 조회
-  - `nonPastSegments = groupedSegments.slice(currentGroupIndex).flat()`
+- **도착정보 조회 범위 (2026-05-10~):** 모든 그룹(과거 포함)을 동시 조회 — past/future 통합
+  - `allSegments = groupedSegments.flat()` (이전 nonPastSegments → 전체로 확장)
   - `useQueries`로 per-stop 독립 쿼리, `arrivalByStopId: Map<stopId, {data, isLoading}>` 맵으로 참조
-  - 현재 스텝: 도착 상세 카드 (노선별 전체 표시)
-  - 다음 스텝들: 미니 카드 (가장 빠른 버스 `getFastestArrivalText`) + accordion 상세 펼침
+  - 현재 스텝(`isCurrent`): 도착 상세 카드 (노선별 전체 표시)
+  - 그 외 스텝(`isPast || isFuture`): 미니 카드 (`getFastestArrivalText`) + accordion 상세 펼침. 동일 컴포넌트 사용
+  - **isPast 시각 차이:** Card에 `opacity-60` + 좌측 체크 마커 (탑승 완료 표시). 펼침 영역은 isFuture와 동일한 노선별 도착 상세
+  - **이전 스텝 되돌리기:** `currentGroupIndex > 0`일 때 헤더 우측에 `RotateCcw` 보조 버튼 (`handleUndoBoarding` — `currentSegmentIndex`를 이전 그룹 첫 세그먼트로 이동). 즉시 토스트 undo는 별도(`handleBoardingComplete` action 5초)
+  - 미니카드 펼침 row도 `splitArrival`로 `[N번째 전]` suffix 분리해 시간/정거장 두 줄로 표시
   - 새로고침: `allArrivalResults.map(r => r.refetch())` — 전체 동시 갱신
+  - 트레이드오프: past 스텝까지 polling 비용 증가 (수동 새로고침 1회당 요청 수 ↑). 경로 길이가 짧아 실질적 부담은 낮음
 - **역명 표시 정규화 (2026-05-06~):** BE는 ODsay 원본 저장 + 다단계 fallback 시도. FE는 표시 시점에만 `formatStationName`으로 정규화 (`src/utils/stationName.ts`). `TransitStop.displayName`에 매핑 시점 계산. API 호출 인자에는 원본 `stop.name` 사용. 0건 응답은 "도착 정보 없음"으로 표시 (막차 이외 케이스 포함).
 - **노선 매칭 규칙 (2026-05-08~):** BE 응답 `items` 순서는 provider 응답 도착 순서로 무보장이며 사용자 미저장 노선도 섞일 수 있음. FE는 **인덱스가 아닌 노선번호**로 매칭 (`busRouteAbrv === line` 또는 `routeName === line`). 같은 노선번호 중복 시 `traTime1` 최솟값 채택. 자세한 내용은 `docs/tech-notes/arrival-route-matching.md`.
 

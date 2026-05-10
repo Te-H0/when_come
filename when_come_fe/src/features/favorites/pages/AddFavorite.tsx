@@ -205,7 +205,7 @@ function SubwayConfirmStep({
       <Button
         onClick={onSave}
         disabled={isSaving}
-        className="w-full h-12 rounded-control text-body font-medium bg-text-primary hover:bg-text-primary/90"
+        className="w-full h-12 rounded-control text-body font-medium bg-text-primary hover:bg-text-primary/90 text-white"
       >
         {isSaving ? (
           <Loader2 className="w-4 h-4 mr-2 animate-spin" />

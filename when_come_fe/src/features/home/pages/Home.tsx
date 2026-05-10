@@ -23,7 +23,7 @@ import { toast } from "sonner";
 import { showApiErrorToast } from "@/lib/errorToast";
 import {
   MapPin, Settings, RefreshCw, Navigation,
-  ChevronDown, ChevronUp, Loader2, Plus,
+  ChevronDown, ChevronUp, Loader2, Plus, RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -284,13 +284,13 @@ export default function Home() {
     )
   }, [groupedSegments, currentSegment])
 
-  // 현재 + 이후 모든 세그먼트 (past 제외)
-  const nonPastSegments = useMemo(() => {
-    return groupedSegments.slice(currentGroupIndex).flat()
-  }, [groupedSegments, currentGroupIndex])
+  // 모든 세그먼트 (past 포함 — 탑승 완료한 스텝도 토글 펼침 시 도착정보 동일 표시)
+  const allSegments = useMemo(() => {
+    return groupedSegments.flat()
+  }, [groupedSegments])
 
   const allArrivalResults = useQueries({
-    queries: nonPastSegments.map(seg => ({
+    queries: allSegments.map(seg => ({
       queryKey: ['arrival', seg.stop.id, seg.stop.type, seg.stop.name],
       queryFn: () => fetchArrival(seg.stop),
       enabled: !!seg.stop.id,
@@ -303,7 +303,7 @@ export default function Home() {
   // error: ApiError이면 에러 코드 분기 처리, 일반 Error이면 UNKNOWN 코드로 표준화
   const arrivalByStopId = useMemo(() => {
     const map = new Map<string, { data: ArrivalData; isLoading: boolean; error: ApiError | null }>()
-    nonPastSegments.forEach((seg, idx) => {
+    allSegments.forEach((seg, idx) => {
       const result = allArrivalResults[idx]
       const rawError = result?.error
       let apiError: ApiError | null = null
@@ -320,7 +320,7 @@ export default function Home() {
       })
     })
     return map
-  }, [nonPastSegments, allArrivalResults])
+  }, [allSegments, allArrivalResults])
 
   // 도착 데이터가 갱신될 때마다 기준 시각 기록
   const fetchedAtRef = useRef(Date.now());
@@ -397,6 +397,16 @@ export default function Home() {
     });
   }
 
+  function handleUndoBoarding() {
+    if (!currentRoute || currentGroupIndex <= 0) return;
+    const prevGroupFirstSeg = groupedSegments[currentGroupIndex - 1]?.[0]
+    if (!prevGroupFirstSeg) return
+    const prevIdx = currentRoute.segments.findIndex(s => s.id === prevGroupFirstSeg.id)
+    if (prevIdx === -1) return
+    setCurrentSegmentIndex(prevIdx);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   // 경로 칩 + 추가 버튼 row (PageHeader bottom 슬롯)
   const chipRow = (
     <div className="bg-surface-card border-b border-border-subtle">
@@ -452,7 +462,7 @@ export default function Home() {
         <div className="flex-1 flex items-center justify-center p-4 py-16">
           <Card className="max-w-md w-full p-8 text-center rounded-card border border-border-subtle shadow-card bg-surface-card">
             <p className="text-text-danger text-body mb-4">경로를 불러오지 못했습니다</p>
-            <Button onClick={() => refetch()} className="bg-text-primary hover:bg-text-primary/90 rounded-control">
+            <Button onClick={() => refetch()} className="bg-text-primary hover:bg-text-primary/90 rounded-control text-white">
               다시 시도
             </Button>
           </Card>
@@ -518,49 +528,34 @@ export default function Home() {
             const isCurrent = groupIdx === currentGroupIndex;
             const isPast = groupIdx < currentGroupIndex;
 
-            if (isPast) {
-              // 완료된 스텝: 컴팩트 카드
-              return (
-                <div key={groupIdx} className="flex items-center gap-3 px-1">
-                  {/* 체크 아이콘 */}
-                  <div className="w-6 h-6 rounded-pill bg-text-primary flex items-center justify-center flex-shrink-0">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                  {/* 정류장명 + 노선 */}
-                  <div className="flex-1 min-w-0 bg-surface-card rounded-card border border-border-subtle px-4 py-3">
-                    {group.map((seg) => (
-                      <div key={seg.id} className="flex items-center justify-between gap-2">
-                        <StopName name={seg.stop.displayName ?? seg.stop.name} alias={seg.stop.alias ?? undefined} size="sm" className="text-text-secondary truncate" />
-                        <div className="flex gap-1 flex-shrink-0">
-                          {seg.stop.lines.slice(0, 2).map(line => (
-                            <span key={line} className="text-caption px-2 py-0.5 rounded-chip bg-surface-muted text-text-tertiary">
-                              {seg.stop.type === 'subway' ? line : `${line}번`}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            }
-
             if (isCurrent) {
               // 현재 스텝: 도착 정보 포함 강조 카드
               return (
                 <div key={groupIdx}>
                   <div className="px-1 flex items-center justify-between mb-2">
                     <h3 className="text-section">지금 타야할 교통수단</h3>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-label hover:text-text-primary h-auto p-0 font-medium"
-                      onClick={handleBoardingComplete}
-                    >
-                      탑승 완료
-                    </Button>
+                    <div className="flex items-center gap-3">
+                      {currentGroupIndex > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-caption text-text-tertiary hover:text-text-primary h-auto p-0 font-normal flex items-center gap-0.5"
+                          onClick={handleUndoBoarding}
+                          aria-label="이전 스텝으로 되돌리기"
+                        >
+                          <RotateCcw className="w-3 h-3" strokeWidth={2} />
+                          이전 스텝
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-label hover:text-text-primary h-auto p-0 font-medium"
+                        onClick={handleBoardingComplete}
+                      >
+                        탑승 완료
+                      </Button>
+                    </div>
                   </div>
                   {/* step_group 2개 이상: flex-row 가로 배치 */}
                   <div className={group.length > 1 ? "flex gap-2" : ""}>
@@ -666,8 +661,8 @@ export default function Home() {
                                   // isGrouped === true: 세로 2단 레이아웃
                                   return (
                                     <div key={line} className="px-3 py-3 hover:bg-surface-input transition-colors">
-                                      {/* 위 행: 아이콘 + 번호/타입 */}
-                                      <div className="flex items-center gap-2">
+                                      {/* 위 행: 아이콘 + 번호 + 타입 (가로 한 줄) */}
+                                      <div className="flex items-center gap-2 flex-wrap">
                                         <div className="w-8 h-8 rounded-control bg-surface-input flex items-center justify-center flex-shrink-0">
                                           {isSubway ? (
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -684,27 +679,23 @@ export default function Home() {
                                             </svg>
                                           )}
                                         </div>
-                                        <div className="min-w-0">
-                                          <div className="text-label font-semibold text-text-primary">
-                                            {isSubway ? displayLine : `${line}번`}
-                                          </div>
-                                          <div className="flex items-center gap-1 mt-0.5">
-                                            <span className="text-caption text-text-secondary">
-                                              {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
-                                            </span>
-                                            {headsign && (
-                                              <span
-                                                className="text-caption font-medium px-1.5 py-0.5 rounded-chip border whitespace-nowrap"
-                                                style={subwayColorInfo
-                                                  ? { backgroundColor: subwayColorInfo.bgColor, color: subwayColorInfo.textColor, borderColor: `${subwayColorInfo.color}33` }
-                                                  : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-secondary)', borderColor: 'var(--border-strong)' }
-                                                }
-                                              >
-                                                {headsign}방향
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
+                                        <span className="text-label font-semibold text-text-primary">
+                                          {isSubway ? displayLine : `${line}번`}
+                                        </span>
+                                        <span className="text-caption text-text-secondary">
+                                          {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
+                                        </span>
+                                        {headsign && (
+                                          <span
+                                            className="text-caption font-medium px-1.5 py-0.5 rounded-chip border whitespace-nowrap"
+                                            style={subwayColorInfo
+                                              ? { backgroundColor: subwayColorInfo.bgColor, color: subwayColorInfo.textColor, borderColor: `${subwayColorInfo.color}33` }
+                                              : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-secondary)', borderColor: 'var(--border-strong)' }
+                                            }
+                                          >
+                                            {headsign}방향
+                                          </span>
+                                        )}
                                       </div>
 
                                       {/* 아래 행: 도착 정보 — 카카오 스타일 (지하철: 행선지 prefix) */}
@@ -923,7 +914,7 @@ export default function Home() {
                     <div key={seg.id} className={group.length > 1 ? "flex-1 min-w-0" : ""}>
                       {/* 미니 카드 헤더 (항상 보임) */}
                       <Card
-                        className="rounded-card border border-border-subtle bg-surface-card overflow-hidden cursor-pointer h-full"
+                        className={`rounded-card border border-border-subtle bg-surface-card overflow-hidden cursor-pointer h-full ${isPast ? 'opacity-60' : ''}`}
                         onClick={() => setExpandedUpcoming(prev => {
                           const next = new Set(prev)
                           next.has(groupIdx) ? next.delete(groupIdx) : next.add(groupIdx)
@@ -931,6 +922,13 @@ export default function Home() {
                         })}
                       >
                         <div className="px-4 py-3 flex items-center justify-between">
+                          {isPast && (
+                            <div className="w-5 h-5 rounded-pill bg-text-primary flex items-center justify-center flex-shrink-0 mr-3">
+                              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                                <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </div>
+                          )}
                           <div className="flex-1 min-w-0">
                             <div className="truncate">
                               <StopName name={seg.stop.displayName ?? seg.stop.name} alias={seg.stop.alias ?? undefined} size="sm" />
@@ -982,6 +980,8 @@ export default function Home() {
                                 const arrText = rawMsg1 !== '--' ? applyCountdownToArrmsg(rawMsg1, elapsedSec, miniMode) : '--'
                                 const arrText2 = rawMsg2 ? applyCountdownToArrmsg(rawMsg2, elapsedSec, miniMode) : null
                                 const noSvc = arrData !== null && arrText === '--'
+                                const { time: miniT1, stops: miniS1 } = splitArrival(arrText)
+                                const { time: miniT2, stops: miniS2 } = splitArrival(arrText2)
                                 return (
                                   <div key={line} className="px-4 py-3 flex items-center justify-between">
                                     <div className="flex items-center gap-2 min-w-0">
@@ -998,13 +998,19 @@ export default function Home() {
                                     <div className="text-right flex-shrink-0 ml-2">
                                       {isLoading ? (
                                         <div className="text-caption text-text-tertiary">조회 중...</div>
+                                      ) : noSvc ? (
+                                        <div className="text-label font-semibold tabular-nums text-arrival-empty">도착 정보 없음</div>
                                       ) : (
                                         <>
-                                          <div className={`text-label font-semibold tabular-nums ${noSvc ? 'text-arrival-empty' : 'text-text-primary'}`}>
-                                            {noSvc ? '도착 정보 없음' : arrText}
+                                          <div className="flex items-baseline justify-end gap-1.5 tabular-nums">
+                                            <span className="text-label font-semibold text-text-primary">{miniT1}</span>
+                                            {miniS1 && <span className="text-caption text-text-tertiary">{miniS1}</span>}
                                           </div>
                                           {arrText2 && (
-                                            <div className="text-caption text-arrival-muted tabular-nums">{arrText2}</div>
+                                            <div className="flex items-baseline justify-end gap-1.5 tabular-nums">
+                                              <span className="text-caption text-arrival-muted">{miniT2}</span>
+                                              {miniS2 && <span className="text-caption text-text-tertiary">{miniS2}</span>}
+                                            </div>
                                           )}
                                         </>
                                       )}

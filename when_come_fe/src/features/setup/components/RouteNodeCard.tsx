@@ -247,7 +247,7 @@ export default function RouteNodeCard({
                     <Button
                       size="sm"
                       onClick={handleAddBusNumber}
-                      className="h-9 px-3 rounded-chip bg-text-primary hover:bg-text-primary/90 text-caption"
+                      className="h-9 px-3 rounded-chip bg-text-primary hover:bg-text-primary/90 text-caption text-white"
                     >
                       추가
                     </Button>

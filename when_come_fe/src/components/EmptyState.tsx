@@ -36,7 +36,7 @@ export default function EmptyState({ icon, title, description, cta }: EmptyState
       {cta && (
         <Button
           onClick={cta.onClick}
-          className="w-full bg-text-primary hover:bg-text-primary/90 rounded-control h-12 text-button shadow-card"
+          className="w-full bg-text-primary hover:bg-text-primary/90 rounded-control h-12 text-button shadow-card text-white"
           size="lg"
         >
           {cta.label}
