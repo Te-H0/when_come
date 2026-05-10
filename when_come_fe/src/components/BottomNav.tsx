@@ -32,11 +32,11 @@ export default function BottomNav() {
                 className={`flex flex-col items-center gap-1 px-6 py-2 rounded-control transition-colors ${
                   isActive
                     ? "text-text-primary"
-                    : "text-text-tertiary hover:text-text-secondary"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
-                <Icon className="w-6 h-6" strokeWidth={isActive ? 2.5 : 2} />
-                <span className={`text-caption ${isActive ? 'font-semibold' : 'font-normal'}`}>
+                <Icon className="w-7 h-7" strokeWidth={isActive ? 2.5 : 2} />
+                <span className={`text-body ${isActive ? 'font-semibold' : 'font-normal'}`}>
                   {item.label}
                 </span>
               </button>
