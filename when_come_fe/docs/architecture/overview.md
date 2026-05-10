@@ -22,7 +22,7 @@ src/
 │   └── routes.ts
 ├── components/
 │   ├── ui/                   ← shadcn/ui 컴포넌트
-│   ├── BottomNav.tsx         ← 공유 내비게이션 (아이콘 28px + 라벨 text-body, indicator 없음)
+│   ├── BottomNav.tsx         ← 공유 내비게이션 (아이콘 28px + 라벨 text-body, indicator 없음, height = --bottom-nav-total로 PageShell padding과 정합)
 │   ├── PageShell.tsx         ← 페이지 래퍼 (h-dvh flex-col, main을 flex-1 overflow-y-auto 스크롤 컨테이너로)
 │   ├── PageHeader.tsx        ← 스티키 헤더 (뒤로가기/제목/배지/우측슬롯/하단슬롯)
 │   ├── EmptyState.tsx        ← 공용 빈 상태 UI (아이콘+제목+설명+CTA 카드)

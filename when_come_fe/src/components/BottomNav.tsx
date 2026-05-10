@@ -15,7 +15,7 @@ export default function BottomNav() {
     <div
       className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-border-subtle z-50"
       style={{
-        height: 'var(--bottom-nav-height)',
+        height: 'var(--bottom-nav-total)',
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
