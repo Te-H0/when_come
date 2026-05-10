@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
 import { useDrag, useDrop } from 'react-dnd'
 import { toast } from 'sonner'
+import { showApiErrorToast } from '@/lib/errorToast'
 import { Plus, Star, RefreshCw, MoreVertical, Loader2, ChevronDown, ChevronUp, GripVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -498,8 +499,8 @@ export default function Favorites() {
         )
       )
       queryClient.invalidateQueries({ queryKey: ['favorite-stops'] })
-    } catch {
-      toast.error('순서 저장에 실패했어요')
+    } catch (e) {
+      showApiErrorToast(e, '순서 저장에 실패했어요')
       queryClient.invalidateQueries({ queryKey: ['favorite-stops'] })
     }
   }, [cardOrder, favorites, queryClient])
@@ -567,7 +568,7 @@ export default function Favorites() {
       refetch()
       toast.success('별명을 저장했어요')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '저장에 실패했습니다')
+      showApiErrorToast(e, '저장에 실패했습니다')
     }
   }
 
@@ -578,8 +579,8 @@ export default function Favorites() {
       await deleteFavoriteStop(fav.id, jwt)
       queryClient.invalidateQueries({ queryKey: ['favorite-stops'] })
       toast.success('즐겨찾기를 삭제했어요')
-    } catch {
-      toast.error('삭제에 실패했어요')
+    } catch (e) {
+      showApiErrorToast(e, '삭제에 실패했어요')
     }
   }
 

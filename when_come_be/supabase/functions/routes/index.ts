@@ -5,6 +5,10 @@ import { AppError, errorResponse } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
 import { resolveStopProvider, mapGbisRoutes } from "../_shared/regionMapper.ts"
 import type { GbisStationCandidate } from "../_shared/gbisClient.ts"
+import type {
+  RouteErrorCode,
+  CommonErrorCode,
+} from "../_shared/errorCodes.ts"
 
 // ─── 요청 DTO ──────────────────────────────────────────────────────────────
 interface StopRouteInput {
@@ -200,7 +204,7 @@ async function listRoutes(req: Request) {
     .order("created_at", { ascending: false })
     .limit(50)
 
-  if (error) throw new AppError("경로 조회 실패", 500)
+  if (error) throw new AppError("경로 조회 실패", 500, "ROUTE_QUERY_FAILED" satisfies RouteErrorCode)
 
   data?.forEach((route) => {
     route.route_stops?.sort(
@@ -221,23 +225,23 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
   try {
     body = await req.json()
   } catch {
-    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400)
+    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400, "COMMON_INVALID_JSON" satisfies CommonErrorCode)
   }
 
   const { name, originName, destinationName, originCoords, destinationCoords, stops } = body
 
   if (!name?.trim() || !originName?.trim() || !destinationName?.trim()) {
-    throw new AppError("name, originName, destinationName 이 필요합니다", 400)
+    throw new AppError("name, originName, destinationName 이 필요합니다", 400, "ROUTE_NAME_REQUIRED" satisfies RouteErrorCode)
   }
   if (!stops || stops.length === 0) {
-    throw new AppError("정류장이 최소 1개 이상 필요합니다", 400)
+    throw new AppError("정류장이 최소 1개 이상 필요합니다", 400, "ROUTE_STOPS_REQUIRED" satisfies RouteErrorCode)
   }
   for (const s of stops) {
     if (s.stopType !== "bus" && s.stopType !== "subway") {
-      throw new AppError(`stopType은 'bus' 또는 'subway' 여야 합니다: ${s.stopType}`, 400)
+      throw new AppError(`stopType은 'bus' 또는 'subway' 여야 합니다: ${s.stopType}`, 400, "ROUTE_INVALID_STOP_TYPE" satisfies RouteErrorCode)
     }
     if (!s.stepGroup || s.stepGroup < 1) {
-      throw new AppError(`stepGroup은 1 이상의 정수여야 합니다: ${s.stepGroup}`, 400)
+      throw new AppError(`stepGroup은 1 이상의 정수여야 합니다: ${s.stepGroup}`, 400, "ROUTE_INVALID_STEP_GROUP" satisfies RouteErrorCode)
     }
   }
 
@@ -250,11 +254,11 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
   }
   for (const [group, members] of groupMap) {
     if (members.length > 2) {
-      throw new AppError(`한 스텝당 최대 2개 정류장입니다 (stepGroup=${group})`, 400)
+      throw new AppError(`한 스텝당 최대 2개 정류장입니다 (stepGroup=${group})`, 400, "ROUTE_STEP_GROUP_OVERFLOW" satisfies RouteErrorCode)
     }
     const types = new Set(members.map((m) => m.stopType))
     if (types.size > 1) {
-      throw new AppError(`같은 스텝의 정류장은 동일한 타입이어야 합니다 (stepGroup=${group})`, 400)
+      throw new AppError(`같은 스텝의 정류장은 동일한 타입이어야 합니다 (stepGroup=${group})`, 400, "ROUTE_STOP_TYPE_MIXED" satisfies RouteErrorCode)
     }
   }
 
@@ -272,7 +276,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
     .select("id")
     .single()
 
-  if (routeErr || !route) throw new AppError("경로 저장 실패", 500)
+  if (routeErr || !route) throw new AppError("경로 저장 실패", 500, "ROUTE_PERSIST_FAILED" satisfies RouteErrorCode)
 
   // 2. 각 stop에 대해 provider 결정 (T9 자동 매핑)
   const resolvedStops = await Promise.all(
@@ -324,7 +328,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
     .insert(stopsPayload)
     .select("id, sequence, step_group")
 
-  if (stopsErr || !insertedStops) throw new AppError(`정류장 저장 실패: ${stopsErr?.message ?? "no data"}`, 500)
+  if (stopsErr || !insertedStops) throw new AppError(`정류장 저장 실패: ${stopsErr?.message ?? "no data"}`, 500, "ROUTE_STOPS_PERSIST_FAILED" satisfies RouteErrorCode)
 
   // 4. stop_routes 생성 (gbis_route_id, gbis_sta_order 포함)
   const stopRoutePayloads = await Promise.all(
@@ -333,7 +337,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
         (r) => r.stop.stepGroup === inserted.step_group && r.stop.sequence === inserted.sequence,
       )
       if (!found) {
-        throw new AppError("정류장 매핑 불일치 — sequence가 일치하는 stop을 찾을 수 없습니다", 500)
+        throw new AppError("정류장 매핑 불일치 — sequence가 일치하는 stop을 찾을 수 없습니다", 500, "ROUTE_STOP_MAPPING_MISMATCH" satisfies RouteErrorCode)
       }
       const { stop, resolved } = found
       const baseRoutes = stop.stopRoutes ?? []
@@ -386,7 +390,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
   const flatStopRoutePayload = stopRoutePayloads.flat()
   if (flatStopRoutePayload.length > 0) {
     const { error: srErr } = await db.from("stop_routes").insert(flatStopRoutePayload)
-    if (srErr) throw new AppError("노선 저장 실패", 500)
+    if (srErr) throw new AppError("노선 저장 실패", 500, "ROUTE_STOP_ROUTES_PERSIST_FAILED" satisfies RouteErrorCode)
   }
 
   return { id: route.id }
@@ -404,8 +408,8 @@ async function deleteRoute(req: Request, id: string): Promise<DeleteRouteRespons
     .eq("user_id", user.id)
     .select("id")
 
-  if (error) throw new AppError("경로 삭제 실패", 500)
-  if (!data || data.length === 0) throw new AppError("경로를 찾을 수 없습니다", 404)
+  if (error) throw new AppError("경로 삭제 실패", 500, "ROUTE_DELETE_FAILED" satisfies RouteErrorCode)
+  if (!data || data.length === 0) throw new AppError("경로를 찾을 수 없습니다", 404, "ROUTE_NOT_FOUND" satisfies RouteErrorCode)
   return { ok: true }
 }
 
@@ -418,7 +422,7 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
   try {
     body = await req.json()
   } catch {
-    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400)
+    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400, "COMMON_INVALID_JSON" satisfies CommonErrorCode)
   }
 
   // stops 전체 교체 — 기존 PUT 동작 위임
@@ -429,7 +433,7 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
     const { stops } = body
 
     if (!Array.isArray(stops) || stops.length === 0) {
-      throw new AppError("stops는 1개 이상의 배열이어야 합니다", 400)
+      throw new AppError("stops는 1개 이상의 배열이어야 합니다", 400, "ROUTE_STOPS_REQUIRED" satisfies RouteErrorCode)
     }
 
     // 기존 route 존재 확인
@@ -440,7 +444,7 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
       .eq("user_id", user.id)
       .single()
 
-    if (routeErr || !routeRow) throw new AppError("경로를 찾을 수 없습니다", 404)
+    if (routeErr || !routeRow) throw new AppError("경로를 찾을 수 없습니다", 404, "ROUTE_NOT_FOUND" satisfies RouteErrorCode)
 
     // 기존 route_stops 삭제 (cascade로 stop_routes 자동 삭제)
     const { error: delErr } = await db
@@ -448,7 +452,7 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
       .delete()
       .eq("route_id", id)
 
-    if (delErr) throw new AppError("기존 정류장 삭제 실패", 500)
+    if (delErr) throw new AppError("기존 정류장 삭제 실패", 500, "ROUTE_STOPS_PERSIST_FAILED" satisfies RouteErrorCode)
 
     // provider 결정 후 route_stops INSERT
     const resolvedStops = await Promise.all(
@@ -498,7 +502,7 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
       .insert(stopsPayload)
       .select("id, sequence, step_group")
 
-    if (stopsErr || !insertedStops) throw new AppError(`정류장 저장 실패: ${stopsErr?.message ?? "no data"}`, 500)
+    if (stopsErr || !insertedStops) throw new AppError(`정류장 저장 실패: ${stopsErr?.message ?? "no data"}`, 500, "ROUTE_STOPS_PERSIST_FAILED" satisfies RouteErrorCode)
 
     // stop_routes INSERT (GBIS 매핑 포함 — POST createRoute와 동일 로직)
     const stopRoutePayloads = await Promise.all(
@@ -506,7 +510,7 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
         const found = resolvedStops.find(
           (r) => r.stop.stepGroup === inserted.step_group && r.stop.sequence === inserted.sequence,
         )
-        if (!found) throw new AppError("정류장 매핑 불일치", 500)
+        if (!found) throw new AppError("정류장 매핑 불일치", 500, "ROUTE_STOP_MAPPING_MISMATCH" satisfies RouteErrorCode)
         const { stop, resolved } = found
         const baseRoutes = stop.stopRoutes ?? []
 
@@ -555,7 +559,7 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
     const flat = stopRoutePayloads.flat()
     if (flat.length > 0) {
       const { error: srErr } = await db.from("stop_routes").insert(flat)
-      if (srErr) throw new AppError("노선 저장 실패", 500)
+      if (srErr) throw new AppError("노선 저장 실패", 500, "ROUTE_STOP_ROUTES_PERSIST_FAILED" satisfies RouteErrorCode)
     }
 
     return { ok: true }
@@ -565,20 +569,20 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
   const updatePayload: Record<string, unknown> = {}
 
   if (body.name !== undefined) {
-    if (!body.name.trim()) throw new AppError("name이 비어 있습니다", 400)
+    if (!body.name.trim()) throw new AppError("name이 비어 있습니다", 400, "ROUTE_NAME_EMPTY" satisfies RouteErrorCode)
     updatePayload.name = body.name.trim()
   }
   if (body.displayOrder !== undefined) {
-    if (body.displayOrder < 0) throw new AppError("displayOrder는 0 이상이어야 합니다", 400)
+    if (body.displayOrder < 0) throw new AppError("displayOrder는 0 이상이어야 합니다", 400, "ROUTE_DISPLAY_ORDER_NEGATIVE" satisfies RouteErrorCode)
     updatePayload.display_order = body.displayOrder
   }
   if (body.active !== undefined) {
-    if (typeof body.active !== "boolean") throw new AppError("active는 boolean이어야 합니다", 400)
+    if (typeof body.active !== "boolean") throw new AppError("active는 boolean이어야 합니다", 400, "ROUTE_ACTIVE_INVALID" satisfies RouteErrorCode)
     updatePayload.active = body.active
   }
 
   if (Object.keys(updatePayload).length === 0) {
-    throw new AppError("수정할 필드가 없습니다", 400)
+    throw new AppError("수정할 필드가 없습니다", 400, "ROUTE_PATCH_NO_FIELDS" satisfies RouteErrorCode)
   }
 
   const { data, error } = await db
@@ -588,8 +592,8 @@ async function patchRoute(req: Request, id: string): Promise<PatchRouteResponse>
     .eq("user_id", user.id)
     .select("id")
 
-  if (error) throw new AppError("경로 수정 실패", 500)
-  if (!data || data.length === 0) throw new AppError("경로를 찾을 수 없습니다", 404)
+  if (error) throw new AppError("경로 수정 실패", 500, "ROUTE_UPDATE_FAILED" satisfies RouteErrorCode)
+  if (!data || data.length === 0) throw new AppError("경로를 찾을 수 없습니다", 404, "ROUTE_NOT_FOUND" satisfies RouteErrorCode)
   return { ok: true }
 }
 
@@ -634,7 +638,7 @@ export async function handler(req: Request): Promise<Response> {
       })
     }
 
-    throw new AppError("지원하지 않는 요청입니다", 405)
+    throw new AppError("지원하지 않는 요청입니다", 405, "COMMON_METHOD_NOT_ALLOWED" satisfies CommonErrorCode)
   } catch (e) {
     return errorResponse(e, "routes")
   }

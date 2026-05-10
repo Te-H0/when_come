@@ -2,6 +2,10 @@ import { corsHeaders } from "../_shared/cors.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
 import { searchPubTransPath } from "../_shared/odsayClient.ts"
+import type {
+  RouteSearchErrorCode,
+  CommonErrorCode,
+} from "../_shared/errorCodes.ts"
 
 // ─── 요청/응답 DTO ──────────────────────────────────────────────
 interface RouteSearchRequest {
@@ -70,19 +74,19 @@ export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
-    if (req.method !== "POST") throw new AppError("POST 요청만 허용됩니다", 405)
+    if (req.method !== "POST") throw new AppError("POST 요청만 허용됩니다", 405, "COMMON_METHOD_NOT_ALLOWED" satisfies CommonErrorCode)
 
     let body: RouteSearchRequest
     try {
       body = await req.json()
     } catch {
-      throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400)
+      throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400, "COMMON_INVALID_JSON" satisfies CommonErrorCode)
     }
 
     const { startX, startY, endX, endY } = body
 
     if (!startX || !startY || !endX || !endY) {
-      throw new AppError("startX, startY, endX, endY 가 모두 필요합니다", 400)
+      throw new AppError("startX, startY, endX, endY 가 모두 필요합니다", 400, "ROUTE_SEARCH_COORDS_REQUIRED" satisfies RouteSearchErrorCode)
     }
 
     const paths = await searchPubTransPath(startX, startY, endX, endY)

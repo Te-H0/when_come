@@ -15,6 +15,19 @@ import { getJwt } from './supabase'
 
 const BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 
+/**
+ * API 에러 클래스.
+ *
+ * - `code`: BE `_shared/errorCodes.ts`에 정의된 ErrorCode 문자열.
+ *   구조화 응답이 없으면 `'UNKNOWN'`.
+ *   code 매핑 메시지는 `src/lib/errorMessages.ts` 참조.
+ * - `message`: BE가 내려준 원본 메시지 (dev 토스트 fallback용).
+ * - `status`: HTTP 응답 상태 코드.
+ *
+ * catch 블록에서 직접 toast.error를 호출하지 말고
+ * `showApiErrorToast` / `getErrorMessage` 헬퍼를 사용한다.
+ * 정책: ADR-002, .claude/rules/error-handling.md FE 규칙 1
+ */
 export class ApiError extends Error {
   constructor(
     public readonly code: string,

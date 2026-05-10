@@ -28,6 +28,8 @@ git checkout prod && git merge main && git push origin prod
 - 컴포넌트/API/도메인 구조 변경 시 `docs/architecture/overview.md` 업데이트.
 - 기획/마케팅 논의는 `docs/ideas/`, 횡단 기술 결정은 `docs/decisions/ADR-NNN.md`.
 - UI 변경은 반드시 dev 서버에서 직접 확인. 타입 체크 통과 ≠ 기능 정상.
+- 에러 핸들링: catch 블록에서 `toast.error` 직접 호출 금지. `showApiErrorToast(e, fallback)` 헬퍼만 사용. 코드별 UX 분기는 `e instanceof ApiError && e.code === "..."` 패턴. 상세 규칙 [`.claude/rules/error-handling.md`](../.claude/rules/error-handling.md).
+- 로컬 dev 자동 로그인: `.env.local`의 `VITE_DEV_USER_EMAIL`/`VITE_DEV_USER_PASSWORD`로 dev 유저 자동 로그인. seed.sql이 박은 데이터 그대로 보임. prod 빌드에서는 환경변수 미포함 → 익명 로그인 유지. 상세 [`.claude/rules/dev-seeding.md`](../.claude/rules/dev-seeding.md).
 
 ## 아키텍처
 

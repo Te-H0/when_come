@@ -3,6 +3,10 @@ import { authGuard } from "../_shared/auth.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
 import { logAnomaly } from "../_shared/anomaly.ts"
+import type {
+  SubwayErrorCode,
+  CommonErrorCode,
+} from "../_shared/errorCodes.ts"
 import {
   subwayStationInfo,
   searchSubwaySchedule,
@@ -114,13 +118,13 @@ export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
-    if (req.method !== "GET") throw new AppError("GET 요청만 허용됩니다", 405)
+    if (req.method !== "GET") throw new AppError("GET 요청만 허용됩니다", 405, "COMMON_METHOD_NOT_ALLOWED" satisfies CommonErrorCode)
 
     await authGuard(req)
 
     const { searchParams } = new URL(req.url)
     const stationId = searchParams.get("stationId")?.trim()
-    if (!stationId) throw new AppError("stationId 파라미터가 필요합니다", 400)
+    if (!stationId) throw new AppError("stationId 파라미터가 필요합니다", 400, "SUBWAY_STATION_ID_REQUIRED" satisfies SubwayErrorCode)
 
     const info = await subwayStationInfo(stationId)
 
@@ -131,7 +135,7 @@ export async function handler(req: Request): Promise<Response> {
       const directions = await extractDirectionsFromSchedule(stationId)
       if (directions.length === 0) {
         // schedule도 빈 응답 → 진짜 invalid station
-        throw new AppError("역 정보를 찾을 수 없습니다", 404)
+        throw new AppError("역 정보를 찾을 수 없습니다", 404, "SUBWAY_STATION_NOT_FOUND" satisfies SubwayErrorCode)
       }
       // schedule에서 방향 추출 성공 — stationName/lineName/subwayCode는 null로 반환
       logAnomaly({

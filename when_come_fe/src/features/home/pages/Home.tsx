@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { useDrag, useDrop } from "react-dnd";
 import { toast } from "sonner";
+import { showApiErrorToast } from "@/lib/errorToast";
 import {
   MapPin, Settings, RefreshCw, Navigation,
   ChevronDown, ChevronUp, Loader2, Plus,
@@ -268,8 +269,8 @@ export default function Home() {
     try {
       await Promise.all(changed.map(({ id, displayOrder }) => updateRoute(id, { displayOrder })));
       queryClient.invalidateQueries({ queryKey: ['routes'] });
-    } catch {
-      toast.error('순서 저장에 실패했어요');
+    } catch (e) {
+      showApiErrorToast(e, '순서 저장에 실패했어요');
       queryClient.invalidateQueries({ queryKey: ['routes'] });
     }
   }, [chipOrder, activeRoutes, queryClient]);
@@ -371,16 +372,17 @@ export default function Home() {
       if (!(result.error instanceof ApiError)) return
       const err = result.error
       if (err.code === 'ARRIVAL_PROVIDER_ERROR') {
-        toast.error('잠시 후 다시 시도해 주세요', { id: 'arrival-provider-error' })
+        // 카탈로그 매핑 메시지 사용, 중복 방지 id 부여
+        showApiErrorToast(err, '잠시 후 다시 시도해 주세요', { id: 'arrival-provider-error' })
       } else if (err.code === 'ARRIVAL_STOP_NOT_FOUND') {
-        toast.error('경로를 찾을 수 없어요. 새로고침 해주세요', { id: 'arrival-stop-not-found' })
+        showApiErrorToast(err, '경로를 찾을 수 없어요. 새로고침 해주세요', { id: 'arrival-stop-not-found' })
       } else if (
         err.code !== 'ARRIVAL_UNSUPPORTED_REGION' &&
         err.code !== 'ARRIVAL_MAPPING_FAILED' &&
         err.code !== 'ARRIVAL_VERIFY_FAILED'
       ) {
         // UNKNOWN 또는 기타 — 사용자에게 원시 메시지(URL 등) 노출 방지
-        toast.error('도착 정보를 불러오지 못했어요', { id: `arrival-error-${err.code}` })
+        showApiErrorToast(err, '도착 정보를 불러오지 못했어요', { id: `arrival-error-${err.code}` })
       }
       // UNSUPPORTED_REGION / MAPPING_FAILED / VERIFY_FAILED 는 inline 처리 (toast 없음)
     })

@@ -2,6 +2,10 @@ import { corsHeaders } from "../_shared/cors.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
 import { searchStation, odsaySubwayTypeToSubwayCode, type OdsayStation } from "../_shared/odsayClient.ts"
+import type {
+  StopErrorCode,
+  CommonErrorCode,
+} from "../_shared/errorCodes.ts"
 
 // ─── 서울 버스 API: getStationByUid 응답 타입 ───────────────────────────────
 interface SeoulBusStationByUidItem {
@@ -60,11 +64,11 @@ export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
-    if (req.method !== "GET") throw new AppError("GET 요청만 허용됩니다", 405)
+    if (req.method !== "GET") throw new AppError("GET 요청만 허용됩니다", 405, "COMMON_METHOD_NOT_ALLOWED" satisfies CommonErrorCode)
 
     const { searchParams } = new URL(req.url)
     const q = searchParams.get("q")?.trim()
-    if (!q) throw new AppError("q 파라미터가 필요합니다", 400)
+    if (!q) throw new AppError("q 파라미터가 필요합니다", 400, "STOP_QUERY_REQUIRED" satisfies StopErrorCode)
 
     // 4~6자리 숫자이면 ARS 번호 검색, 아니면 이름 검색 (버스+지하철 병렬)
     const isArsId = /^\d{4,6}$/.test(q)

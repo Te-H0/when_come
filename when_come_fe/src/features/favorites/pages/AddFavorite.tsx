@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Loader2, Check } from 'lucide-react'
 import { toast } from 'sonner'
+import { showApiErrorToast } from '@/lib/errorToast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import UnifiedStopPicker from '@/features/stop-picker/UnifiedStopPicker'
@@ -306,7 +307,7 @@ export default function AddFavorite() {
       toast.success('즐겨찾기에 추가됐어요')
       navigate('/favorites')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '저장에 실패했어요')
+      showApiErrorToast(e, '저장에 실패했어요')
     } finally {
       setIsSaving(false)
     }
@@ -350,7 +351,7 @@ export default function AddFavorite() {
       toast.success('즐겨찾기에 추가됐어요')
       navigate('/favorites')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '저장에 실패했어요')
+      showApiErrorToast(e, '저장에 실패했어요')
     } finally {
       setIsSaving(false)
     }

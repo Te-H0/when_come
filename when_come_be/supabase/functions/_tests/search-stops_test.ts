@@ -44,7 +44,7 @@ Deno.test("search-stops — q 파라미터 없으면 400을 반환한다", async
   const res = await handler(req)
   assertEquals(res.status, 400)
   const body = await res.json()
-  assertEquals(body.error, "q 파라미터가 필요합니다")
+  assertEquals(body.error.code, "STOP_QUERY_REQUIRED")
 })
 
 Deno.test("search-stops — q가 공백만 있으면 400을 반환한다", async () => {

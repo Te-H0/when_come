@@ -8,6 +8,48 @@
 
 ---
 
+## 2026-05-10 — 전역 에러 핸들링 표준 (ADR-002) **[구현 완료]**
+
+Java Spring 스타일 enum 코드 기반 전역 에러 표준 — Phase 0~4 전구간 구현 완료.
+
+### 산출물
+- **결정 문서:** [`docs/decisions/ADR-002-error-handling.md`](decisions/ADR-002-error-handling.md)
+- **컨벤션 룰:** [`.claude/rules/error-handling.md`](../.claude/rules/error-handling.md) — BE/FE 경로 기반 자동 적용
+- **카탈로그:** [`docs/api/error-codes.md`](api/error-codes.md) — 53개 코드 (ARRIVAL_DB_ROW_INVALID, SYNC_PARAMS_INVALID 추가)
+
+### BE 변경
+- `_shared/errorCodes.ts` 신설 — 11개 도메인 union (`Route/RouteStop/Favorite/Arrival/Stop/Subway/RouteSearch/Place/Sync/Auth/Common`)
+- `_shared/error.ts` `AppError.code` 타입 좁힘 + `errorResponse` 운영/dev 분기 (`isProduction()`)
+- `_shared/auth.ts` `AUTH_REQUIRED` / `AUTH_INVALID` 분리
+- 13개 함수 모든 `AppError` throw에 code 부여 (`satisfies XxxErrorCode` 패턴 강제)
+- 테스트 421/421 통과
+
+### FE 변경
+- `src/types/errorCodes.ts` 신설 — BE union 거울복사 (수동 동기화 정책)
+- `src/lib/errorMessages.ts` 신설 — 카탈로그 기반 코드→사용자 메시지 매핑
+- `src/lib/errorToast.ts` 신설 — `getErrorMessage`, `showApiErrorToast` 헬퍼. dev에서 `[CODE/STATUS]` prefix 자동.
+- `toast.error(...)` 직접 호출 17곳 → `showApiErrorToast(e, fallback)` 일괄 변환
+
+### 운영 마스킹 정책 (ADR §3.4)
+- dev: raw message + detail 노출
+- 운영: code 있으면 message 노출 + detail 제거, code 없는 4xx는 `COMMON_BAD_REQUEST` 마스킹, unhandled 5xx는 `COMMON_INTERNAL_ERROR` 마스킹
+
+### **운영 배포 시 필수 액션**
+**`DENO_ENV=production` 함수 시크릿 주입 필요.** 미설정 시 운영도 dev 모드로 동작 → raw 메시지 노출.
+- GitHub Actions `deploy-supabase.yml`에 `supabase secrets set DENO_ENV=production` 스텝 추가 완료 (prod 브랜치 push 시 자동 적용)
+- 최초 배포 후 `supabase secrets list`로 확인 권장
+
+### Breaking 변경 2건
+1. **`arrival-info ?type=subway&subwayCode=INVALID`**: 기존 무시(200) → 400 `ARRIVAL_SUBWAY_CODE_INVALID`
+   - **FE 영향 없음** (FE는 항상 `^10\d{2}$` 형식만 전송)
+2. **`sync-gbis-stations` 인증 실패**: 401 → 403 `SYNC_FORBIDDEN` (의미 정확화)
+   - **FE 영향 없음** (cron 전용 내부 함수, FE 호출 경로 없음)
+
+### 호환성
+- legacy `{ error: "..." }` flat 포맷도 FE `apiFetch`가 계속 파싱 — 운영/스테이징 사이의 점진 배포 안전.
+
+---
+
 ## 2026-05-09 — subway_code 필드 추가 (non-breaking)
 
 `stop_routes` / `favorite_stop_routes` 응답에 `subway_code` 필드가 추가됨.

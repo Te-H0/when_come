@@ -17,6 +17,7 @@ when_come/
 - 새 기능은 반드시 Spec-Driven: `/spec` 스킬 → PRD→SDD→TASKS→승인→구현.
 - 비자명한 기술 결정은 `docs/tech-notes/`에 자동 기록.
 - UI 변경은 반드시 dev 서버에서 직접 확인. 타입 체크 통과 ≠ 기능 정상.
+- 에러 핸들링: 모든 BE Edge Function과 FE catch는 [ADR-002](docs/decisions/ADR-002-error-handling.md) + [`.claude/rules/error-handling.md`](.claude/rules/error-handling.md) 규칙 준수. BE는 `_shared/errorCodes.ts` union literal만 사용, FE는 `showApiErrorToast` 헬퍼만 사용. 코드 카탈로그는 [`docs/api/error-codes.md`](docs/api/error-codes.md).
 
 ---
 

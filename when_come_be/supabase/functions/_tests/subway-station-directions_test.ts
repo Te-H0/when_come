@@ -176,7 +176,7 @@ supabaseTest("subway-station-directions — stationId 없으면 400을 반환한
       const res = await handler(req)
       assertEquals(res.status, 400)
       const body = await res.json()
-      assertEquals(body.error, "stationId 파라미터가 필요합니다")
+      assertEquals(body.error.code, "SUBWAY_STATION_ID_REQUIRED")
     })
   )
 })
@@ -299,7 +299,7 @@ supabaseTest("subway-station-directions — ODsay 결과 없음은 404를 반환
         const res = await handler(req)
         assertEquals(res.status, 404)
         const body = await res.json()
-        assertEquals(body.error, "역 정보를 찾을 수 없습니다")
+        assertEquals(body.error.code, "SUBWAY_STATION_NOT_FOUND")
       },
     )
   )
@@ -533,7 +533,7 @@ supabaseTest(
           const res = await handler(req)
           assertEquals(res.status, 404)
           const body = await res.json()
-          assertEquals(body.error, "역 정보를 찾을 수 없습니다")
+          assertEquals(body.error.code, "SUBWAY_STATION_NOT_FOUND")
         },
       )
     )

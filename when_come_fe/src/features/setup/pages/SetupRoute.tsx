@@ -24,6 +24,7 @@ import { subwayApiCodeToLineName, seoulBisTypeToOdsayBusType } from "@/utils/tra
 import { wayCodeToUpdn } from "@/utils/transitDirection";
 import type { ApiPlace, ApiStop, ApiRouteOption } from "@/types/api";
 import { toast } from "sonner";
+import { showApiErrorToast } from "@/lib/errorToast";
 import UnifiedStopPicker from "@/features/stop-picker/UnifiedStopPicker";
 import type { PickerPayload } from "@/features/stop-picker/UnifiedStopPicker";
 
@@ -222,8 +223,8 @@ export default function SetupRoute() {
       setSortKey('default');
       setShowAll(false);
       if (results.length > 0) setExpandedRoutes(new Set([results[0].routeId]));
-    } catch {
-      toast.error('경로 검색에 실패했어요');
+    } catch (e) {
+      showApiErrorToast(e, '경로 검색에 실패했어요');
     } finally {
       setIsSearching(false);
     }
@@ -437,7 +438,7 @@ export default function SetupRoute() {
       });
       navigate('/');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '저장에 실패했어요');
+      showApiErrorToast(e, '저장에 실패했어요');
     } finally {
       setIsSaving(false);
     }

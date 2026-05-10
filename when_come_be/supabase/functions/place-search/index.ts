@@ -1,5 +1,10 @@
 import { corsHeaders } from "../_shared/cors.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
+import { withErrorLogging } from "../_shared/middleware.ts"
+import type {
+  PlaceErrorCode,
+  CommonErrorCode,
+} from "../_shared/errorCodes.ts"
 
 interface NaverLocalItem {
   title: string
@@ -48,10 +53,10 @@ export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
-    if (req.method !== "GET") throw new AppError("GET 요청만 허용됩니다", 405)
+    if (req.method !== "GET") throw new AppError("GET 요청만 허용됩니다", 405, "COMMON_METHOD_NOT_ALLOWED" satisfies CommonErrorCode)
 
     const q = new URL(req.url).searchParams.get("q")
-    if (!q?.trim()) throw new AppError("q 파라미터가 필요합니다", 400)
+    if (!q?.trim()) throw new AppError("q 파라미터가 필요합니다", 400, "PLACE_QUERY_REQUIRED" satisfies PlaceErrorCode)
 
     const res = await fetch(
       `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(q)}&display=5`,
@@ -63,7 +68,7 @@ export async function handler(req: Request): Promise<Response> {
       }
     )
 
-    if (!res.ok) throw new AppError("네이버 장소 검색 API 오류", 502)
+    if (!res.ok) throw new AppError("네이버 장소 검색 API 오류", 502, "PLACE_PROVIDER_ERROR" satisfies PlaceErrorCode)
 
     const data = await res.json() as NaverLocalResponse
     const results: PlaceResult[] = data.items.map((item) => {
@@ -80,8 +85,8 @@ export async function handler(req: Request): Promise<Response> {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   } catch (e) {
-    return errorResponse(e)
+    return errorResponse(e, "place-search")
   }
 }
 
-if (import.meta.main) Deno.serve(handler)
+if (import.meta.main) Deno.serve(withErrorLogging(handler, "place-search"))

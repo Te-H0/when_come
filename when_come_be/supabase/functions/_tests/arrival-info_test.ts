@@ -31,7 +31,7 @@ Deno.test("arrival-info — type 없으면 400을 반환한다", async () => {
   const res = await handler(makeRequest("GET", BASE))
   assertEquals(res.status, 400)
   const body = await res.json()
-  assertEquals(body.error, "type 파라미터가 필요합니다 (bus | subway | odsay)")
+  assertEquals(body.error.code, "ARRIVAL_PARAMS_INVALID")
 })
 
 Deno.test("arrival-info — 알 수 없는 type은 400을 반환한다", async () => {
@@ -45,14 +45,14 @@ Deno.test("arrival-info bus — busRouteId 없으면 400을 반환한다", async
   const res = await handler(makeRequest("GET", `${BASE}?type=bus&stId=106186&ord=65`))
   assertEquals(res.status, 400)
   const body = await res.json()
-  assertEquals(body.error, "bus 타입은 busRouteId 가 필요합니다")
+  assertEquals(body.error.code, "ARRIVAL_PARAMS_INVALID")
 })
 
 Deno.test("arrival-info bus — stId/ord/arsId 모두 없으면 400을 반환한다", async () => {
   const res = await handler(makeRequest("GET", `${BASE}?type=bus&busRouteId=100100118`))
   assertEquals(res.status, 400)
   const body = await res.json()
-  assertEquals(body.error, "bus 타입은 stId+ord 또는 arsId 가 필요합니다")
+  assertEquals(body.error.code, "ARRIVAL_PARAMS_INVALID")
 })
 
 // ─── bus 정상 동작 (stId + ord 직접 전달) ─────────────────────
@@ -199,7 +199,7 @@ Deno.test("arrival-info subway — stationName 없으면 400을 반환한다", a
   const res = await handler(makeRequest("GET", `${BASE}?type=subway`))
   assertEquals(res.status, 400)
   const body = await res.json()
-  assertEquals(body.error, "subway 타입은 stationName 이 필요합니다")
+  assertEquals(body.error.code, "ARRIVAL_PARAMS_INVALID")
 })
 
 // ─── subway 정상 동작 ─────────────────────────────────────────
@@ -822,29 +822,15 @@ Deno.test("arrival-info subway — subwayCode 미전달 시 기존 동작 유지
   )
 })
 
-Deno.test("arrival-info subway — 잘못된 형식의 subwayCode는 무시(기존 동작)", async () => {
-  let fetchCallCount = 0
+Deno.test("arrival-info subway — 잘못된 형식의 subwayCode는 400을 반환한다", async () => {
   await withEnv(ENV, () =>
-    withMockFetch(async () => {
-      fetchCallCount++
-      return jsonResponse({
-        realtimeArrivalList: [{
-          subwayId: "1032",
-          trainLineNm: "수서행",
-          arvlMsg2: "2분 후",
-          arvlMsg3: "공덕",
-          arvlCd: "99",
-          updnLine: "하행",
-        }],
-      })
-    }, async () => {
-      // subwayCode 형식 불일치 → 무시 → 1차 결과 있으면 그대로 반환
+    withMockFetch(async () => jsonResponse({}), async () => {
+      // subwayCode 형식 불일치 → 400 ARRIVAL_SUBWAY_CODE_INVALID
       const url = `${BASE}?type=subway&stationName=강남&subwayCode=INVALID`
       const res = await handler(makeRequest("GET", url))
-      assertEquals(res.status, 200)
+      assertEquals(res.status, 400)
       const body = await res.json()
-      assertEquals(body.length, 1)
-      assertEquals(fetchCallCount, 1)
+      assertEquals(body.error.code, "ARRIVAL_SUBWAY_CODE_INVALID")
     })
   )
 })

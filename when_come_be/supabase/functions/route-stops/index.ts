@@ -3,6 +3,10 @@ import { corsHeaders } from "../_shared/cors.ts"
 import { authGuard } from "../_shared/auth.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
+import type {
+  RouteStopErrorCode,
+  CommonErrorCode,
+} from "../_shared/errorCodes.ts"
 
 // ─── 요청 DTO ──────────────────────────────────────────────────────────────
 interface UpdateRouteStopRequest {
@@ -47,12 +51,12 @@ async function patchRouteStop(req: Request, id: string) {
   try {
     body = await req.json()
   } catch {
-    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400)
+    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400, "COMMON_INVALID_JSON" satisfies CommonErrorCode)
   }
 
   const alias = normalizeAlias(body.alias)
   if (alias != null && alias.length > 20) {
-    throw new AppError("별명은 20자 이내여야 합니다", 400)
+    throw new AppError("별명은 20자 이내여야 합니다", 400, "ROUTE_STOP_ALIAS_TOO_LONG" satisfies RouteStopErrorCode)
   }
 
   // route_stop 존재 확인 (RLS: 부모 routes.user_id = auth.uid() 검증)
@@ -62,7 +66,7 @@ async function patchRouteStop(req: Request, id: string) {
     .eq("id", id)
     .single()
 
-  if (findErr || !existing) throw new AppError("정류장을 찾을 수 없습니다", 404)
+  if (findErr || !existing) throw new AppError("정류장을 찾을 수 없습니다", 404, "ROUTE_STOP_NOT_FOUND" satisfies RouteStopErrorCode)
 
   // alias 업데이트
   const { data: updated, error: updateErr } = await db
@@ -82,7 +86,7 @@ async function patchRouteStop(req: Request, id: string) {
     `)
     .single()
 
-  if (updateErr || !updated) throw new AppError("정류장 수정 실패", 500)
+  if (updateErr || !updated) throw new AppError("정류장 수정 실패", 500, "ROUTE_STOP_UPDATE_FAILED" satisfies RouteStopErrorCode)
   return updated
 }
 
@@ -105,7 +109,7 @@ export async function handler(req: Request): Promise<Response> {
       })
     }
 
-    throw new AppError("지원하지 않는 요청입니다", 405)
+    throw new AppError("지원하지 않는 요청입니다", 405, "COMMON_METHOD_NOT_ALLOWED" satisfies CommonErrorCode)
   } catch (e) {
     return errorResponse(e, "route-stops")
   }

@@ -16,6 +16,8 @@ supabase deploy       # 전체 배포
 - 기획/마케팅 논의는 `docs/ideas/`, 횡단 기술 결정은 `docs/decisions/ADR-NNN.md`.
 - ODsay/네이버 API 키는 절대 코드에 하드코딩 금지 — 환경변수만 사용.
 - 프론트와 공유되는 API 스펙 변경 시 즉시 `docs/collab-notes.md`에 기록.
+- 에러 핸들링: `AppError` throw 시 code 필수. `_shared/errorCodes.ts` union literal만 사용 (string 자유 입력 금지). 상세 규칙 [`.claude/rules/error-handling.md`](../.claude/rules/error-handling.md), 정책 [ADR-002](../docs/decisions/ADR-002-error-handling.md), 카탈로그 [`docs/api/error-codes.md`](../docs/api/error-codes.md). 운영 마스킹은 `DENO_ENV=production` 함수 시크릿 필요 — `supabase secrets set DENO_ENV=production`.
+- 로컬 dev 시드: `supabase db reset` 1회 실행 → `supabase/seed.sql`이 dev 유저 + 샘플 데이터 자동 박음. 자격: dev@when-come.local / devpassword123. 상세 [`.claude/rules/dev-seeding.md`](../.claude/rules/dev-seeding.md).
 
 ## TDD 원칙
 이 프로젝트는 TDD(테스트 주도 개발)로 진행한다.

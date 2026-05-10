@@ -36,7 +36,7 @@ Deno.test("route-search — startX 없으면 400을 반환한다", async () => {
   }))
   assertEquals(res.status, 400)
   const body = await res.json()
-  assertEquals(body.error, "startX, startY, endX, endY 가 모두 필요합니다")
+  assertEquals(body.error.code, "ROUTE_SEARCH_COORDS_REQUIRED")
 })
 
 Deno.test("route-search — 빈 body는 400을 반환한다", async () => {

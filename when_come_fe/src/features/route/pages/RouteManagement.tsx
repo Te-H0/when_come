@@ -51,6 +51,7 @@ import { mapApiRoute } from "@/lib/mappers";
 import type { SavedRoute } from "@/lib/mockData";
 import type { ApiFavoriteStop } from "@/types/api";
 import { toast } from "sonner";
+import { showApiErrorToast } from "@/lib/errorToast";
 
 // ──────────────────────── 탭 타입 ────────────────────────
 
@@ -378,7 +379,7 @@ export default function RouteManagement() {
     mutationFn: (route: SavedRoute) =>
       updateRoute(route.id, { is_active: !route.isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['routes'] }),
-    onError: () => toast.error('변경에 실패했어요'),
+    onError: (e) => showApiErrorToast(e, '변경에 실패했어요'),
   });
 
   const renameMutation = useMutation({
@@ -389,7 +390,7 @@ export default function RouteManagement() {
       setRenameTarget(null);
       toast.success('경로 이름을 수정했어요');
     },
-    onError: () => toast.error('이름 수정에 실패했어요'),
+    onError: (e) => showApiErrorToast(e, '이름 수정에 실패했어요'),
   });
 
   const deleteMutation = useMutation({
@@ -403,9 +404,9 @@ export default function RouteManagement() {
       queryClient.invalidateQueries({ queryKey: ['routes'] });
       toast.success('경로를 삭제했어요');
     },
-    onError: () => {
+    onError: (e) => {
       setPendingDeleteId(null);
-      toast.error('삭제에 실패했어요. 잠시 후 다시 시도해주세요');
+      showApiErrorToast(e, '삭제에 실패했어요. 잠시 후 다시 시도해주세요');
     },
   });
 
@@ -420,9 +421,9 @@ export default function RouteManagement() {
       queryClient.invalidateQueries({ queryKey: ['favorite-stops'] });
       toast.success('즐겨찾기를 삭제했어요');
     },
-    onError: () => {
+    onError: (e) => {
       setPendingFavDeleteId(null);
-      toast.error('삭제에 실패했어요. 잠시 후 다시 시도해주세요');
+      showApiErrorToast(e, '삭제에 실패했어요. 잠시 후 다시 시도해주세요');
     },
   });
 
@@ -434,7 +435,7 @@ export default function RouteManagement() {
       queryClient.invalidateQueries({ queryKey: ['routes'] });
       toast.success('별명을 저장했어요');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '저장에 실패했어요');
+      showApiErrorToast(e, '저장에 실패했어요');
     }
   };
 
@@ -446,7 +447,7 @@ export default function RouteManagement() {
       queryClient.invalidateQueries({ queryKey: ['favorite-stops'] });
       toast.success('별명을 저장했어요');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '저장에 실패했어요');
+      showApiErrorToast(e, '저장에 실패했어요');
     }
   };
 

@@ -4,6 +4,10 @@ import { authGuard } from "../_shared/auth.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
 import { resolveStopProvider } from "../_shared/regionMapper.ts"
+import type {
+  FavoriteErrorCode,
+  CommonErrorCode,
+} from "../_shared/errorCodes.ts"
 
 // ─── 요청 DTO ──────────────────────────────────────────────────────────────
 
@@ -123,7 +127,7 @@ async function listFavoriteStops(req: Request) {
     .order("created_at", { ascending: true })
     .limit(200)
 
-  if (error) throw new AppError("즐겨찾기 조회 실패", 500)
+  if (error) throw new AppError("즐겨찾기 조회 실패", 500, "FAVORITE_QUERY_FAILED" satisfies FavoriteErrorCode)
   return data ?? []
 }
 
@@ -136,7 +140,7 @@ async function createFavoriteStop(req: Request) {
   try {
     body = await req.json()
   } catch {
-    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400)
+    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400, "COMMON_INVALID_JSON" satisfies CommonErrorCode)
   }
 
   // D5: 노선 0개 reject
@@ -144,20 +148,20 @@ async function createFavoriteStop(req: Request) {
     throw new AppError(
       "노선을 1개 이상 선택해 주세요.",
       400,
-      "FAVORITE_ROUTES_REQUIRED",
+      "FAVORITE_ROUTES_REQUIRED" satisfies FavoriteErrorCode,
     )
   }
 
   const { odsayStopId, stopName, stopType } = body
-  if (!odsayStopId?.trim()) throw new AppError("odsayStopId가 필요합니다", 400)
-  if (!stopName?.trim()) throw new AppError("stopName이 필요합니다", 400)
+  if (!odsayStopId?.trim()) throw new AppError("odsayStopId가 필요합니다", 400, "FAVORITE_STOP_ID_REQUIRED" satisfies FavoriteErrorCode)
+  if (!stopName?.trim()) throw new AppError("stopName이 필요합니다", 400, "FAVORITE_STOP_NAME_REQUIRED" satisfies FavoriteErrorCode)
   if (stopType !== "bus" && stopType !== "subway") {
-    throw new AppError("stopType은 'bus' 또는 'subway' 여야 합니다", 400)
+    throw new AppError("stopType은 'bus' 또는 'subway' 여야 합니다", 400, "FAVORITE_INVALID_STOP_TYPE" satisfies FavoriteErrorCode)
   }
 
   const alias = normalizeAlias(body.alias)
   if (alias != null && alias.length > 20) {
-    throw new AppError("별명은 20자 이내여야 합니다", 400)
+    throw new AppError("별명은 20자 이내여야 합니다", 400, "FAVORITE_ALIAS_TOO_LONG" satisfies FavoriteErrorCode)
   }
 
   // provider 자동 매핑 (좌표 기반)
@@ -226,7 +230,7 @@ async function createFavoriteStop(req: Request) {
     .select("id")
     .single()
 
-  if (insertErr || !inserted) throw new AppError("즐겨찾기 저장 실패", 500)
+  if (insertErr || !inserted) throw new AppError("즐겨찾기 저장 실패", 500, "FAVORITE_PERSIST_FAILED" satisfies FavoriteErrorCode)
 
   // favorite_stop_routes bulk INSERT
   const routePayloads = body.routes.map((r, idx) => ({
@@ -252,11 +256,11 @@ async function createFavoriteStop(req: Request) {
   if (routeErr) {
     // 롤백: favorite_stops 삭제
     await db.from("favorite_stops").delete().eq("id", inserted.id)
-    throw new AppError("노선 저장 실패", 500)
+    throw new AppError("노선 저장 실패", 500, "FAVORITE_ROUTES_PERSIST_FAILED" satisfies FavoriteErrorCode)
   }
 
   const result = await fetchFavoriteStop(db, inserted.id)
-  if (!result) throw new AppError("생성 후 조회 실패", 500)
+  if (!result) throw new AppError("생성 후 조회 실패", 500, "FAVORITE_FETCH_AFTER_WRITE_FAILED" satisfies FavoriteErrorCode)
   return result
 }
 
@@ -269,7 +273,7 @@ async function updateFavoriteStop(req: Request, id: string) {
   try {
     body = await req.json()
   } catch {
-    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400)
+    throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400, "COMMON_INVALID_JSON" satisfies CommonErrorCode)
   }
 
   // 본인 row 존재 확인
@@ -279,14 +283,14 @@ async function updateFavoriteStop(req: Request, id: string) {
     .eq("id", id)
     .single()
 
-  if (findErr || !existing) throw new AppError("즐겨찾기를 찾을 수 없습니다", 404)
+  if (findErr || !existing) throw new AppError("즐겨찾기를 찾을 수 없습니다", 404, "FAVORITE_NOT_FOUND" satisfies FavoriteErrorCode)
 
   // D5: routes 빈 배열 reject
   if (body.routes !== undefined && body.routes.length === 0) {
     throw new AppError(
       "노선을 1개 이상 선택해 주세요. 즐겨찾기를 삭제하려면 DELETE를 사용하세요.",
       400,
-      "FAVORITE_ROUTES_REQUIRED",
+      "FAVORITE_ROUTES_REQUIRED" satisfies FavoriteErrorCode,
     )
   }
 
@@ -295,12 +299,12 @@ async function updateFavoriteStop(req: Request, id: string) {
   if (body.alias !== undefined) {
     const alias = normalizeAlias(body.alias)
     if (alias != null && alias.length > 20) {
-      throw new AppError("별명은 20자 이내여야 합니다", 400)
+      throw new AppError("별명은 20자 이내여야 합니다", 400, "FAVORITE_ALIAS_TOO_LONG" satisfies FavoriteErrorCode)
     }
     updatePayload.alias = alias
   }
   if (body.displayOrder !== undefined) {
-    if (body.displayOrder < 0) throw new AppError("displayOrder는 0 이상이어야 합니다", 400)
+    if (body.displayOrder < 0) throw new AppError("displayOrder는 0 이상이어야 합니다", 400, "FAVORITE_DISPLAY_ORDER_NEGATIVE" satisfies FavoriteErrorCode)
     updatePayload.display_order = body.displayOrder
   }
 
@@ -310,7 +314,7 @@ async function updateFavoriteStop(req: Request, id: string) {
       .update(updatePayload)
       .eq("id", id)
 
-    if (updateErr) throw new AppError("즐겨찾기 수정 실패", 500)
+    if (updateErr) throw new AppError("즐겨찾기 수정 실패", 500, "FAVORITE_PERSIST_FAILED" satisfies FavoriteErrorCode)
   }
 
   // routes 전체 교체 (트랜잭션 에뮬: delete → insert)
@@ -320,7 +324,7 @@ async function updateFavoriteStop(req: Request, id: string) {
       .delete()
       .eq("favorite_stop_id", id)
 
-    if (delErr) throw new AppError("노선 삭제 실패", 500)
+    if (delErr) throw new AppError("노선 삭제 실패", 500, "FAVORITE_ROUTES_DELETE_FAILED" satisfies FavoriteErrorCode)
 
     const routePayloads = body.routes.map((r, idx) => ({
       favorite_stop_id: id,
@@ -342,11 +346,11 @@ async function updateFavoriteStop(req: Request, id: string) {
       .from("favorite_stop_routes")
       .insert(routePayloads)
 
-    if (insertErr) throw new AppError("노선 재저장 실패", 500)
+    if (insertErr) throw new AppError("노선 재저장 실패", 500, "FAVORITE_ROUTES_PERSIST_FAILED" satisfies FavoriteErrorCode)
   }
 
   const result = await fetchFavoriteStop(db, id)
-  if (!result) throw new AppError("수정 후 조회 실패", 500)
+  if (!result) throw new AppError("수정 후 조회 실패", 500, "FAVORITE_FETCH_AFTER_WRITE_FAILED" satisfies FavoriteErrorCode)
   return result
 }
 
@@ -361,8 +365,8 @@ async function deleteFavoriteStop(req: Request, id: string) {
     .eq("id", id)
     .select("id")
 
-  if (error) throw new AppError("즐겨찾기 삭제 실패", 500)
-  if (!data || data.length === 0) throw new AppError("즐겨찾기를 찾을 수 없습니다", 404)
+  if (error) throw new AppError("즐겨찾기 삭제 실패", 500, "FAVORITE_DELETE_FAILED" satisfies FavoriteErrorCode)
+  if (!data || data.length === 0) throw new AppError("즐겨찾기를 찾을 수 없습니다", 404, "FAVORITE_NOT_FOUND" satisfies FavoriteErrorCode)
 }
 
 // ─── URL 라우팅 ───────────────────────────────────────────────────────────────
@@ -404,7 +408,7 @@ export async function handler(req: Request): Promise<Response> {
       return new Response(null, { status: 204, headers: corsHeaders })
     }
 
-    throw new AppError("지원하지 않는 요청입니다", 405)
+    throw new AppError("지원하지 않는 요청입니다", 405, "COMMON_METHOD_NOT_ALLOWED" satisfies CommonErrorCode)
   } catch (e) {
     return errorResponse(e, "favorite-stops")
   }

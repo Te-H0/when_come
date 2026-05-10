@@ -1,6 +1,6 @@
 # 통합 백로그
 
-> 마지막 업데이트: 2026-05-09
+> 마지막 업데이트: 2026-05-10
 > BE 전용 항목은 `when_come_be/docs/backlog.md` 참고.
 
 ## 🔴 High
@@ -19,6 +19,12 @@
 - [ ] #9 | [chore] ODsay stationID ↔ 서울 지하철 API statnId 매핑 인프라 (주말 작업, #6과 통합 가능) — 도착정보 호출의 stationName 의존 제거. "서울역 4호선" 같은 환승역에서 stationNm="서울역" 호출 시 GTX-A만 매칭되는 quirk 근본 해결. 매핑 데이터 빌드: 서울 열린데이터 `SearchInfoBySubwayNameService`로 전체 역 statnId 확보 → ODsay 검색 응답과 좌표/이름 fuzzy match → `route_stops`/`favorite_stops`에 `subway_statn_id` 컬럼 추가해 영속화. 임시 해결(stationName + subwayCode fallback 트리거 — 2026-05-09)이 동작하는 동안 별도 트랙. | 2026-05-09
 
 ## 🟢 Low
+
+- [ ] #10 | [test] `gbisClient_test.ts` / `regionMapper_test.ts` 타이머 누수 수정 — 전체 테스트 실행 시 5분 캐시 interval cross-test 누수로 flaky 실패. 단독 실행은 통과. `supabaseTest()` 헬퍼 또는 명시적 `clearInterval` 패턴 적용 필요. ADR-002 작업 중 발견(코드 리뷰 D-5). | 2026-05-10
+- [ ] #11 | [refactor] `place-search/index.ts:73` `await res.json() as NaverLocalResponse` `as` 단언 제거 — 타입 가드 함수(`isNaverLocalResponse`)로 대체. typescript-conventions 규칙 위반. ADR-002 코드 리뷰 F-3. | 2026-05-10
+- [ ] #12 | [chore] `anomaly_logs` 적재량 모니터링 자동화 — ADR-002 §5.2 SQL을 cron 또는 대시보드로 주기 실행. 임계치 초과 시 알람. 현재는 수동 확인. | 2026-05-10
+- [ ] #13 | [refactor] dnd-kit 마이그레이션 — Home 칩, Favorites 카드 드래그앤드롭. react-dnd HTML5Backend는 모바일 터치 미지원 + ghost preview 빈약. 풀스택 마이그레이션 후 우선순위 검토. | 2026-05-10
+- [ ] #14 | [feat] 전철 급행 표시 (예: "급 용산행" 빨간 배지 + 행선지) — BE `arrival-info`가 `trainLineNm`에서 "급행" 키워드 추출해 `isExpress` 또는 `trainType` 필드 응답 추가, FE `transitColors.ts:rapid` 토큰 재사용해 배지 렌더. | 2026-05-10
 
 ## ✅ 완료
 - [x] #B2 | [bug] SetupRoute 수동 검색에서 지하철 검색 안 됨 — `search-stops`에서 ODsay 응답을 subway-first 안정 정렬로 수정. 원인: ODsay가 `[버스, 지하철]` 순으로 merge → FE `slice(0, 10)` cap에서 지하철 잘림 (완료일: 2026-05-09)
