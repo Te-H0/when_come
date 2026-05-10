@@ -3,6 +3,7 @@ import { corsHeaders } from "../_shared/cors.ts"
 import { AppError, errorResponse, type ArrivalErrorCode } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
 import { authGuard } from "../_shared/auth.ts"
+import type { CommonErrorCode } from "../_shared/errorCodes.ts"
 import { realtimeStation } from "../_shared/odsayClient.ts"
 import {
   pickProvider,
@@ -628,7 +629,11 @@ async function fetchArrivalByStopId(
     }
 
     if (!isFavoriteStopRow(favStop)) {
-      throw new AppError("DB row 형식 오류 (favorite_stops)", 500)
+      throw new AppError(
+        "DB row 형식 오류 (favorite_stops)",
+        500,
+        "ARRIVAL_DB_ROW_INVALID" satisfies ArrivalErrorCode,
+      )
     }
 
     stop = favStopToRouteStopRow(favStop)
@@ -637,7 +642,11 @@ async function fetchArrivalByStopId(
   }
 
   if (!isRouteStopRow(stop)) {
-    throw new AppError("DB row 형식 오류", 500)
+    throw new AppError(
+      "DB row 형식 오류",
+      500,
+      "ARRIVAL_DB_ROW_INVALID" satisfies ArrivalErrorCode,
+    )
   }
 
   const stopRow: RouteStopRow = stop
@@ -648,7 +657,11 @@ async function fetchArrivalByStopId(
   if (stopRow.stop_type === "subway") {
     const stationName = stopRow.stop_name ?? ""
     if (!stationName) {
-      throw new AppError("지하철 정류장 이름이 없습니다", 500)
+      throw new AppError(
+        "지하철 정류장 이름이 없습니다",
+        500,
+        "ARRIVAL_DB_ROW_INVALID" satisfies ArrivalErrorCode,
+      )
     }
     const subwayCode = stopRoutes[0]?.subway_code ?? null
     const items = await getSubwayArrival(stationName, subwayCode ?? undefined)
@@ -663,7 +676,11 @@ async function fetchArrivalByStopId(
   if (stopRoutes.length === 0) {
     const providerName = stopRow.provider ?? "seoul"
     if (providerName !== "seoul" && providerName !== "gyeonggi" && providerName !== "odsay_fallback") {
-      throw new AppError(`알 수 없는 provider: ${providerName}`, 502)
+      throw new AppError(
+        `알 수 없는 provider: ${providerName}`,
+        502,
+        "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+      )
     }
 
     // odsay_fallback이고 reason이 명시된 경우 → 즉시 422 반환 (ODsay 시도 없음)
@@ -695,7 +712,11 @@ async function fetchArrivalByStopId(
     const provider = pickProvider(providerName)
     const ctx: ArrivalQueryContext = { ...baseCtx, gbisRouteId: null, gbisStaOrder: null }
     if (!provider.canHandle(ctx)) {
-      throw new AppError(`provider(${providerName})와 stop 정보가 불일치합니다`, 502)
+      throw new AppError(
+        `provider(${providerName})와 stop 정보가 불일치합니다`,
+        502,
+        "ARRIVAL_PROVIDER_ERROR" satisfies ArrivalErrorCode,
+      )
     }
     return await provider.fetchArrivals(ctx)
   }
@@ -798,7 +819,7 @@ export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
-    if (req.method !== "GET") throw new AppError("GET 요청만 허용됩니다", 405)
+    if (req.method !== "GET") throw new AppError("GET 요청만 허용됩니다", 405, "COMMON_METHOD_NOT_ALLOWED" satisfies CommonErrorCode)
 
     const { searchParams } = new URL(req.url)
     const stopId = searchParams.get("stopId")
@@ -820,7 +841,7 @@ export async function handler(req: Request): Promise<Response> {
       const arsId = searchParams.get("arsId")
 
       if (!busRouteId) {
-        throw new AppError("bus 타입은 busRouteId 가 필요합니다", 400)
+        throw new AppError("bus 타입은 busRouteId 가 필요합니다", 400, "ARRIVAL_PARAMS_INVALID" satisfies ArrivalErrorCode)
       }
 
       let data: LegacyBusArrivalResponse | null
@@ -830,7 +851,7 @@ export async function handler(req: Request): Promise<Response> {
       } else if (arsId) {
         data = await findBusArrivalByArsId(busRouteId, arsId)
       } else {
-        throw new AppError("bus 타입은 stId+ord 또는 arsId 가 필요합니다", 400)
+        throw new AppError("bus 타입은 stId+ord 또는 arsId 가 필요합니다", 400, "ARRIVAL_PARAMS_INVALID" satisfies ArrivalErrorCode)
       }
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -840,10 +861,17 @@ export async function handler(req: Request): Promise<Response> {
     // ── legacy 호환: ?type=subway ───────────────────────────────────────────
     if (legacyType === "subway") {
       const stationName = searchParams.get("stationName")
-      if (!stationName) throw new AppError("subway 타입은 stationName 이 필요합니다", 400)
-      // subwayCode: /^10\d{2}$/ 형식만 유효. 잘못된 형식은 무시(undefined 처리).
+      if (!stationName) throw new AppError("subway 타입은 stationName 이 필요합니다", 400, "ARRIVAL_PARAMS_INVALID" satisfies ArrivalErrorCode)
+      // subwayCode: /^10\d{2}$/ 형식만 유효. 잘못된 형식은 400 반환.
       const rawSubwayCode = searchParams.get("subwayCode")
-      const subwayCode = rawSubwayCode && /^10\d{2}$/.test(rawSubwayCode) ? rawSubwayCode : undefined
+      if (rawSubwayCode && !/^10\d{2}$/.test(rawSubwayCode)) {
+        throw new AppError(
+          "subwayCode 형식이 올바르지 않습니다 (예: '1002')",
+          400,
+          "ARRIVAL_SUBWAY_CODE_INVALID" satisfies ArrivalErrorCode,
+        )
+      }
+      const subwayCode = rawSubwayCode ?? undefined
       const data = await getSubwayArrival(stationName, subwayCode)
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -853,14 +881,14 @@ export async function handler(req: Request): Promise<Response> {
     // ── legacy 호환: ?type=odsay ────────────────────────────────────────────
     if (legacyType === "odsay") {
       const stationId = searchParams.get("stationId")
-      if (!stationId) throw new AppError("odsay 타입은 stationId 가 필요합니다", 400)
+      if (!stationId) throw new AppError("odsay 타입은 stationId 가 필요합니다", 400, "ARRIVAL_PARAMS_INVALID" satisfies ArrivalErrorCode)
       const data = await realtimeStation(stationId)
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
     }
 
-    throw new AppError("type 파라미터가 필요합니다 (bus | subway | odsay)", 400)
+    throw new AppError("type 파라미터가 필요합니다 (bus | subway | odsay)", 400, "ARRIVAL_PARAMS_INVALID" satisfies ArrivalErrorCode)
   } catch (e) {
     return errorResponse(e, "arrival-info")
   }

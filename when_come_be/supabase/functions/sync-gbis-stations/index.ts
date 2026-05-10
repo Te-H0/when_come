@@ -3,6 +3,10 @@ import { corsHeaders } from "../_shared/cors.ts"
 import { AppError, errorResponse } from "../_shared/error.ts"
 import { withErrorLogging } from "../_shared/middleware.ts"
 import { fetchBusStationsBySigun, GgBusStationRow } from "../_shared/gbisOpenApiClient.ts"
+import type {
+  SyncErrorCode,
+  CommonErrorCode,
+} from "../_shared/errorCodes.ts"
 
 // ─── 경기도 31개 시군 목록 ──────────────────────────────────────────────────
 const GYEONGGI_SIGUN_LIST = [
@@ -67,12 +71,12 @@ function getServiceRoleKey(): string {
 function verifyServiceRole(req: Request): void {
   const authHeader = req.headers.get("Authorization")
   if (!authHeader?.startsWith("Bearer ")) {
-    throw new AppError("UNAUTHORIZED", 401)
+    throw new AppError("service role key가 필요합니다", 403, "SYNC_FORBIDDEN" satisfies SyncErrorCode)
   }
   const token = authHeader.slice(7)
   const serviceKey = getServiceRoleKey()
   if (token !== serviceKey) {
-    throw new AppError("UNAUTHORIZED", 401)
+    throw new AppError("service role key가 일치하지 않습니다", 403, "SYNC_FORBIDDEN" satisfies SyncErrorCode)
   }
 }
 
@@ -110,7 +114,7 @@ async function upsertChunk(
     .upsert(payload, { onConflict: "station_id" })
 
   if (error) {
-    throw new AppError(`gbis_stations upsert 실패: ${error.message}`, 500)
+    throw new AppError(`gbis_stations upsert 실패: ${error.message}`, 500, "SYNC_PERSIST_FAILED" satisfies SyncErrorCode)
   }
 }
 
@@ -188,7 +192,7 @@ export async function handler(req: Request): Promise<Response> {
 
   try {
     if (req.method !== "POST") {
-      throw new AppError("POST 요청만 허용됩니다", 405)
+      throw new AppError("POST 요청만 허용됩니다", 405, "COMMON_METHOD_NOT_ALLOWED" satisfies CommonErrorCode)
     }
 
     // 인증 검증
@@ -202,25 +206,25 @@ export async function handler(req: Request): Promise<Response> {
         body = JSON.parse(text)
       }
     } catch {
-      throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400)
+      throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400, "COMMON_INVALID_JSON" satisfies CommonErrorCode)
     }
 
     // 입력 검증: sigun_nm
     if (body.sigun_nm !== undefined && typeof body.sigun_nm !== "string") {
-      throw new AppError("sigun_nm은 문자열이어야 합니다", 400)
+      throw new AppError("sigun_nm은 문자열이어야 합니다", 400, "SYNC_PARAMS_INVALID" satisfies SyncErrorCode)
     }
     if (body.sigun_nm !== undefined && body.sigun_nm.trim() === "") {
-      throw new AppError("sigun_nm이 빈 문자열입니다", 400)
+      throw new AppError("sigun_nm이 빈 문자열입니다", 400, "SYNC_PARAMS_INVALID" satisfies SyncErrorCode)
     }
 
     // 입력 검증: pSize
     let pSize = DEFAULT_PSIZE
     if (body.pSize !== undefined) {
       if (typeof body.pSize !== "number" || !Number.isInteger(body.pSize)) {
-        throw new AppError("pSize는 정수여야 합니다", 400)
+        throw new AppError("pSize는 정수여야 합니다", 400, "SYNC_PARAMS_INVALID" satisfies SyncErrorCode)
       }
       if (body.pSize < MIN_PSIZE || body.pSize > MAX_PSIZE) {
-        throw new AppError(`pSize는 ${MIN_PSIZE}~${MAX_PSIZE} 범위여야 합니다`, 400)
+        throw new AppError(`pSize는 ${MIN_PSIZE}~${MAX_PSIZE} 범위여야 합니다`, 400, "SYNC_PARAMS_INVALID" satisfies SyncErrorCode)
       }
       pSize = body.pSize
     }
@@ -228,20 +232,20 @@ export async function handler(req: Request): Promise<Response> {
     // 입력 검증: sigun_nm_in
     if (body.sigun_nm_in !== undefined) {
       if (!Array.isArray(body.sigun_nm_in)) {
-        throw new AppError("sigun_nm_in은 배열이어야 합니다", 400)
+        throw new AppError("sigun_nm_in은 배열이어야 합니다", 400, "SYNC_PARAMS_INVALID" satisfies SyncErrorCode)
       }
       if (body.sigun_nm_in.length === 0) {
-        throw new AppError("sigun_nm_in이 빈 배열입니다", 400)
+        throw new AppError("sigun_nm_in이 빈 배열입니다", 400, "SYNC_PARAMS_INVALID" satisfies SyncErrorCode)
       }
       for (const nm of body.sigun_nm_in) {
         if (typeof nm !== "string") {
-          throw new AppError("sigun_nm_in 각 요소는 문자열이어야 합니다", 400)
+          throw new AppError("sigun_nm_in 각 요소는 문자열이어야 합니다", 400, "SYNC_PARAMS_INVALID" satisfies SyncErrorCode)
         }
         if (nm.length < 1 || nm.length > 50) {
-          throw new AppError(`sigun_nm_in 요소 길이는 1~50자여야 합니다: "${nm}"`, 400)
+          throw new AppError(`sigun_nm_in 요소 길이는 1~50자여야 합니다: "${nm}"`, 400, "SYNC_PARAMS_INVALID" satisfies SyncErrorCode)
         }
         if (!GYEONGGI_SIGUN_LIST.includes(nm)) {
-          throw new AppError(`알 수 없는 경기도 시군명입니다: "${nm}"`, 400)
+          throw new AppError(`알 수 없는 경기도 시군명입니다: "${nm}"`, 400, "SYNC_PARAMS_INVALID" satisfies SyncErrorCode)
         }
       }
     }

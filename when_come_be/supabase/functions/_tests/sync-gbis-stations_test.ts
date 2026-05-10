@@ -70,23 +70,29 @@ Deno.test("sync-gbis-stations OPTIONS preflight → 200", async () => {
 })
 
 // ─── 인증 실패 ───────────────────────────────────────────────────────────────
-Deno.test("sync-gbis-stations 인증 헤더 없음 → 401", async () => {
-  await withEnv(ENV, async () => {
-    const res = await handler(makeRequest("POST", "https://test.supabase.co/functions/v1/sync-gbis-stations", { body: {} }))
-    assertEquals(res.status, 401)
-    const body = await res.json()
-    assertEquals(body.error, "UNAUTHORIZED")
-  })
+supabaseTest("sync-gbis-stations 인증 헤더 없음 → 403", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () => jsonResponse(null), async () => {
+      const res = await handler(makeRequest("POST", "https://test.supabase.co/functions/v1/sync-gbis-stations", { body: {} }))
+      assertEquals(res.status, 403)
+      const body = await res.json()
+      assertEquals(body.error.code, "SYNC_FORBIDDEN")
+    })
+  )
 })
 
-Deno.test("sync-gbis-stations 잘못된 토큰 → 401", async () => {
-  await withEnv(ENV, async () => {
-    const res = await handler(makeRequest("POST", "https://test.supabase.co/functions/v1/sync-gbis-stations", {
-      body: {},
-      headers: { authorization: "Bearer wrong-token" },
-    }))
-    assertEquals(res.status, 401)
-  })
+supabaseTest("sync-gbis-stations 잘못된 토큰 → 403", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () => jsonResponse(null), async () => {
+      const res = await handler(makeRequest("POST", "https://test.supabase.co/functions/v1/sync-gbis-stations", {
+        body: {},
+        headers: { authorization: "Bearer wrong-token" },
+      }))
+      assertEquals(res.status, 403)
+      const body = await res.json()
+      assertEquals(body.error.code, "SYNC_FORBIDDEN")
+    })
+  )
 })
 
 // ─── 단일 시군 happy path ────────────────────────────────────────────────────
@@ -272,7 +278,8 @@ Deno.test("sync-gbis-stations pSize=0 → 400", async () => {
     }))
     assertEquals(res.status, 400)
     const body = await res.json()
-    assertEquals(typeof body.error, "string")
+    // SYNC_PARAMS_INVALID 부여 후 structured 포맷 { error: { code, message } }
+    assertEquals(body.error?.code, "SYNC_PARAMS_INVALID")
   })
 })
 
@@ -305,7 +312,8 @@ supabaseTest("sync-gbis-stations sigun_nm_in 비문자열 요소 → 400", async
     }))
     assertEquals(res.status, 400)
     const body = await res.json()
-    assertEquals(typeof body.error, "string")
+    // SYNC_PARAMS_INVALID 부여 후 structured 포맷 { error: { code, message } }
+    assertEquals(body.error?.code, "SYNC_PARAMS_INVALID")
   })
 })
 
