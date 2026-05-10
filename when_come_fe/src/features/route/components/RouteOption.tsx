@@ -50,7 +50,7 @@ export default function RouteOption({ route, onSelect }: RouteOptionProps) {
       </div>
 
       {/* 경로 단계 미리보기 */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-2">
         {route.segments.map((segment, idx) => (
           <div key={segment.id} className="flex items-center gap-2 flex-shrink-0">
             <div className="flex items-center gap-1">

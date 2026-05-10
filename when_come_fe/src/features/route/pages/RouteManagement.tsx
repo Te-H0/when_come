@@ -530,23 +530,17 @@ export default function RouteManagement() {
         back={() => navigate('/')}
         title="내 경로"
         right={
-          activeTab === 'routes' ? (
-            <Button
-              onClick={() => navigate('/setup')}
-              className="bg-text-primary hover:bg-text-primary/90 rounded-control h-9 px-4 text-button"
-            >
-              <Plus className="w-[16px] h-[16px] mr-1.5" strokeWidth={2} />
-              새 경로
-            </Button>
-          ) : (
-            <Button
-              onClick={() => navigate('/favorites/add')}
-              className="bg-text-primary hover:bg-text-primary/90 rounded-control h-9 px-4 text-button"
-            >
-              <Plus className="w-[16px] h-[16px] mr-1.5" strokeWidth={2} />
-              즐겨찾기 추가
-            </Button>
-          )
+          // 두 탭 모두 "현재 탭에 새 항목 추가" 의미라 동일 + 아이콘으로 통일.
+          // 시각 차이는 PageHeader bottom 슬롯의 활성 탭 + 탭 옆 카운트 배지로 이미 표현됨.
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate(activeTab === 'routes' ? '/setup' : '/favorites/add')}
+            className="rounded-control hover:bg-surface-muted w-9 h-9"
+            aria-label={activeTab === 'routes' ? '새 경로 추가' : '즐겨찾기 추가'}
+          >
+            <Plus className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
+          </Button>
         }
         bottom={tabBar}
       />

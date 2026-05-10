@@ -29,6 +29,7 @@
 - [ ] #16 | [feat] `PageShell.noHeader` prop 구현 — design-system.md §8.1 명세에는 있으나 미구현. 풀스크린 검색 모달/picker 패턴에서 필요. | 2026-05-10
 - [ ] #17 | [chore] `text-label` 토큰 색상 정책 재검토 — 현재 `text-label`이 `color: text-secondary`를 포함하지만 코드에서 `text-label text-text-primary` 조합이 자주 등장. `text-label-strong` 별도 토큰 신설 또는 label에서 color 제거 후 조합 패턴으로 변경 검토. | 2026-05-10
 - [ ] #18 | [chore] 구버전 컴포넌트 토큰 마이그레이션 — `src/features/route/components/TransitCard.tsx`, `RouteProgress.tsx`, `RouteOption.tsx`에 `text-gray-900`, `text-gray-500`, `text-gray-600` 잔존 (이번 ADR-003 작업 범위 밖이었음). 사용 여부 확인 후 토큰화 또는 deprecated 제거. | 2026-05-10
+- [ ] #19 | [chore] `theme.css @layer base` html 블록 두 곳 병합 — overflow/scrollbar 블록(L232~)과 font-size 블록(L262~)이 분리됨. 동작 이상 없으나 미관 정리. | 2026-05-10
 
 ## ✅ 완료
 - [x] #B2 | [bug] SetupRoute 수동 검색에서 지하철 검색 안 됨 — `search-stops`에서 ODsay 응답을 subway-first 안정 정렬로 수정. 원인: ODsay가 `[버스, 지하철]` 순으로 merge → FE `slice(0, 10)` cap에서 지하철 잘림 (완료일: 2026-05-09)

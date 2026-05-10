@@ -156,6 +156,25 @@
 
 ---
 
+## 4-A. 부속 정책 — Mobile Scroll & 헤더 액션 패턴 (2026-05-10 추가)
+
+ADR-003 채택 직후 dev 검증에서 발견된 추가 항목을 본 ADR의 부속 정책으로 박는다.
+
+### Mobile scroll 정책
+- **페이지 자체는 스크롤 안 함.** `index.html`이 `html, body, #root { height: 100dvh; overflow: hidden; overscroll-behavior: none }`을 인라인 style로 박아 첫 페인트부터 보장. 이 선언이 단일 진실 공급원.
+- **theme.css는 보강만**: `-webkit-text-size-adjust: 100%` (Safari 가로 모드 폰트 자동 확대 방지), `-webkit-tap-highlight-color: transparent` (터치 파란 하이라이트 제거), `scrollbar-width: thin` + 6px webkit 슬림 스크롤바 (데스크톱 한정).
+- **가로 스크롤 영역은 `scrollbar-hide` utility 필수.** 칩/카드 미리보기 등 가로 스크롤되는 컨테이너는 데스크톱에서 회색 스크롤바가 노출되어 모바일 앱 느낌을 깬다. theme.css에 `@utility scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; &::-webkit-scrollbar { display: none } }` 정의.
+- **`overscroll-behavior: none`**으로 당겨서 새로고침을 차단해 앱 풍을 보장.
+
+### 헤더 우상단 액션은 ghost icon-only
+- PageHeader의 `right` 슬롯에 들어가는 액션 버튼은 **`variant="ghost" size="icon"` + 아이콘 1개**를 표준으로.
+- 풀 텍스트 + 강조 배경 버튼(`bg-text-primary`)은 페이지 본문/dialog action에 한정.
+- 근거: 모바일 앱 헤더 표준 패턴(카카오/네이버/Apple HIG). 헤더에 텍스트 라벨 버튼이 있으면 시각 피로도 + 좁은 모바일 viewport에서 제목/탭과 충돌.
+
+이 두 정책은 `.claude/rules/design-system.md` §7/§8에 강제로 박혔고, 신규 페이지 추가 시 같은 룰로 자동 검증된다.
+
+---
+
 ## 5. 트레이드오프
 
 - 마이그레이션 시점에 8개 페이지 동시 변경 → 한 PR이 커지거나 PR 5개로 쪼개지는 부담.

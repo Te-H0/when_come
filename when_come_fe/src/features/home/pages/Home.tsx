@@ -402,7 +402,7 @@ export default function Home() {
     <div className="bg-surface-card border-b border-border-subtle">
       <div className="max-w-[var(--page-max-width)] mx-auto px-[var(--page-padding-x)] py-2 flex items-center gap-2">
         {orderedActiveRoutes.length > 0 && (
-          <div className="flex-1 overflow-x-auto min-w-0">
+          <div className="flex-1 overflow-x-auto scrollbar-hide min-w-0">
             <DndContext
               sensors={chipSensors}
               collisionDetection={closestCenter}

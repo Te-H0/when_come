@@ -147,7 +147,54 @@ export default function MyPage() {
 
 ---
 
-## 7. code-reviewer 체크리스트
+## 7. 헤더 우상단 액션 패턴
+
+페이지 헤더(`<PageHeader right={...}>`) 우상단 액션 버튼은 **ghost icon-only** 패턴을 사용한다.
+
+```tsx
+// 허용 — ghost icon-only
+<Button
+  variant="ghost"
+  size="icon"
+  onClick={handler}
+  className="rounded-control hover:bg-surface-muted w-9 h-9"
+  aria-label="새 경로 추가"
+>
+  <Plus className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
+</Button>
+
+// 금지 — 텍스트 포함 강조 버튼 (dialog 액션 제외)
+<Button className="bg-text-primary ...">
+  <Plus ... /> 새 경로
+</Button>
+```
+
+예외: Dialog 내부 저장/확인 버튼은 `bg-text-primary` 강조가 맞음.
+
+---
+
+## 8. Mobile Scroll 정책 (2026-05-10~)
+
+`src/styles/theme.css`의 `@layer base`에 다음이 적용되어 있음:
+
+- `html`: `overflow-x: hidden` (가로 스크롤 차단), `scrollbar-width: thin` (데스크톱 슬림 스크롤바)
+- `body`: `overflow-x: hidden`, `overscroll-behavior-y: none` (당겨서 새로고침 방지), `-webkit-tap-highlight-color: transparent` (터치 하이라이트 제거)
+
+가로 스크롤 영역(`overflow-x-auto`)에는 반드시 `scrollbar-hide` utility를 함께 적용:
+
+```tsx
+// 허용
+<div className="overflow-x-auto scrollbar-hide">
+
+// 금지
+<div className="overflow-x-auto"> {/* 스크롤바 노출됨 */}
+```
+
+`scrollbar-hide`는 `@utility`로 `src/styles/theme.css`에 정의됨. 모바일 앱 느낌 유지를 위한 정책.
+
+---
+
+## 9. code-reviewer 체크리스트
 
 PR 리뷰 시 확인:
 
@@ -161,7 +208,7 @@ PR 리뷰 시 확인:
 
 ---
 
-## 8. 마이그레이션 시점 예외
+## 10. 마이그레이션 시점 예외
 
 ADR-003 채택 시점(2026-05-10) 이전 코드는 점진적으로 정리한다. 단, **기존 코드를 수정할 때 같은 파일의 다른 hex/px도 함께 정리**할 것을 권장. "안 건드린 부분은 그대로 두기" 원칙 + "건드리는 김에 이 파일은 다 정리하기"의 절충.
 
