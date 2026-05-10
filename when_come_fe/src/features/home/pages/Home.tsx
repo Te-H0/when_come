@@ -1,7 +1,24 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
-import { useDrag, useDrop } from "react-dnd";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  horizontalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
 import { showApiErrorToast } from "@/lib/errorToast";
 import {
@@ -10,7 +27,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import BottomNav from "@/components/BottomNav";
+import PageShell from "@/components/PageShell";
+import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import StopName from "@/components/StopName";
 import { getBusTypeByOdsay, getSubwayColor, normalizeSubwayLineName } from "@/utils/transitColors";
@@ -21,32 +39,9 @@ import type { TransitStop, SavedRoute } from "@/lib/mockData";
 import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg, getMatchedSubwayItems } from "@/lib/arrival";
 import type { ArrivalData } from "@/lib/arrival";
 import { ApiError } from "@/lib/api";
+import { ArrivalText, splitArrival } from "@/utils/arrivalDisplay";
 
 const SELECTED_ROUTE_KEY = 'when_come:selectedRouteId';
-
-/**
- * 도착 텍스트 파싱 결과.
- * - count 타입: "3개전" → { kind: 'count', count: 3, unit: '개전' }
- * - text 타입: "곧 도착", "도착 정보 없음" 등 → { kind: 'text', text: '...' }
- */
-type ArrivalTextToken =
-  | { kind: 'count'; count: number; unit: string }
-  | { kind: 'text'; text: string }
-
-/**
- * "3개전", "5분후", "1분30초후" 같은 텍스트를 파싱해 토큰으로 분해.
- * 숫자+단위 패턴을 감지하고, 나머지는 그대로 text 토큰으로 반환.
- */
-function parseArrivalToken(msg: string): ArrivalTextToken {
-  if (!msg || msg === '--') return { kind: 'text', text: msg || '--' }
-  // "N개전" 패턴
-  const countMatch = msg.match(/^(\d+)(개전)/)
-  if (countMatch) return { kind: 'count', count: parseInt(countMatch[1]), unit: countMatch[2] }
-  // "N분후", "N분N초후" 패턴
-  const minMatch = msg.match(/^(\d+)분/)
-  if (minMatch) return { kind: 'count', count: parseInt(minMatch[1]), unit: '분' }
-  return { kind: 'text', text: msg }
-}
 
 /**
  * 에러 코드 → inline 안내 메시지.
@@ -73,11 +68,11 @@ function ArrivalErrorInline({ code, isRetryable, onRefresh }: ArrivalErrorInline
   const message = ARRIVAL_ERROR_MESSAGES[code] ?? '도착 정보를 불러오지 못했어요'
   return (
     <div className="px-5 py-4 flex items-center justify-between gap-3">
-      <p className="text-[13px] text-[#9CA3AF] leading-snug flex-1">{message}</p>
+      <p className="text-caption leading-snug flex-1">{message}</p>
       {isRetryable && onRefresh && (
         <button
           onClick={onRefresh}
-          className="flex-shrink-0 flex items-center gap-1 text-[12px] text-[#6B7280] hover:text-[#111827] transition-colors"
+          className="flex-shrink-0 flex items-center gap-1 text-label hover:text-text-primary transition-colors"
           aria-label="새로고침"
         >
           <RefreshCw className="w-3.5 h-3.5" strokeWidth={2} />
@@ -88,33 +83,12 @@ function ArrivalErrorInline({ code, isRetryable, onRefresh }: ArrivalErrorInline
   )
 }
 
-/** 도착 텍스트 토큰을 JSX 요소로 렌더링 */
-function ArrivalText({ msg, className }: { msg: string; className?: string }) {
-  const token = parseArrivalToken(msg)
-  if (token.kind === 'count') {
-    return (
-      <span className={className}>
-        <span className="font-bold text-xl tabular-nums">{token.count}</span>
-        <span className="text-xs font-normal">{token.unit}</span>
-      </span>
-    )
-  }
-  return <span className={className}>{token.text}</span>
-}
-
 /**
  * "[N번째 전]" suffix를 arrmsg에서 제거해 미니카드용 단순 텍스트를 반환.
  * "3분후[2번째 전]" → "3분후", "3개전[2번째 전]" → "3개전"
  */
 function stripSuffix(msg: string): string {
   return msg.replace(/\s*\[.*?\]$/, '').trim()
-}
-
-function splitArrival(text: string | null): { time: string; stops: string | null } {
-  if (!text) return { time: '--', stops: null }
-  const match = text.match(/^(.*?)\[(\d+)번째 전\]$/)
-  if (match) return { time: match[1].trim(), stops: `${match[2]}정거장 전` }
-  return { time: text, stops: null }
 }
 
 function getFastestArrivalText(stop: TransitStop, arrival: ArrivalData, elapsedSec: number): string {
@@ -159,57 +133,42 @@ function getFastestArrivalText(stop: TransitStop, arrival: ArrivalData, elapsedS
   return '--'
 }
 
-const ROUTE_CHIP_DND_TYPE = 'ROUTE_CHIP';
-
-interface RouteChipDragItem {
-  id: string;
-  index: number;
-}
-
 interface RouteChipProps {
   route: SavedRoute;
-  index: number;
   isSelected: boolean;
   onSelect: (id: string) => void;
-  onMove: (dragIndex: number, hoverIndex: number) => void;
-  onDrop: () => void;
 }
 
-function RouteChip({ route, index, isSelected, onSelect, onMove, onDrop }: RouteChipProps) {
-  const ref = useRef<HTMLButtonElement>(null);
+function RouteChip({ route, isSelected, onSelect }: RouteChipProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: route.id });
 
-  const [{ isDragging }, drag] = useDrag<RouteChipDragItem, void, { isDragging: boolean }>({
-    type: ROUTE_CHIP_DND_TYPE,
-    item: { id: route.id, index },
-    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
-    end: (_item, monitor) => {
-      if (monitor.didDrop()) onDrop();
-    },
-  });
-
-  const [, drop] = useDrop<RouteChipDragItem>({
-    accept: ROUTE_CHIP_DND_TYPE,
-    hover(item) {
-      if (item.index === index) return;
-      onMove(item.index, index);
-      item.index = index;
-    },
-  });
-
-  drag(drop(ref));
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   return (
     <button
-      ref={ref}
+      ref={setNodeRef}
+      style={style}
       onClick={() => onSelect(route.id)}
-      className={`px-4 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors select-none ${
+      {...attributes}
+      {...listeners}
+      className={`px-4 py-1.5 rounded-pill text-label font-medium whitespace-nowrap transition-colors select-none touch-none ${
         isDragging
           ? 'opacity-40 cursor-grabbing'
           : 'cursor-grab active:cursor-grabbing'
       } ${
         isSelected
-          ? 'bg-[#111827] text-white'
-          : 'bg-[#F1F3F5] text-[#6B7280] hover:bg-[#E5E7EB]'
+          ? 'bg-text-primary text-white'
+          : 'bg-surface-muted text-text-secondary hover:bg-border-strong'
       }`}
     >
       {route.name}
@@ -249,19 +208,25 @@ export default function Home() {
     return chipOrder.flatMap(id => (map.has(id) ? [map.get(id)!] : []));
   }, [chipOrder, activeRoutes]);
 
-  const handleChipMove = useCallback((dragIdx: number, hoverIdx: number) => {
-    setChipOrder(prev => {
-      const next = [...prev];
-      const [removed] = next.splice(dragIdx, 1);
-      next.splice(hoverIdx, 0, removed);
-      return next;
-    });
-  }, []);
+  const chipSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
-  const handleChipDrop = useCallback(async () => {
-    // chipOrder 기준으로 변경된 route만 PATCH
+  const handleChipDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIdx = chipOrder.indexOf(active.id as string);
+    const newIdx = chipOrder.indexOf(over.id as string);
+    if (oldIdx === -1 || newIdx === -1) return;
+
+    const nextOrder = arrayMove(chipOrder, oldIdx, newIdx);
+    setChipOrder(nextOrder);
+
+    // 변경된 route만 PATCH
     const changed: Array<{ id: string; displayOrder: number }> = [];
-    chipOrder.forEach((id, idx) => {
+    nextOrder.forEach((id, idx) => {
       const route = activeRoutes.find(r => r.id === id);
       if (!route || route.displayOrder !== idx) changed.push({ id, displayOrder: idx });
     });
@@ -432,114 +397,121 @@ export default function Home() {
     });
   }
 
+  // 경로 칩 + 추가 버튼 row (PageHeader bottom 슬롯)
+  const chipRow = (
+    <div className="bg-surface-card border-b border-border-subtle">
+      <div className="max-w-[var(--page-max-width)] mx-auto px-[var(--page-padding-x)] py-2 flex items-center gap-2">
+        {orderedActiveRoutes.length > 0 && (
+          <div className="flex-1 overflow-x-auto min-w-0">
+            <DndContext
+              sensors={chipSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleChipDragEnd}
+              modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
+            >
+              <SortableContext items={chipOrder} strategy={horizontalListSortingStrategy}>
+                <div className="flex gap-2 w-max" style={{ touchAction: 'pan-y' }}>
+                  {orderedActiveRoutes.map((route) => (
+                    <RouteChip
+                      key={route.id}
+                      route={route}
+                      isSelected={route.id === currentRoute?.id}
+                      onSelect={handleSelectRoute}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </div>
+        )}
+        {/* + 버튼 — 경로 등록 진입점 */}
+        <button
+          onClick={() => navigate('/setup')}
+          className="flex-shrink-0 w-8 h-8 rounded-pill bg-surface-muted hover:bg-border-strong flex items-center justify-center transition-colors"
+          aria-label="경로 추가"
+        >
+          <Plus className="w-4 h-4 text-text-secondary" strokeWidth={2.5} />
+        </button>
+      </div>
+    </div>
+  );
+
   if (isLoading) {
     return (
-      <div className="h-dvh bg-[#F6F7F9] flex items-center justify-center pb-20">
-        <Loader2 className="w-6 h-6 animate-spin text-[#6B7280]" />
-        <BottomNav />
-      </div>
+      <PageShell>
+        <div className="flex-1 flex items-center justify-center py-16">
+          <Loader2 className="w-6 h-6 animate-spin text-text-secondary" />
+        </div>
+      </PageShell>
     );
   }
 
   if (isError) {
     return (
-      <div className="h-dvh bg-[#F6F7F9] flex items-center justify-center p-4 pb-20">
-        <Card className="max-w-md w-full p-8 text-center rounded-2xl border border-black/5 shadow-sm">
-          <p className="text-[#DC2626] text-[15px] mb-4">경로를 불러오지 못했습니다</p>
-          <Button onClick={() => refetch()} className="bg-[#111827] hover:bg-[#1F2937] rounded-xl">
-            다시 시도
-          </Button>
-        </Card>
-        <BottomNav />
-      </div>
+      <PageShell>
+        <div className="flex-1 flex items-center justify-center p-4 py-16">
+          <Card className="max-w-md w-full p-8 text-center rounded-card border border-border-subtle shadow-card bg-surface-card">
+            <p className="text-text-danger text-body mb-4">경로를 불러오지 못했습니다</p>
+            <Button onClick={() => refetch()} className="bg-text-primary hover:bg-text-primary/90 rounded-control">
+              다시 시도
+            </Button>
+          </Card>
+        </div>
+      </PageShell>
     );
   }
 
   if (activeRoutes.length === 0) {
     return (
-      <div className="h-dvh bg-[#F6F7F9] flex items-center justify-center p-4 pb-20">
-        <EmptyState
-          icon={<MapPin className="w-8 h-8 text-white" strokeWidth={1.5} />}
-          title="경로를 등록해주세요"
-          description={['출발지와 도착지를 설정하면', '실시간으로 교통정보를 확인할 수 있습니다']}
-          cta={{ label: '경로 등록하기', onClick: () => navigate('/setup') }}
-        />
-        <BottomNav />
-      </div>
+      <PageShell>
+        <div className="flex-1 flex items-center justify-center p-4 py-16">
+          <EmptyState
+            icon={<MapPin className="w-8 h-8 text-white" strokeWidth={1.5} />}
+            title="경로를 등록해주세요"
+            description={['출발지와 도착지를 설정하면', '실시간으로 교통정보를 확인할 수 있습니다']}
+            cta={{ label: '경로 등록하기', onClick: () => navigate('/setup') }}
+          />
+        </div>
+      </PageShell>
     );
   }
 
   if (!currentSegment) return null;
 
   return (
-    <div className="h-dvh overflow-y-auto bg-[#F6F7F9] pb-24">
-      {/* 헤더 */}
-      <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <Navigation className="w-4 h-4 text-[#6B7280] flex-shrink-0" strokeWidth={2} />
-            <div className="min-w-0">
-              <span className="text-[15px] text-[#111827] font-medium">{currentRoute?.name ?? '내 경로'}</span>
-              {currentRoute?.to && (
-                <span className="text-[13px] text-[#9CA3AF] ml-1.5 truncate max-w-[160px] inline-block align-middle">· {currentRoute.to}</span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex gap-1">
+    <PageShell>
+      <PageHeader
+        leading={<Navigation className="w-4 h-4 text-text-secondary flex-shrink-0" strokeWidth={2} />}
+        title={currentRoute?.name ?? '내 경로'}
+        badge={currentRoute?.to ? (
+          <span className="text-caption ml-1.5 truncate max-w-[160px] inline-block align-middle">
+            · {currentRoute.to}
+          </span>
+        ) : undefined}
+        right={
+          <>
             <Button
               variant="ghost"
               size="icon"
               onClick={handleRefresh}
-              className={`rounded-xl hover:bg-[#F1F3F5] w-9 h-9 ${isRefreshing ? 'animate-spin' : ''}`}
+              className={`rounded-control hover:bg-surface-muted w-9 h-9 ${isRefreshing ? 'animate-spin' : ''}`}
             >
-              <RefreshCw className="w-[18px] h-[18px] text-[#6B7280]" strokeWidth={2} />
+              <RefreshCw className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
             </Button>
             <Button
               variant="ghost"
               size="icon"
               onClick={() => navigate('/routes')}
-              className="rounded-xl hover:bg-[#F1F3F5] w-9 h-9"
+              className="rounded-control hover:bg-surface-muted w-9 h-9"
             >
-              <Settings className="w-[18px] h-[18px] text-[#6B7280]" strokeWidth={2} />
+              <Settings className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
             </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        bottom={chipRow}
+      />
 
-      {/* 활성 경로 탭 + 경로 추가 버튼 */}
-      <div className="bg-white border-b border-black/5">
-        <div className="max-w-2xl mx-auto px-4 py-2 flex items-center gap-2">
-          {/* 칩 스크롤 영역 */}
-          {orderedActiveRoutes.length > 0 && (
-            <div className="flex-1 overflow-x-auto min-w-0">
-              <div className="flex gap-2 w-max">
-                {orderedActiveRoutes.map((route, idx) => (
-                  <RouteChip
-                    key={route.id}
-                    route={route}
-                    index={idx}
-                    isSelected={route.id === currentRoute?.id}
-                    onSelect={handleSelectRoute}
-                    onMove={handleChipMove}
-                    onDrop={handleChipDrop}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          {/* + 버튼 — 경로 등록 진입점 */}
-          <button
-            onClick={() => navigate('/setup')}
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-[#F1F3F5] hover:bg-[#E5E7EB] flex items-center justify-center transition-colors"
-            aria-label="경로 추가"
-          >
-            <Plus className="w-4 h-4 text-[#6B7280]" strokeWidth={2.5} />
-          </button>
-        </div>
-      </div>
-
-      <div className="max-w-2xl mx-auto px-4 pt-4 space-y-3">
+      <div className="max-w-[var(--page-max-width)] mx-auto px-[var(--page-padding-x)] pt-4 space-y-3">
         {/* 전체 스텝 세로 타임라인 */}
         <div className="space-y-3">
           {groupedSegments.map((group, groupIdx) => {
@@ -551,19 +523,19 @@ export default function Home() {
               return (
                 <div key={groupIdx} className="flex items-center gap-3 px-1">
                   {/* 체크 아이콘 */}
-                  <div className="w-6 h-6 rounded-full bg-[#111827] flex items-center justify-center flex-shrink-0">
+                  <div className="w-6 h-6 rounded-pill bg-text-primary flex items-center justify-center flex-shrink-0">
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                       <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </div>
                   {/* 정류장명 + 노선 */}
-                  <div className="flex-1 min-w-0 bg-white rounded-2xl border border-black/5 px-4 py-3">
+                  <div className="flex-1 min-w-0 bg-surface-card rounded-card border border-border-subtle px-4 py-3">
                     {group.map((seg) => (
                       <div key={seg.id} className="flex items-center justify-between gap-2">
-                        <StopName name={seg.stop.displayName ?? seg.stop.name} alias={seg.stop.alias ?? undefined} size="sm" className="text-[#6B7280] truncate" />
+                        <StopName name={seg.stop.displayName ?? seg.stop.name} alias={seg.stop.alias ?? undefined} size="sm" className="text-text-secondary truncate" />
                         <div className="flex gap-1 flex-shrink-0">
                           {seg.stop.lines.slice(0, 2).map(line => (
-                            <span key={line} className="text-[12px] px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[#9CA3AF]">
+                            <span key={line} className="text-caption px-2 py-0.5 rounded-chip bg-surface-muted text-text-tertiary">
                               {seg.stop.type === 'subway' ? line : `${line}번`}
                             </span>
                           ))}
@@ -580,11 +552,11 @@ export default function Home() {
               return (
                 <div key={groupIdx}>
                   <div className="px-1 flex items-center justify-between mb-2">
-                    <h3 className="text-[15px] font-semibold text-[#111827]">지금 타야할 교통수단</h3>
+                    <h3 className="text-section">지금 타야할 교통수단</h3>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-[13px] text-[#6B7280] hover:text-[#111827] h-auto p-0 font-medium"
+                      className="text-label hover:text-text-primary h-auto p-0 font-medium"
                       onClick={handleBoardingComplete}
                     >
                       탑승 완료
@@ -603,10 +575,10 @@ export default function Home() {
                       return (
                         <Card
                           key={seg.id}
-                          className={`rounded-2xl border border-black/5 shadow-sm bg-white overflow-hidden ${isGrouped ? 'flex-1 min-w-0' : ''}`}
+                          className={`rounded-card border border-border-subtle shadow-card bg-surface-card overflow-hidden ${isGrouped ? 'flex-1 min-w-0' : ''}`}
                         >
                           {/* 정류장 정보 */}
-                          <div className={isGrouped ? "px-3 py-3 border-b border-black/5" : "p-5 border-b border-black/5"}>
+                          <div className={isGrouped ? "px-3 py-3 border-b border-border-subtle" : "p-5 border-b border-border-subtle"}>
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex-1 min-w-0">
                                 <div className="mb-1">
@@ -617,7 +589,7 @@ export default function Home() {
                                   />
                                 </div>
                                 {seg.stop.type === 'bus' && seg.stop.arsId && (
-                                  <div className="text-[11px] text-[#9CA3AF] font-mono mt-1">
+                                  <div className="text-caption font-mono mt-1">
                                     ARS {seg.stop.arsId}
                                   </div>
                                 )}
@@ -625,7 +597,7 @@ export default function Home() {
                                 {seg.stop.type === 'bus'
                                   && segArrivalData?.type === 'bus_by_stopid'
                                   && segArrivalData.data.provider === 'odsay_fallback' && (
-                                  <div className="text-[11px] text-[#9CA3AF] mt-1">
+                                  <div className="text-caption mt-1">
                                     도착 정보가 부정확할 수 있어요 (제휴 데이터 사용)
                                   </div>
                                 )}
@@ -634,7 +606,7 @@ export default function Home() {
                           </div>
 
                           {/* 버스/전철 도착 정보 */}
-                          <div className="divide-y divide-black/5">
+                          <div className="divide-y divide-border-subtle">
                             {segArrivalError ? (
                               <ArrivalErrorInline
                                 code={segArrivalError.code}
@@ -642,7 +614,7 @@ export default function Home() {
                                 onRefresh={segArrivalError.code === 'ARRIVAL_PROVIDER_ERROR' ? handleRefresh : undefined}
                               />
                             ) : seg.stop.lines.length === 0 ? (
-                              <div className="px-5 py-4 text-[14px] text-[#9CA3AF]">
+                              <div className="px-5 py-4 text-body text-text-tertiary">
                                 노선 정보 없음
                               </div>
                             ) : (
@@ -693,10 +665,10 @@ export default function Home() {
                                 if (isGrouped) {
                                   // isGrouped === true: 세로 2단 레이아웃
                                   return (
-                                    <div key={line} className="px-3 py-3 hover:bg-[#F9FAFB] transition-colors">
+                                    <div key={line} className="px-3 py-3 hover:bg-surface-input transition-colors">
                                       {/* 위 행: 아이콘 + 번호/타입 */}
                                       <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
+                                        <div className="w-8 h-8 rounded-control bg-surface-input flex items-center justify-center flex-shrink-0">
                                           {isSubway ? (
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                               <path d="M12 12h0"/><path d="M9.75 9.75h4.5"/><path d="M7 15h10"/>
@@ -713,19 +685,19 @@ export default function Home() {
                                           )}
                                         </div>
                                         <div className="min-w-0">
-                                          <div className="text-[13px] font-semibold text-[#111827]">
+                                          <div className="text-label font-semibold text-text-primary">
                                             {isSubway ? displayLine : `${line}번`}
                                           </div>
                                           <div className="flex items-center gap-1 mt-0.5">
-                                            <span className="text-[11px] text-[#6B7280]">
+                                            <span className="text-caption text-text-secondary">
                                               {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
                                             </span>
                                             {headsign && (
                                               <span
-                                                className="text-[10px] font-medium px-1.5 py-0.5 rounded border whitespace-nowrap"
+                                                className="text-caption font-medium px-1.5 py-0.5 rounded-chip border whitespace-nowrap"
                                                 style={subwayColorInfo
                                                   ? { backgroundColor: subwayColorInfo.bgColor, color: subwayColorInfo.textColor, borderColor: `${subwayColorInfo.color}33` }
-                                                  : { backgroundColor: '#F1F3F5', color: '#6B7280', borderColor: '#E5E7EB' }
+                                                  : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-secondary)', borderColor: 'var(--border-strong)' }
                                                 }
                                               >
                                                 {headsign}방향
@@ -738,32 +710,32 @@ export default function Home() {
                                       {/* 아래 행: 도착 정보 — 카카오 스타일 (지하철: 행선지 prefix) */}
                                       <div className="mt-2 space-y-1.5">
                                         {isArrivalLoading ? (
-                                          <div className="text-[12px] text-[#9CA3AF]">조회 중...</div>
+                                          <div className="text-caption text-text-tertiary">조회 중...</div>
                                         ) : noService ? (
-                                          <div className="text-[12px] text-[#9CA3AF]">도착 정보 없음</div>
+                                          <div className="text-caption text-text-tertiary">도착 정보 없음</div>
                                         ) : (
                                           <>
                                             {/* 첫 번째 차 — isUrgent 빨강 */}
                                             <div className="flex items-center gap-1.5" aria-label="이번 차">
                                               {item1Headsign && (
-                                                <span className="text-[11px] text-[#6B7280] whitespace-nowrap font-medium">{item1Headsign}행</span>
+                                                <span className="text-caption text-text-secondary whitespace-nowrap font-medium">{item1Headsign}행</span>
                                               )}
-                                              <span className={`text-[13px] font-bold tabular-nums whitespace-nowrap ${isUrgent ? 'text-[#DC2626]' : 'text-[#111827]'}`}>
+                                              <span className={`text-label font-bold tabular-nums whitespace-nowrap ${isUrgent ? 'text-arrival-urgent' : 'text-arrival-normal'}`}>
                                                 {arrivalTimeOnly}
                                               </span>
                                               {stopsBefore && (
-                                                <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
+                                                <span className="text-caption text-text-tertiary whitespace-nowrap">{stopsBefore}</span>
                                               )}
                                             </div>
                                             {/* 두 번째 차 — 항상 회색 */}
                                             {arrivalText2 && (
                                               <div className="flex items-center gap-1.5" aria-label="다음 차">
                                                 {item2Headsign && (
-                                                  <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{item2Headsign}행</span>
+                                                  <span className="text-caption text-text-tertiary whitespace-nowrap">{item2Headsign}행</span>
                                                 )}
-                                                <span className="text-[12px] text-[#9CA3AF] tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
+                                                <span className="text-caption text-arrival-muted tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
                                                 {stopsBefore2 && (
-                                                  <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore2}</span>
+                                                  <span className="text-caption text-text-tertiary whitespace-nowrap">{stopsBefore2}</span>
                                                 )}
                                               </div>
                                             )}
@@ -773,13 +745,13 @@ export default function Home() {
                                         {hasMoreItems && (
                                           <button
                                             onClick={() => setExpandedLines(prev => ({ ...prev, [lineKey]: !prev[lineKey] }))}
-                                            className="mt-0.5 p-0.5 rounded hover:bg-[#F1F3F5] transition-colors"
+                                            className="mt-0.5 p-0.5 rounded-chip hover:bg-surface-muted transition-colors"
                                             aria-label={isLineExpanded ? '접기' : '더 보기'}
                                           >
                                             {isLineExpanded ? (
-                                              <ChevronUp className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                              <ChevronUp className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
                                             ) : (
-                                              <ChevronDown className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                              <ChevronDown className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
                                             )}
                                           </button>
                                         )}
@@ -792,8 +764,8 @@ export default function Home() {
                                               const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway');
                                               return (
                                                 <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between">
-                                                  <div className="text-[11px] text-[#9CA3AF]">{label}</div>
-                                                  <div className="text-[12px] text-[#9CA3AF] tabular-nums">{msg}</div>
+                                                  <div className="text-caption text-text-tertiary">{label}</div>
+                                                  <div className="text-caption text-arrival-muted tabular-nums">{msg}</div>
                                                 </div>
                                               );
                                             })}
@@ -806,11 +778,11 @@ export default function Home() {
 
                                 // isGrouped === false: 기존 가로 레이아웃
                                 return (
-                                  <div key={line} className="px-5 py-4 hover:bg-[#F9FAFB] transition-colors">
+                                  <div key={line} className="px-5 py-4 hover:bg-surface-input transition-colors">
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="flex items-center gap-3 min-w-0 flex-1">
                                         {isSubway ? (
-                                          <div className="w-10 h-10 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
+                                          <div className="w-10 h-10 rounded-control bg-surface-input flex items-center justify-center flex-shrink-0">
                                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                               <path d="M12 12h0"/><path d="M9.75 9.75h4.5"/><path d="M7 15h10"/>
                                               <rect x="5" y="4" width="14" height="16" rx="2"/>
@@ -818,7 +790,7 @@ export default function Home() {
                                             </svg>
                                           </div>
                                         ) : (
-                                          <div className="w-10 h-10 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
+                                          <div className="w-10 h-10 rounded-control bg-surface-input flex items-center justify-center flex-shrink-0">
                                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={busTypeInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                               <path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/>
                                               <path d="m18 18 3-3-3-3"/>
@@ -830,22 +802,22 @@ export default function Home() {
                                         <div className="min-w-0 overflow-hidden">
                                           {/* T22: 호선명 + 헤드사인 배지 */}
                                           <div className="flex items-center gap-1.5 flex-wrap">
-                                            <div className="text-[15px] font-semibold text-[#111827] truncate max-w-[80px]">
+                                            <div className="text-body font-semibold text-text-primary truncate max-w-[80px]">
                                               {isSubway ? displayLine : `${line}번`}
                                             </div>
                                             {headsign && (
                                               <span
-                                                className="text-[12px] font-medium px-2 py-0.5 rounded-md border whitespace-nowrap"
+                                                className="text-caption font-medium px-2 py-0.5 rounded-chip border whitespace-nowrap"
                                                 style={subwayColorInfo
                                                   ? { backgroundColor: subwayColorInfo.bgColor, color: subwayColorInfo.textColor, borderColor: `${subwayColorInfo.color}33` }
-                                                  : { backgroundColor: '#F1F3F5', color: '#6B7280', borderColor: '#E5E7EB' }
+                                                  : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-secondary)', borderColor: 'var(--border-strong)' }
                                                 }
                                               >
                                                 {headsign}방향
                                               </span>
                                             )}
                                           </div>
-                                          <div className="text-[13px] text-[#6B7280] whitespace-nowrap">
+                                          <div className="text-label text-text-secondary whitespace-nowrap">
                                             {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
                                           </div>
                                         </div>
@@ -856,33 +828,33 @@ export default function Home() {
                                         <div className="text-right space-y-1.5">
                                           {isArrivalLoading ? (
                                             <div className="flex items-center gap-1.5 justify-end">
-                                              <Loader2 className="w-[14px] h-[14px] text-[#9CA3AF] animate-spin" strokeWidth={2} />
-                                              <span className="text-[16px] text-[#9CA3AF] tabular-nums">조회 중...</span>
+                                              <Loader2 className="w-[14px] h-[14px] text-text-tertiary animate-spin" strokeWidth={2} />
+                                              <span className="text-section text-text-tertiary tabular-nums">조회 중...</span>
                                             </div>
                                           ) : noService ? (
-                                            <span className="text-[14px] text-[#9CA3AF]">도착 정보 없음</span>
+                                            <span className="text-body text-arrival-muted">도착 정보 없음</span>
                                           ) : (
                                             <>
                                               {/* 첫 번째 차 */}
                                               <div className="flex items-center gap-1.5 justify-end" aria-label="이번 차">
                                                 {item1Headsign && (
-                                                  <span className="text-[12px] text-[#6B7280] whitespace-nowrap font-medium">{item1Headsign}행</span>
+                                                  <span className="text-caption text-text-secondary whitespace-nowrap font-medium">{item1Headsign}행</span>
                                                 )}
-                                                <span className={`font-bold tabular-nums leading-tight whitespace-nowrap text-[18px] ${isUrgent ? 'text-[#DC2626]' : 'text-[#111827]'}`}>
+                                                <span className={`font-bold tabular-nums leading-tight whitespace-nowrap text-section ${isUrgent ? 'text-arrival-urgent' : 'text-arrival-normal'}`}>
                                                   {arrivalTimeOnly}
                                                 </span>
                                                 {stopsBefore && (
-                                                  <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
+                                                  <span className="text-caption text-text-tertiary whitespace-nowrap">{stopsBefore}</span>
                                                 )}
                                               </div>
                                               {/* 두 번째 차 — 항상 회색 */}
                                               {arrivalText2 && (
                                                 <div className="flex items-center gap-1.5 justify-end" aria-label="다음 차">
                                                   {item2Headsign && (
-                                                    <span className="text-[12px] text-[#9CA3AF] whitespace-nowrap">{item2Headsign}행</span>
+                                                    <span className="text-caption text-arrival-muted whitespace-nowrap">{item2Headsign}행</span>
                                                   )}
-                                                  <span className="text-[14px] text-[#9CA3AF] tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
-                                                  {stopsBefore2 && <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore2}</span>}
+                                                  <span className="text-body text-arrival-muted tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
+                                                  {stopsBefore2 && <span className="text-caption text-text-tertiary whitespace-nowrap">{stopsBefore2}</span>}
                                                 </div>
                                               )}
                                             </>
@@ -892,13 +864,13 @@ export default function Home() {
                                         {hasMoreItems && (
                                           <button
                                             onClick={() => setExpandedLines(prev => ({ ...prev, [lineKey]: !prev[lineKey] }))}
-                                            className="mt-1 p-1 rounded-lg hover:bg-[#F1F3F5] transition-colors flex-shrink-0"
+                                            className="mt-1 p-1 rounded-control hover:bg-surface-muted transition-colors flex-shrink-0"
                                             aria-label={isLineExpanded ? '접기' : '더 보기'}
                                           >
                                             {isLineExpanded ? (
-                                              <ChevronUp className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                              <ChevronUp className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
                                             ) : (
-                                              <ChevronDown className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                              <ChevronDown className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
                                             )}
                                           </button>
                                         )}
@@ -914,8 +886,8 @@ export default function Home() {
                                           const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway');
                                           return (
                                             <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between">
-                                              <div className="text-[11px] text-[#9CA3AF]">{label}</div>
-                                              <div className="text-[12px] text-[#9CA3AF] tabular-nums">{msg}</div>
+                                              <div className="text-caption text-text-tertiary">{label}</div>
+                                              <div className="text-caption text-arrival-muted tabular-nums">{msg}</div>
                                             </div>
                                           );
                                         })}
@@ -951,7 +923,7 @@ export default function Home() {
                     <div key={seg.id} className={group.length > 1 ? "flex-1 min-w-0" : ""}>
                       {/* 미니 카드 헤더 (항상 보임) */}
                       <Card
-                        className="rounded-2xl border border-black/5 bg-white overflow-hidden cursor-pointer h-full"
+                        className="rounded-card border border-border-subtle bg-surface-card overflow-hidden cursor-pointer h-full"
                         onClick={() => setExpandedUpcoming(prev => {
                           const next = new Set(prev)
                           next.has(groupIdx) ? next.delete(groupIdx) : next.add(groupIdx)
@@ -965,39 +937,40 @@ export default function Home() {
                             </div>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {seg.stop.lines.slice(0, 3).map(line => (
-                                <span key={line} className="text-[11px] px-1.5 py-0.5 rounded-md bg-[#F1F3F5] text-[#9CA3AF]">
+                                <span key={line} className="text-caption px-1.5 py-0.5 rounded-chip bg-surface-muted text-text-tertiary">
                                   {seg.stop.type === 'subway' ? line : `${line}번`}
                                 </span>
                               ))}
                               {seg.stop.lines.length > 3 && (
-                                <span className="text-[11px] text-[#9CA3AF]">+{seg.stop.lines.length - 3}</span>
+                                <span className="text-caption text-text-tertiary">+{seg.stop.lines.length - 3}</span>
                               )}
                             </div>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                             {isLoading ? (
-                              <Loader2 className="w-3.5 h-3.5 text-[#9CA3AF] animate-spin" strokeWidth={2} />
+                              <Loader2 className="w-3.5 h-3.5 text-text-tertiary animate-spin" strokeWidth={2} />
                             ) : (
                               <ArrivalText
                                 msg={fastestText}
-                                className={`tabular-nums ${fastestText === '--' ? 'text-[#D1D5DB] text-[14px]' : 'text-[#374151]'}`}
+                                size="lg"
+                                className={`tabular-nums ${fastestText === '--' ? 'text-arrival-empty text-body' : 'text-text-primary'}`}
                               />
                             )}
                             {isExpanded ? (
-                              <ChevronUp className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                              <ChevronUp className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
                             ) : (
-                              <ChevronDown className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                              <ChevronDown className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
                             )}
                           </div>
                         </div>
 
                         {/* 펼쳐지면 노선별 도착 상세 */}
                         {isExpanded && (
-                          <div className="border-t border-black/5 divide-y divide-black/5">
+                          <div className="border-t border-border-subtle divide-y divide-border-subtle">
                             {seg.stop.lines.length === 0 ? (
-                              <div className="px-4 py-3 text-[13px] text-[#9CA3AF]">노선 정보 없음</div>
+                              <div className="px-4 py-3 text-label text-text-tertiary">노선 정보 없음</div>
                             ) : (
-                              seg.stop.lines.map((line, idx) => {
+                              seg.stop.lines.map((line) => {
                                 const isSubway = seg.stop.type === 'subway'
                                 const displayLine = isSubway ? normalizeSubwayLineName(line) : line
                                 const stopRoute = seg.stop.stopRoutes?.find(r => r.routeName === line)
@@ -1012,26 +985,26 @@ export default function Home() {
                                 return (
                                   <div key={line} className="px-4 py-3 flex items-center justify-between">
                                     <div className="flex items-center gap-2 min-w-0">
-                                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: isSubway ? subwayColorInfo?.color : busTypeInfo?.color ?? '#9CA3AF' }} />
+                                      <div className="w-2 h-2 rounded-pill flex-shrink-0" style={{ backgroundColor: isSubway ? subwayColorInfo?.color : busTypeInfo?.color ?? 'var(--text-tertiary)' }} />
                                       <div className="min-w-0">
-                                        <div className="text-[13px] font-medium text-[#374151]">
+                                        <div className="text-label font-medium text-text-primary">
                                           {isSubway ? displayLine : `${line}번`}
                                         </div>
-                                        <div className="text-[11px] text-[#9CA3AF]">
+                                        <div className="text-caption text-text-tertiary">
                                           {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
                                         </div>
                                       </div>
                                     </div>
                                     <div className="text-right flex-shrink-0 ml-2">
                                       {isLoading ? (
-                                        <div className="text-[12px] text-[#9CA3AF]">조회 중...</div>
+                                        <div className="text-caption text-text-tertiary">조회 중...</div>
                                       ) : (
                                         <>
-                                          <div className={`text-[13px] font-semibold tabular-nums ${noSvc ? 'text-[#D1D5DB]' : 'text-[#374151]'}`}>
+                                          <div className={`text-label font-semibold tabular-nums ${noSvc ? 'text-arrival-empty' : 'text-text-primary'}`}>
                                             {noSvc ? '도착 정보 없음' : arrText}
                                           </div>
                                           {arrText2 && (
-                                            <div className="text-[11px] text-[#9CA3AF] tabular-nums">{arrText2}</div>
+                                            <div className="text-caption text-arrival-muted tabular-nums">{arrText2}</div>
                                           )}
                                         </>
                                       )}
@@ -1052,18 +1025,16 @@ export default function Home() {
 
           {/* 경로 완료 */}
           {currentGroupIndex === groupedSegments.length - 1 && (
-            <Card className="p-6 text-center rounded-2xl border border-black/5 shadow-sm bg-white">
-              <div className="w-12 h-12 bg-[#111827] rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Card className="p-6 text-center rounded-card border border-border-subtle shadow-card bg-surface-card">
+              <div className="w-12 h-12 bg-text-primary rounded-card flex items-center justify-center mx-auto mb-4">
                 <MapPin className="w-6 h-6 text-white" strokeWidth={2} />
               </div>
-              <h3 className="text-[17px] font-semibold text-[#111827] mb-1">마지막 구간입니다</h3>
-              <p className="text-[14px] text-[#6B7280]">곧 목적지에 도착합니다</p>
+              <h3 className="text-section mb-1">마지막 구간입니다</h3>
+              <p className="text-body text-text-secondary">곧 목적지에 도착합니다</p>
             </Card>
           )}
         </div>
       </div>
-
-      <BottomNav />
-    </div>
+    </PageShell>
   );
 }

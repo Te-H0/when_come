@@ -8,6 +8,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import EmptyState from "@/components/EmptyState";
+import PageShell from "@/components/PageShell";
+import PageHeader from "@/components/PageHeader";
 import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
@@ -33,7 +35,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import BottomNav from "@/components/BottomNav";
 import StopName from "@/components/StopName";
 import AliasEditor from "@/components/AliasEditor";
 import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
@@ -90,16 +91,16 @@ function RouteRenameDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-sm rounded-2xl">
+      <DialogContent className="max-w-sm rounded-card">
         <DialogHeader>
-          <DialogTitle className="text-[17px]">경로 이름 수정</DialogTitle>
+          <DialogTitle className="text-card-title">경로 이름 수정</DialogTitle>
         </DialogHeader>
         <Input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
           placeholder="경로 이름"
-          className="rounded-xl h-11 text-[15px]"
+          className="rounded-control h-11 text-body"
           disabled={isPending}
           autoFocus
         />
@@ -108,14 +109,14 @@ function RouteRenameDialog({
             variant="outline"
             onClick={onClose}
             disabled={isPending}
-            className="rounded-xl flex-1"
+            className="rounded-control flex-1"
           >
             취소
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={isPending || !value.trim()}
-            className="bg-[#111827] hover:bg-[#1F2937] rounded-xl flex-1"
+            className="bg-text-primary hover:bg-text-primary/90 rounded-control flex-1"
           >
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}
           </Button>
@@ -160,20 +161,20 @@ function RouteCard({
   }, [route.segments]);
 
   return (
-    <Card className="overflow-hidden rounded-2xl border border-black/5 shadow-sm bg-white">
+    <Card className="overflow-hidden rounded-card border border-border-subtle shadow-card bg-surface-card">
       {/* 카드 헤더 */}
-      <div className="p-4 border-b border-black/5">
+      <div className="p-4 border-b border-border-subtle">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-[17px] font-semibold text-[#111827] truncate">{route.name}</h3>
+              <h3 className="text-card-title truncate">{route.name}</h3>
               {route.isActive && (
-                <span className="px-2 py-0.5 rounded-md bg-[#111827] text-white text-[11px] font-medium shrink-0">
+                <span className="px-2 py-0.5 rounded-chip bg-text-primary text-white text-caption font-medium shrink-0">
                   활성
                 </span>
               )}
             </div>
-            <p className="text-[14px] text-[#6B7280]">
+            <p className="text-body text-text-secondary">
               {route.from} → {route.to}
             </p>
           </div>
@@ -186,21 +187,21 @@ function RouteCard({
             />
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-xl w-8 h-8">
-                  <MoreVertical className="w-[18px] h-[18px] text-[#6B7280]" strokeWidth={2} />
+                <Button variant="ghost" size="icon" className="rounded-control w-8 h-8">
+                  <MoreVertical className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="rounded-xl border-black/5">
+              <DropdownMenuContent align="end" className="rounded-control border-border-subtle">
                 <DropdownMenuItem
                   onClick={onRename}
-                  className="text-[14px]"
+                  className="text-body"
                 >
                   <Pencil className="w-4 h-4 mr-2" strokeWidth={2} />
                   이름 수정
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={onDelete}
-                  className="text-[14px] text-[#DC2626]"
+                  className="text-body text-text-danger"
                   disabled={isDeletePending}
                 >
                   <Trash2 className="w-4 h-4 mr-2" strokeWidth={2} />
@@ -214,7 +215,7 @@ function RouteCard({
 
       {/* 경로 상세 — stepGroup 단위 */}
       <div className="p-4 space-y-3">
-        <h4 className="text-[13px] font-medium text-[#6B7280]">
+        <h4 className="text-label text-text-secondary">
           경로 ({groupedSegs.length}단계 / {route.segments.length}개 정류장)
         </h4>
 
@@ -228,14 +229,14 @@ function RouteCard({
                   ? getSubwayColor(segment.stop.lines[0]).color
                   : !isSubway && segment.stop.lines.length > 0
                     ? getBusTypeByOdsay(firstStopRoute?.busType, segment.stop.lines[0]).color
-                    : '#6B7280';
+                    : 'var(--text-secondary)';
 
                 return (
                   <div
                     key={segment.id}
-                    className={`flex items-start gap-3 ${group.length > 1 ? 'flex-1 min-w-0 p-2 rounded-xl bg-[#F9FAFB] border border-[#DBEAFE]' : ''}`}
+                    className={`flex items-start gap-3 ${group.length > 1 ? 'flex-1 min-w-0 p-2 rounded-control bg-surface-input border border-surface-info-border' : ''}`}
                   >
-                    <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0">
+                    <div className="w-9 h-9 rounded-control bg-surface-card flex items-center justify-center flex-shrink-0">
                       {segment.stop.type === 'bus' ? (
                         <Bus className="w-[18px] h-[18px]" strokeWidth={2} style={{ color: nodeColor }} />
                       ) : (
@@ -258,7 +259,7 @@ function RouteCard({
                         {segment.stop.lines.map(line => (
                           <span
                             key={line}
-                            className="text-[12px] px-1.5 py-0.5 rounded bg-[#F1F3F5] text-[#6B7280] font-medium"
+                            className="text-caption px-1.5 py-0.5 rounded-chip bg-surface-muted text-text-secondary font-medium"
                           >
                             {isSubway ? line : `${line}번`}
                           </span>
@@ -271,7 +272,7 @@ function RouteCard({
             </div>
             {groupIdx < groupedSegs.length - 1 && (
               <div className="flex justify-center my-2 ml-5">
-                <div className="w-px h-4 bg-[#E5E7EB]" />
+                <div className="w-px h-4 bg-border-strong" />
               </div>
             )}
           </Fragment>
@@ -293,13 +294,13 @@ function FavoriteRow({ fav, onUpdateAlias, onDelete }: FavoriteRowProps) {
   const isSubway = fav.stop_type === 'subway';
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3.5 hover:bg-[#F9FAFB] transition-colors">
+    <div className="flex items-center gap-3 px-4 py-3 hover:bg-surface-input transition-colors">
       {/* 아이콘 */}
-      <div className="w-9 h-9 rounded-lg bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
+      <div className="w-9 h-9 rounded-control bg-surface-input flex items-center justify-center flex-shrink-0">
         {isSubway ? (
-          <Train className="w-[18px] h-[18px] text-[#6B7280]" strokeWidth={2} />
+          <Train className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
         ) : (
-          <Bus className="w-[18px] h-[18px] text-[#6B7280]" strokeWidth={2} />
+          <Bus className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
         )}
       </div>
 
@@ -313,7 +314,7 @@ function FavoriteRow({ fav, onUpdateAlias, onDelete }: FavoriteRowProps) {
           />
           <AliasEditor initialAlias={fav.alias} onSave={onUpdateAlias} />
         </div>
-        <div className="text-[12px] text-[#9CA3AF] mt-0.5">
+        <div className="text-caption mt-0.5">
           {fav.favorite_stop_routes.map(r => r.route_name).join(' · ')}
         </div>
       </div>
@@ -321,14 +322,14 @@ function FavoriteRow({ fav, onUpdateAlias, onDelete }: FavoriteRowProps) {
       {/* 삭제 버튼 */}
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="rounded-xl w-8 h-8 flex-shrink-0">
-            <MoreVertical className="w-[18px] h-[18px] text-[#6B7280]" strokeWidth={2} />
+          <Button variant="ghost" size="icon" className="rounded-control w-8 h-8 flex-shrink-0">
+            <MoreVertical className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="rounded-xl border-black/5">
+        <DropdownMenuContent align="end" className="rounded-control border-border-subtle">
           <DropdownMenuItem
             onClick={onDelete}
-            className="text-[14px] text-[#DC2626]"
+            className="text-body text-text-danger"
           >
             <Trash2 className="w-4 h-4 mr-2" strokeWidth={2} />
             삭제
@@ -453,105 +454,104 @@ export default function RouteManagement() {
 
   const isLoading = routesLoading || favsLoading;
 
+  // 탭 바 (PageHeader bottom 슬롯)
+  const tabBar = (
+    <div className="flex border-b border-border-subtle">
+      {(
+        [
+          { key: 'routes' as TabKey, label: '경로', icon: MapIcon },
+          { key: 'favorites' as TabKey, label: '즐겨찾기', icon: Star },
+        ] as const
+      ).map(({ key, label, icon: Icon }) => (
+        <button
+          key={key}
+          onClick={() => setActiveTab(key)}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-body font-medium border-b-2 transition-colors ${
+            activeTab === key
+              ? 'border-text-primary text-text-primary'
+              : 'border-transparent text-text-tertiary hover:text-text-secondary'
+          }`}
+        >
+          <Icon className="w-4 h-4" strokeWidth={2} />
+          {label}
+          {key === 'routes' && routes.length > 0 && (
+            <span className={`text-caption px-1.5 py-0.5 rounded-pill font-medium ${
+              activeTab === key ? 'bg-text-primary text-white' : 'bg-surface-muted text-text-tertiary'
+            }`}>
+              {routes.length}
+            </span>
+          )}
+          {key === 'favorites' && favorites.length > 0 && (
+            <span className={`text-caption px-1.5 py-0.5 rounded-pill font-medium ${
+              activeTab === key ? 'bg-text-primary text-white' : 'bg-surface-muted text-text-tertiary'
+            }`}>
+              {favorites.length}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+
   if (isLoading) {
     return (
-      <div className="h-dvh bg-[#F6F7F9] flex items-center justify-center pb-20">
-        <Loader2 className="w-6 h-6 animate-spin text-[#6B7280]" />
-        <BottomNav />
-      </div>
+      <PageShell>
+        <div className="flex-1 flex items-center justify-center py-16">
+          <Loader2 className="w-6 h-6 animate-spin text-text-secondary" />
+        </div>
+      </PageShell>
     );
   }
 
   if (routesError || favsError) {
     return (
-      <div className="h-dvh bg-[#F6F7F9] flex items-center justify-center p-4 pb-20">
-        <Card className="max-w-md w-full p-8 text-center rounded-2xl border border-black/5 shadow-sm">
-          <p className="text-[#DC2626] text-[15px]">데이터를 불러오지 못했습니다</p>
-          <Button
-            onClick={() => {
-              queryClient.invalidateQueries({ queryKey: ['routes'] });
-              queryClient.invalidateQueries({ queryKey: ['favorite-stops'] });
-            }}
-            className="mt-4 bg-[#111827] hover:bg-[#1F2937] rounded-xl"
-          >
-            다시 시도
-          </Button>
-        </Card>
-        <BottomNav />
-      </div>
+      <PageShell>
+        <div className="flex-1 flex items-center justify-center p-4 py-16">
+          <Card className="max-w-md w-full p-8 text-center rounded-card border border-border-subtle shadow-card bg-surface-card">
+            <p className="text-text-danger text-body">데이터를 불러오지 못했습니다</p>
+            <Button
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ['routes'] });
+                queryClient.invalidateQueries({ queryKey: ['favorite-stops'] });
+              }}
+              className="mt-4 bg-text-primary hover:bg-text-primary/90 rounded-control"
+            >
+              다시 시도
+            </Button>
+          </Card>
+        </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="h-dvh overflow-y-auto bg-[#F6F7F9] pb-24">
-      {/* 헤더 */}
-      <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/')} className="rounded-xl w-9 h-9">
-              <ArrowLeft className="w-5 h-5" strokeWidth={2} />
-            </Button>
-            <h1 className="text-[17px] font-semibold text-[#111827]">내 경로</h1>
-          </div>
-          {activeTab === 'routes' && (
+    <PageShell>
+      <PageHeader
+        back={() => navigate('/')}
+        title="내 경로"
+        right={
+          activeTab === 'routes' ? (
             <Button
               onClick={() => navigate('/setup')}
-              className="bg-[#111827] hover:bg-[#1F2937] rounded-xl h-9 px-4 text-[14px] font-medium"
+              className="bg-text-primary hover:bg-text-primary/90 rounded-control h-9 px-4 text-button"
             >
               <Plus className="w-[16px] h-[16px] mr-1.5" strokeWidth={2} />
               새 경로
             </Button>
-          )}
-          {activeTab === 'favorites' && (
+          ) : (
             <Button
               onClick={() => navigate('/favorites/add')}
-              className="bg-[#111827] hover:bg-[#1F2937] rounded-xl h-9 px-4 text-[14px] font-medium"
+              className="bg-text-primary hover:bg-text-primary/90 rounded-control h-9 px-4 text-button"
             >
               <Plus className="w-[16px] h-[16px] mr-1.5" strokeWidth={2} />
               즐겨찾기 추가
             </Button>
-          )}
-        </div>
+          )
+        }
+        bottom={tabBar}
+      />
 
-        {/* 탭 */}
-        <div className="max-w-2xl mx-auto px-4 pb-0 flex border-b border-black/5">
-          {(
-            [
-              { key: 'routes' as TabKey, label: '경로', icon: MapIcon },
-              { key: 'favorites' as TabKey, label: '즐겨찾기', icon: Star },
-            ] as const
-          ).map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-[14px] font-medium border-b-2 transition-colors ${
-                activeTab === key
-                  ? 'border-[#111827] text-[#111827]'
-                  : 'border-transparent text-[#9CA3AF] hover:text-[#6B7280]'
-              }`}
-            >
-              <Icon className="w-4 h-4" strokeWidth={2} />
-              {label}
-              {key === 'routes' && routes.length > 0 && (
-                <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${
-                  activeTab === key ? 'bg-[#111827] text-white' : 'bg-[#F1F3F5] text-[#9CA3AF]'
-                }`}>
-                  {routes.length}
-                </span>
-              )}
-              {key === 'favorites' && favorites.length > 0 && (
-                <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${
-                  activeTab === key ? 'bg-[#111827] text-white' : 'bg-[#F1F3F5] text-[#9CA3AF]'
-                }`}>
-                  {favorites.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="max-w-2xl mx-auto px-4 pt-4 space-y-3">
+      <div className="max-w-[var(--page-max-width)] mx-auto px-[var(--page-padding-x)] pt-4 space-y-3">
         {/* ─── 경로 탭 ─── */}
         {activeTab === 'routes' && (
           <>
@@ -590,7 +590,7 @@ export default function RouteManagement() {
                 cta={{ label: '즐겨찾기 추가', onClick: () => navigate('/favorites/add') }}
               />
             ) : (
-              <Card className="overflow-hidden rounded-2xl border border-black/5 shadow-sm bg-white divide-y divide-black/5">
+              <Card className="overflow-hidden rounded-card border border-border-subtle shadow-card bg-surface-card divide-y divide-border-subtle">
                 {favorites.map((fav) => (
                   <FavoriteRow
                     key={fav.id}
@@ -604,8 +604,6 @@ export default function RouteManagement() {
           </>
         )}
       </div>
-
-      <BottomNav />
 
       {/* 경로 삭제 확인 */}
       <AlertDialog
@@ -629,7 +627,7 @@ export default function RouteManagement() {
             <AlertDialogAction
               onClick={() => { if (pendingDeleteId) deleteMutation.mutate(pendingDeleteId); }}
               disabled={deleteMutation.isPending}
-              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white"
+              className="bg-text-danger hover:bg-text-danger/80 text-white"
             >
               삭제
             </AlertDialogAction>
@@ -659,7 +657,7 @@ export default function RouteManagement() {
             <AlertDialogAction
               onClick={() => { if (pendingFavDeleteId) deleteFavMutation.mutate(pendingFavDeleteId); }}
               disabled={deleteFavMutation.isPending}
-              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white"
+              className="bg-text-danger hover:bg-text-danger/80 text-white"
             >
               삭제
             </AlertDialogAction>
@@ -677,6 +675,6 @@ export default function RouteManagement() {
           isPending={renameMutation.isPending}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -56,7 +56,7 @@ export default function AliasEditor({ initialAlias, onSave, className }: AliasEd
     return (
       <button
         onClick={handleOpen}
-        className={`inline-flex items-center justify-center w-7 h-7 rounded-lg text-[#9CA3AF] hover:text-[#6B7280] hover:bg-[#F3F4F6] transition-colors ${className ?? ''}`}
+        className={`inline-flex items-center justify-center w-7 h-7 rounded-chip text-text-tertiary hover:text-text-secondary hover:bg-surface-muted transition-colors ${className ?? ''}`}
         aria-label="별명 편집"
       >
         <Pencil className="w-4 h-4" />
@@ -74,13 +74,13 @@ export default function AliasEditor({ initialAlias, onSave, className }: AliasEd
         onKeyDown={handleKeyDown}
         disabled={isSaving}
         placeholder="예: 회사 앞"
-        className="h-8 px-2.5 text-[13px] rounded-lg border border-black/10 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 disabled:opacity-50 min-w-0 w-32"
+        className="h-8 px-2.5 text-caption rounded-chip border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 disabled:opacity-50 min-w-0 w-32"
       />
       {/* 저장 */}
       <button
         onClick={handleConfirm}
         disabled={isSaving}
-        className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-white bg-[#111827] hover:bg-[#374151] disabled:opacity-50 transition-colors"
+        className="inline-flex items-center justify-center w-7 h-7 rounded-chip text-white bg-text-primary hover:bg-text-primary/80 disabled:opacity-50 transition-colors"
         aria-label="저장"
       >
         {isSaving ? (
@@ -93,7 +93,7 @@ export default function AliasEditor({ initialAlias, onSave, className }: AliasEd
       <button
         onClick={handleCancel}
         disabled={isSaving}
-        className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-[#6B7280] hover:bg-[#F3F4F6] disabled:opacity-50 transition-colors"
+        className="inline-flex items-center justify-center w-7 h-7 rounded-chip text-text-secondary hover:bg-surface-muted disabled:opacity-50 transition-colors"
         aria-label="취소"
       >
         <X className="w-3.5 h-3.5" />
@@ -103,7 +103,7 @@ export default function AliasEditor({ initialAlias, onSave, className }: AliasEd
         <button
           onClick={handleDelete}
           disabled={isSaving}
-          className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-[#EF4444] hover:bg-red-50 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center justify-center w-7 h-7 rounded-chip text-text-danger hover:bg-surface-danger-soft disabled:opacity-50 transition-colors"
           aria-label="별명 삭제"
         >
           <Trash2 className="w-3.5 h-3.5" />

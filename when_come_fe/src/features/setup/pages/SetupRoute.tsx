@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, Search, MapPin, ChevronDown, ChevronUp, Loader2, Plus,
+  Search, MapPin, ChevronDown, ChevronUp, Loader2, Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,7 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RouteNodeCard, { RouteNode } from "../components/RouteNodeCard";
 import SearchResultNode, { SearchNodeData } from "../components/SearchResultNode";
 import PlacePicker from "../components/PlacePicker";
-import BottomNav from "@/components/BottomNav";
+import PageShell from "@/components/PageShell";
+import PageHeader from "@/components/PageHeader";
 import {
   Collapsible,
   CollapsibleContent,
@@ -134,9 +135,6 @@ export default function SetupRoute() {
   const [sortKey, setSortKey] = useState<SortKey>('default');
   // 더보기 (초기 3건 → 전체)
   const [showAll, setShowAll] = useState(false);
-
-  // 수동 탭은 UnifiedStopPicker로 교체 — 기존 state 불필요하나 build 호환을 위해 제거
-  // 이하는 완전 제거 후 handleManualPickerComplete 단일 핸들러로 대체
 
   /**
    * UnifiedStopPicker onComplete 핸들러 (수동 탭 전용).
@@ -444,30 +442,21 @@ export default function SetupRoute() {
     }
   };
 
-  return (
-    <div className="h-dvh overflow-y-auto bg-[#F6F7F9] pb-36">
-      {/* 헤더 */}
-      <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/')} className="rounded-xl w-9 h-9">
-            <ArrowLeft className="w-5 h-5" strokeWidth={2} />
-          </Button>
-          <div className="flex items-center gap-2">
-            <h1 className="text-[17px] font-semibold text-[#111827]">경로 등록</h1>
-            {reverseOf && (
-              <span className="px-2 py-0.5 rounded-md bg-[#EFF6FF] text-[#3B82F6] text-[12px] font-medium">
-                반대 방향 등록 중
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+  const reverseBadge = reverseOf ? (
+    <span className="px-2 py-0.5 rounded-chip bg-surface-info-soft text-text-info text-caption font-medium">
+      반대 방향 등록 중
+    </span>
+  ) : undefined;
 
-      <div className="max-w-2xl mx-auto px-4 pt-4 space-y-3">
+  return (
+    <PageShell reserveStickyFooter>
+      <PageHeader back title="경로 등록" badge={reverseBadge} />
+
+      <div className="max-w-[var(--page-max-width)] mx-auto px-[var(--page-padding-x)] pt-4 space-y-3">
         {/* 기본 정보 */}
-        <Card className="p-5 rounded-2xl border border-black/5 shadow-sm bg-white space-y-4">
+        <Card className="p-5 rounded-card border border-border-subtle shadow-card bg-surface-card space-y-4">
           <div>
-            <Label htmlFor="routeName" className="text-[14px] font-medium text-[#111827] mb-2 block">
+            <Label htmlFor="routeName" className="text-label font-medium text-text-primary mb-2 block">
               경로 이름
             </Label>
             <Input
@@ -475,7 +464,7 @@ export default function SetupRoute() {
               placeholder="출근 경로"
               value={routeName}
               onChange={(e) => setRouteName(e.target.value)}
-              className="rounded-xl border-black/5 h-11 text-[15px]"
+              className="rounded-control border-border-subtle h-11 text-body"
             />
           </div>
 
@@ -497,16 +486,16 @@ export default function SetupRoute() {
 
         {/* 추가된 노드 — stepGroup 단위 렌더링 */}
         {nodes.length > 0 && (
-          <Card className="p-4 rounded-2xl border border-black/5 shadow-sm bg-white">
+          <Card className="p-4 rounded-card border border-border-subtle shadow-card bg-surface-card">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[15px] font-semibold text-[#111827]">
+              <h3 className="text-body font-semibold text-text-primary">
                 내 경로 ({groupedNodes.length}스텝 / {nodes.length}개 정류장)
               </h3>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => { setNodes([]); setAddingAlternativeToStep(null); }}
-                className="text-[13px] h-auto p-0 text-[#6B7280] hover:text-[#111827]"
+                className="text-caption h-auto p-0 text-text-secondary hover:text-text-primary"
               >
                 전체 삭제
               </Button>
@@ -516,11 +505,11 @@ export default function SetupRoute() {
                 <div key={stepGroup} className="relative">
                   {/* 스텝 레이블 (그룹이 2개 이상인 경우 시각 구분) */}
                   {groupNodes.length > 1 && (
-                    <div className="text-[11px] text-[#9CA3AF] font-medium mb-1 px-1">
+                    <div className="text-caption text-text-tertiary font-medium mb-1 px-1">
                       스텝 {stepGroup} — 빠른 버스 탑승
                     </div>
                   )}
-                  <div className={`space-y-1.5 ${groupNodes.length > 1 ? 'pl-2 border-l-2 border-[#DBEAFE]' : ''}`}>
+                  <div className={`space-y-1.5 ${groupNodes.length > 1 ? 'pl-2 border-l-2 border-surface-info-border' : ''}`}>
                     {groupNodes.map(node => (
                       <RouteNodeCard
                         key={node.id}
@@ -537,14 +526,14 @@ export default function SetupRoute() {
                     addingAlternativeToStep === stepGroup ? (
                       <button
                         onClick={() => setAddingAlternativeToStep(null)}
-                        className="w-full mt-1.5 py-1.5 text-[13px] text-[#3B82F6] border border-dashed border-[#93C5FD] rounded-xl bg-[#EFF6FF] transition-colors"
+                        className="w-full mt-1.5 py-1.5 text-caption text-text-info border border-dashed border-surface-info-border rounded-control bg-surface-info-soft transition-colors"
                       >
                         대안 추가 취소
                       </button>
                     ) : (
                       <button
                         onClick={() => setAddingAlternativeToStep(stepGroup)}
-                        className="w-full mt-1.5 py-1.5 text-[13px] text-[#6B7280] border border-dashed border-[#D1D5DB] rounded-xl hover:bg-[#F9FAFB] transition-colors"
+                        className="w-full mt-1.5 py-1.5 text-caption text-text-secondary border border-dashed border-border-default rounded-control hover:bg-surface-input transition-colors"
                       >
                         + 대안 정류장 추가
                       </button>
@@ -556,11 +545,11 @@ export default function SetupRoute() {
 
             {/* 대안 추가 모드 안내 */}
             {addingAlternativeToStep !== null && (
-              <div className="mt-3 px-3 py-2.5 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE]">
-                <p className="text-[13px] text-[#1D4ED8] font-medium">
+              <div className="mt-3 px-3 py-2.5 rounded-control bg-surface-info-soft border border-surface-info-border">
+                <p className="text-caption text-text-info font-medium">
                   스텝 {addingAlternativeToStep}의 대안 정류장을 추가하세요
                 </p>
-                <p className="text-[12px] text-[#3B82F6] mt-0.5">
+                <p className="text-caption text-text-info mt-0.5 opacity-80">
                   아래 수동 등록 탭에서 정류장을 선택하거나, 자동 검색 결과에서 추가하세요
                 </p>
               </div>
@@ -570,29 +559,29 @@ export default function SetupRoute() {
 
         {/* 노드 추가 */}
         <Tabs defaultValue="auto">
-          <TabsList className="grid w-full grid-cols-2 bg-white rounded-xl border border-black/5 p-1">
+          <TabsList className="grid w-full grid-cols-2 bg-surface-card rounded-control border border-border-subtle p-1">
             <TabsTrigger
               value="auto"
-              className="rounded-lg data-[state=active]:bg-[#111827] data-[state=active]:text-white text-[14px] font-medium"
+              className="rounded-chip data-[state=active]:bg-text-primary data-[state=active]:text-white text-label font-medium"
             >
               자동 검색
             </TabsTrigger>
             <TabsTrigger
               value="manual"
-              className="rounded-lg data-[state=active]:bg-[#111827] data-[state=active]:text-white text-[14px] font-medium"
+              className="rounded-chip data-[state=active]:bg-text-primary data-[state=active]:text-white text-label font-medium"
             >
               수동 등록
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="auto" className="space-y-3 mt-3">
-            <Card className="p-4 rounded-2xl border border-black/5 shadow-sm bg-white">
-              <p className="text-[14px] text-[#6B7280] mb-3">
+            <Card className="p-4 rounded-card border border-border-subtle shadow-card bg-surface-card">
+              <p className="text-label text-text-secondary mb-3">
                 출발지·도착지를 선택하면 경로를 검색합니다
               </p>
               <Button
                 onClick={handleAutoSearch}
-                className="w-full bg-[#111827] hover:bg-[#1F2937] rounded-xl h-11 text-[15px] font-medium"
+                className="w-full bg-text-primary hover:bg-text-primary/90 rounded-control h-11 text-body font-medium"
                 disabled={!startPlace || !endPlace || isSearching}
               >
                 {isSearching ? (
@@ -617,10 +606,10 @@ export default function SetupRoute() {
                     <button
                       key={key}
                       onClick={() => { setSortKey(key); setShowAll(false); }}
-                      className={`px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors ${
+                      className={`px-3 py-1.5 rounded-pill text-caption font-medium transition-colors ${
                         sortKey === key
-                          ? 'bg-[#111827] text-white'
-                          : 'bg-[#F1F3F5] text-[#6B7280] hover:bg-[#E5E7EB]'
+                          ? 'bg-text-primary text-white'
+                          : 'bg-surface-muted text-text-secondary hover:bg-surface-muted/70'
                       }`}
                     >
                       {label}
@@ -629,7 +618,7 @@ export default function SetupRoute() {
                 </div>
 
                 {visibleResults.map((route, routeIdx) => (
-                  <Card key={route.routeId} className="overflow-hidden rounded-2xl border border-black/5 shadow-sm bg-white">
+                  <Card key={route.routeId} className="overflow-hidden rounded-card border border-border-subtle shadow-card bg-surface-card">
                     <Collapsible
                       open={expandedRoutes.has(route.routeId)}
                       onOpenChange={() => toggleRoute(route.routeId)}
@@ -639,30 +628,30 @@ export default function SetupRoute() {
                           <CollapsibleTrigger asChild>
                             <button className="flex-1 text-left group">
                               <div className="flex items-center gap-2 mb-1.5">
-                                <span className="text-[15px] font-semibold text-[#111827]">추천 {routeIdx + 1}</span>
+                                <span className="text-body font-semibold text-text-primary">추천 {routeIdx + 1}</span>
                                 {expandedRoutes.has(route.routeId) ? (
-                                  <ChevronUp className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                  <ChevronUp className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
                                 ) : (
-                                  <ChevronDown className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                                  <ChevronDown className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
                                 )}
                               </div>
                               {/* 부가 정보 chip */}
                               <div className="flex flex-wrap gap-1.5">
-                                <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
                                   {route.totalTime}분
                                 </span>
                                 {route.totalTransferCount !== null && (
-                                  <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                  <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
                                     {route.totalTransferCount === 0 ? '직통' : `환승 ${route.totalTransferCount}회`}
                                   </span>
                                 )}
                                 {route.totalWalkMeters !== null && (
-                                  <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                  <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
                                     {formatWalkDistance(route.totalWalkMeters)}
                                   </span>
                                 )}
                                 {route.paymentWon !== null && (
-                                  <span className="text-[11px] text-[#6B7280] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+                                  <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
                                     {route.paymentWon.toLocaleString()}원
                                   </span>
                                 )}
@@ -673,7 +662,7 @@ export default function SetupRoute() {
                           {/* 전체 경로 추가 버튼 */}
                           <button
                             onClick={() => handleAddAllNodes(route)}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#111827] hover:bg-[#1F2937] text-white text-[12px] font-medium transition-colors flex-shrink-0"
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-control bg-text-primary hover:bg-text-primary/90 text-white text-caption font-medium transition-colors flex-shrink-0"
                           >
                             <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
                             전체 추가
@@ -682,7 +671,7 @@ export default function SetupRoute() {
                       </div>
 
                       <CollapsibleContent>
-                        <div className="px-3 pb-3 pt-2 space-y-2 border-t border-black/5 mt-2">
+                        <div className="px-3 pb-3 pt-2 space-y-2 border-t border-border-subtle mt-2">
                           {route.nodes.map((node) => (
                             <SearchResultNode
                               key={node.id}
@@ -701,7 +690,7 @@ export default function SetupRoute() {
                 {!showAll && remainingCount > 0 && (
                   <button
                     onClick={() => setShowAll(true)}
-                    className="w-full py-3 rounded-2xl border border-black/5 bg-white text-[14px] text-[#6B7280] font-medium hover:bg-[#F9FAFB] transition-colors"
+                    className="w-full py-3 rounded-card border border-border-subtle bg-surface-card text-label text-text-secondary font-medium hover:bg-surface-input transition-colors"
                   >
                     더보기 (남은 {remainingCount}개)
                   </button>
@@ -711,9 +700,9 @@ export default function SetupRoute() {
           </TabsContent>
 
           <TabsContent value="manual" className="space-y-3 mt-3">
-            <Card className="p-4 rounded-2xl border border-black/5 shadow-sm bg-white">
+            <Card className="p-4 rounded-card border border-border-subtle shadow-card bg-surface-card">
               {addingAlternativeToStep !== null && (
-                <p className="text-[13px] text-[#1D4ED8] font-medium mb-3">
+                <p className="text-caption text-text-info font-medium mb-3">
                   스텝 {addingAlternativeToStep} 대안 정류장 검색
                 </p>
               )}
@@ -727,20 +716,26 @@ export default function SetupRoute() {
 
       </div>
 
-      {/* Sticky 저장 버튼 — BottomNav(64px) 위에 고정 */}
+      {/* Sticky 저장 버튼 — BottomNav 위에 고정 */}
       {nodes.length > 0 && (
-        <div className="fixed bottom-16 left-0 right-0 z-20 px-4 pb-3 pt-2 bg-gradient-to-t from-[#F6F7F9] via-[#F6F7F9]/90 to-transparent">
-          <div className="max-w-2xl mx-auto space-y-1.5">
+        <div
+          className="fixed left-0 right-0 z-20 px-4 pb-3 pt-2"
+          style={{
+            bottom: 'var(--bottom-nav-total)',
+            background: 'linear-gradient(to top, var(--surface-page) 60%, transparent)',
+          }}
+        >
+          <div className="max-w-[var(--page-max-width)] mx-auto space-y-1.5">
             {hasBusNodeWithoutRoute && (
-              <p className="text-center text-[13px] text-[#DC2626] font-medium">
+              <p className="text-center text-caption text-text-danger font-medium">
                 모든 정류장에 노선을 선택해주세요
               </p>
             )}
             <Button
               onClick={handleSave}
-              className="w-full rounded-xl h-12 text-[15px] font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-control h-12 text-body font-medium shadow-floating disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
-                backgroundColor: hasBusNodeWithoutRoute || !routeName.trim() ? '#9CA3AF' : '#111827',
+                backgroundColor: hasBusNodeWithoutRoute || !routeName.trim() ? 'var(--text-tertiary)' : 'var(--text-primary)',
               }}
               size="lg"
               disabled={!routeName.trim() || isSaving || hasBusNodeWithoutRoute}
@@ -755,8 +750,6 @@ export default function SetupRoute() {
           </div>
         </div>
       )}
-
-      <BottomNav />
-    </div>
+    </PageShell>
   );
 }

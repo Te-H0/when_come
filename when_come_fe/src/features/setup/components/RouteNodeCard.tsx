@@ -104,22 +104,20 @@ export default function RouteNodeCard({
       const firstLine = node.busLines?.find(l => l.routeName === node.busNumbers![0]);
       return getBusTypeByOdsay(firstLine?.busType, node.busNumbers[0]).color;
     }
-    return '#6B7280'; // 기본 색상
+    return 'var(--text-secondary)';
   };
 
   return (
-    <Card className="p-4 rounded-xl border border-black/5 shadow-sm bg-white hover:shadow-md transition-shadow">
+    <Card className="p-4 rounded-control border border-border-subtle shadow-card bg-surface-card hover:shadow-floating transition-shadow">
       <div className="flex items-start gap-3">
-        <div
-          className="w-10 h-10 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0"
-        >
+        <div className="w-10 h-10 rounded-control bg-surface-input flex items-center justify-center flex-shrink-0">
           {node.type === 'bus' ? (
             <Bus className="w-5 h-5" strokeWidth={2} style={{ color: getNodeColor() }} />
           ) : (
             <Train className="w-5 h-5" strokeWidth={2} style={{ color: getNodeColor() }} />
           )}
         </div>
-        
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <StopName
@@ -127,14 +125,14 @@ export default function RouteNodeCard({
               size="md"
             />
             {node.order > 1 && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[#EFF6FF] text-[#3B82F6] font-medium">
+              <span className="text-caption px-1.5 py-0.5 rounded-chip bg-surface-info-soft text-text-info font-medium">
                 대안
               </span>
             )}
           </div>
 
           {node.type === 'bus' && (node.arsId || node.stopId) && (
-            <div className="text-[12px] text-[#9CA3AF] mb-2">
+            <div className="text-caption text-text-tertiary mb-2">
               {node.arsId ? node.arsId : node.stopId}
             </div>
           )}
@@ -142,12 +140,12 @@ export default function RouteNodeCard({
           {node.type === 'subway' && (
             <div className="flex gap-1.5 mb-2">
               {node.subwayLine && (
-                <span className="text-[12px] px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[#6B7280] font-medium">
+                <span className="text-caption px-2 py-0.5 rounded-chip bg-surface-muted text-text-secondary font-medium">
                   {node.subwayLine}
                 </span>
               )}
               {node.direction && (
-                <span className="text-[12px] px-2 py-0.5 rounded-md border border-black/5 text-[#6B7280]">
+                <span className="text-caption px-2 py-0.5 rounded-chip border border-border-subtle text-text-secondary">
                   {node.direction} 방향
                 </span>
               )}
@@ -163,7 +161,7 @@ export default function RouteNodeCard({
                   return (
                     <span
                       key={busNum}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-white text-[13px] font-medium"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-chip text-white text-caption font-medium"
                       style={{ backgroundColor: busInfo.color }}
                     >
                       {busNum}번
@@ -180,7 +178,7 @@ export default function RouteNodeCard({
 
               {isAddingBus ? (
                 node.busLines && node.busLines.length > 0 ? (
-                  <div className="rounded-lg border border-black/10 overflow-hidden">
+                  <div className="rounded-control border border-border-default overflow-hidden">
                     {node.busLines.map(l => {
                       const busInfo = getBusTypeByOdsay(l.busType, l.routeName);
                       const isSelected = draftBusNumbers.includes(l.routeName);
@@ -189,14 +187,14 @@ export default function RouteNodeCard({
                           key={l.routeName}
                           onClick={() => handleToggleDraftBus(l.routeName)}
                           className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
-                            isSelected ? 'bg-[#EFF6FF]' : 'hover:bg-[#F9FAFB]'
+                            isSelected ? 'bg-surface-info-soft' : 'hover:bg-surface-input'
                           }`}
                         >
                           {/* 체크 표시 영역 */}
                           <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border"
                             style={{
                               backgroundColor: isSelected ? busInfo.color : 'transparent',
-                              borderColor: isSelected ? busInfo.color : '#D1D5DB',
+                              borderColor: isSelected ? busInfo.color : 'var(--border-default)',
                             }}
                           >
                             {isSelected && (
@@ -208,11 +206,11 @@ export default function RouteNodeCard({
                           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: busInfo.color }} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[14px] font-medium text-[#111827]">{l.routeName}번</span>
-                              <span className="text-[12px] text-[#9CA3AF]">{busInfo.label}버스</span>
+                              <span className="text-label font-medium text-text-primary">{l.routeName}번</span>
+                              <span className="text-caption text-text-tertiary">{busInfo.label}버스</span>
                             </div>
                             {(l.startStation || l.endStation) && (
-                              <div className="text-[11px] text-[#9CA3AF] truncate">
+                              <div className="text-caption text-text-tertiary truncate">
                                 {l.startStation}{l.startStation && l.endStation ? ' ~ ' : ''}{l.endStation}
                               </div>
                             )}
@@ -221,16 +219,16 @@ export default function RouteNodeCard({
                       );
                     })}
                     {/* 확인 / 취소 버튼 */}
-                    <div className="flex border-t border-black/5">
+                    <div className="flex border-t border-border-subtle">
                       <button
                         onClick={handleCancelDropdown}
-                        className="flex-1 px-3 py-2 text-[13px] text-[#9CA3AF] hover:bg-[#F9FAFB] transition-colors border-r border-black/5"
+                        className="flex-1 px-3 py-2 text-caption text-text-tertiary hover:bg-surface-input transition-colors border-r border-border-subtle"
                       >
                         취소
                       </button>
                       <button
                         onClick={handleConfirmDropdown}
-                        className="flex-1 px-3 py-2 text-[13px] font-medium text-[#111827] hover:bg-[#F9FAFB] transition-colors"
+                        className="flex-1 px-3 py-2 text-caption font-medium text-text-primary hover:bg-surface-input transition-colors"
                       >
                         확인
                       </button>
@@ -243,13 +241,13 @@ export default function RouteNodeCard({
                       value={newBusNumber}
                       onChange={(e) => setNewBusNumber(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleAddBusNumber()}
-                      className="h-9 text-[14px] rounded-lg border-black/5"
+                      className="h-9 text-label rounded-chip border-border-subtle"
                       autoFocus
                     />
                     <Button
                       size="sm"
                       onClick={handleAddBusNumber}
-                      className="h-9 px-3 rounded-lg bg-[#111827] hover:bg-[#1F2937] text-[13px]"
+                      className="h-9 px-3 rounded-chip bg-text-primary hover:bg-text-primary/90 text-caption"
                     >
                       추가
                     </Button>
@@ -257,7 +255,7 @@ export default function RouteNodeCard({
                       size="sm"
                       variant="ghost"
                       onClick={() => { setIsAddingBus(false); setNewBusNumber(''); }}
-                      className="h-9 px-3 rounded-lg text-[13px]"
+                      className="h-9 px-3 rounded-chip text-caption"
                     >
                       취소
                     </Button>
@@ -268,7 +266,7 @@ export default function RouteNodeCard({
                   variant="outline"
                   size="sm"
                   onClick={handleOpenDropdown}
-                  className="h-8 text-[13px] rounded-lg border-black/5 text-[#6B7280] hover:bg-[#F9FAFB] hover:text-[#111827]"
+                  className="h-8 text-caption rounded-chip border-border-subtle text-text-secondary hover:bg-surface-input hover:text-text-primary"
                 >
                   {node.busLines && node.busLines.length > 0
                     ? <><ChevronDown className="w-3.5 h-3.5 mr-1" strokeWidth={2} />버스 선택</>
@@ -284,9 +282,9 @@ export default function RouteNodeCard({
           variant="ghost"
           size="icon"
           onClick={onRemove}
-          className="flex-shrink-0 rounded-lg hover:bg-[#FEE2E2] w-8 h-8"
+          className="flex-shrink-0 rounded-chip hover:bg-surface-danger-soft w-8 h-8"
         >
-          <X className="w-4 h-4 text-[#DC2626]" strokeWidth={2} />
+          <X className="w-4 h-4 text-text-danger" strokeWidth={2} />
         </Button>
       </div>
     </Card>

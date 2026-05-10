@@ -1,13 +1,31 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
-import { useDrag, useDrop } from 'react-dnd'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { showApiErrorToast } from '@/lib/errorToast'
 import { Plus, Star, RefreshCw, MoreVertical, Loader2, ChevronDown, ChevronUp, GripVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import BottomNav from '@/components/BottomNav'
+import PageShell from '@/components/PageShell'
+import PageHeader from '@/components/PageHeader'
 import EmptyState from '@/components/EmptyState'
 import StopName from '@/components/StopName'
 import AliasEditor from '@/components/AliasEditor'
@@ -17,51 +35,10 @@ import { mapApiFavoriteStopToTransitStop } from '@/lib/mappers'
 import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg, getMatchedSubwayItems, groupSubwayItemsByDirection } from '@/lib/arrival'
 import type { ArrivalData } from '@/lib/arrival'
 import { ApiError } from '@/lib/api'
+import { ArrivalText, splitArrival } from '@/utils/arrivalDisplay'
 import { getBusTypeByOdsay, getSubwayColor, normalizeSubwayLineName } from '@/utils/transitColors'
 import type { ApiFavoriteStop } from '@/types/api'
 import type { TransitStop } from '@/lib/mockData'
-
-const FAV_CARD_DND_TYPE = 'FAV_CARD'
-
-interface FavCardDragItem {
-  id: string
-  index: number
-}
-
-// ──────────────────────── 도착 텍스트 파싱 ────────────────────────
-
-type ArrivalTextToken =
-  | { kind: 'count'; count: number; unit: string }
-  | { kind: 'text'; text: string }
-
-function parseArrivalToken(msg: string): ArrivalTextToken {
-  if (!msg || msg === '--') return { kind: 'text', text: msg || '--' }
-  const countMatch = msg.match(/^(\d+)(개전)/)
-  if (countMatch) return { kind: 'count', count: parseInt(countMatch[1]), unit: countMatch[2] }
-  const minMatch = msg.match(/^(\d+)분/)
-  if (minMatch) return { kind: 'count', count: parseInt(minMatch[1]), unit: '분' }
-  return { kind: 'text', text: msg }
-}
-
-function ArrivalText({ msg, className }: { msg: string; className?: string }) {
-  const token = parseArrivalToken(msg)
-  if (token.kind === 'count') {
-    return (
-      <span className={className}>
-        <span className="font-bold tabular-nums">{token.count}</span>
-        <span className="text-xs font-normal">{token.unit}</span>
-      </span>
-    )
-  }
-  return <span className={className}>{token.text}</span>
-}
-
-function splitArrival(text: string | null): { time: string; stops: string | null } {
-  if (!text) return { time: '--', stops: null }
-  const match = text.match(/^(.*?)\[(\d+)번째 전\]$/)
-  if (match) return { time: match[1].trim(), stops: `${match[2]}정거장 전` }
-  return { time: text, stops: null }
-}
 
 // ──────────────────────── 즐겨찾기 카드 ────────────────────────
 
@@ -71,11 +48,8 @@ interface FavoriteCardProps {
   arrivalData: ArrivalData
   isArrivalLoading: boolean
   elapsedSec: number
-  index: number
   onUpdateAlias: (alias: string | null) => Promise<void>
   onDelete: () => void
-  onMove: (dragIndex: number, hoverIndex: number) => void
-  onDrop: () => void
 }
 
 function FavoriteCard({
@@ -84,39 +58,22 @@ function FavoriteCard({
   arrivalData,
   isArrivalLoading,
   elapsedSec,
-  index,
   onUpdateAlias,
   onDelete,
-  onMove,
-  onDrop,
 }: FavoriteCardProps) {
   const [showMenu, setShowMenu] = useState(false)
   const [expandedLines, setExpandedLines] = useState<Record<string, boolean>>({})
   const menuRef = useRef<HTMLDivElement>(null)
-  const cardRef = useRef<HTMLDivElement>(null)
-  const handleRef = useRef<HTMLButtonElement>(null)
 
-  const [{ isDragging }, drag, preview] = useDrag<FavCardDragItem, void, { isDragging: boolean }>({
-    type: FAV_CARD_DND_TYPE,
-    item: { id: fav.id, index },
-    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
-    end: (_item, monitor) => {
-      if (monitor.didDrop()) onDrop()
-    },
-  })
-
-  const [, drop] = useDrop<FavCardDragItem>({
-    accept: FAV_CARD_DND_TYPE,
-    hover(item) {
-      if (item.index === index) return
-      onMove(item.index, index)
-      item.index = index
-    },
-  })
-
-  // preview는 카드 전체, drag는 핸들에만 연결
-  preview(drop(cardRef))
-  drag(handleRef)
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: fav.id })
 
   // 메뉴 외부 클릭 시 닫기
   useEffect(() => {
@@ -136,14 +93,24 @@ function FavoriteCard({
   }
 
   return (
-    <div ref={cardRef} style={{ opacity: isDragging ? 0.4 : 1 }} className="transition-opacity">
-    <Card className="rounded-2xl border border-black/5 shadow-sm bg-white overflow-hidden">
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+      }}
+      className="transition-opacity duration-fast"
+    >
+    <Card className="rounded-card border border-border-subtle shadow-card bg-surface-card overflow-hidden">
       {/* 카드 헤더: 정류장명 + 별명 편집 + 메뉴 */}
-      <div className="px-4 py-3.5 border-b border-black/5 flex items-start justify-between gap-2">
-        {/* 드래그 핸들 */}
+      <div className="px-4 py-3 border-b border-border-subtle flex items-start justify-between gap-2">
+        {/* 드래그 핸들 — listeners만 핸들에 부착, 카드 본문 클릭은 영향 없음 */}
         <button
-          ref={handleRef}
-          className="flex-shrink-0 mt-0.5 p-1 -ml-1 rounded-lg text-[#D1D5DB] hover:text-[#9CA3AF] hover:bg-[#F3F4F6] transition-colors cursor-grab active:cursor-grabbing touch-none"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          className="flex-shrink-0 mt-0.5 p-1 -ml-1 rounded-control text-text-disabled hover:text-text-tertiary hover:bg-surface-muted transition-colors cursor-grab active:cursor-grabbing touch-none"
           aria-label="순서 변경"
         >
           <GripVertical className="w-4 h-4" strokeWidth={2} />
@@ -153,17 +120,17 @@ function FavoriteCard({
             <StopName name={stop.displayName} alias={fav.alias ?? undefined} size="md" />
           </div>
           {stop.type === 'bus' && stop.arsId && (
-            <div className="text-[11px] text-[#9CA3AF] font-mono mt-0.5">ARS {stop.arsId}</div>
+            <div className="text-caption font-mono mt-0.5 text-text-tertiary">ARS {stop.arsId}</div>
           )}
           {stop.type === 'subway' && fav.direction_updn && fav.direction_next_stop && (
-            <div className="text-[12px] text-[#6B7280] mt-0.5">
+            <div className="text-caption text-text-secondary mt-0.5">
               {fav.direction_next_stop} 방향
             </div>
           )}
           {stop.type === 'bus'
             && arrivalData?.type === 'bus_by_stopid'
             && arrivalData.data.provider === 'odsay_fallback' && (
-            <div className="text-[11px] text-[#9CA3AF] mt-0.5">
+            <div className="text-caption mt-0.5 text-text-tertiary">
               도착 정보가 부정확할 수 있어요 (제휴 데이터 사용)
             </div>
           )}
@@ -177,16 +144,16 @@ function FavoriteCard({
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setShowMenu(v => !v)}
-              className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-[#9CA3AF] hover:text-[#6B7280] hover:bg-[#F3F4F6] transition-colors"
+              className="inline-flex items-center justify-center w-7 h-7 rounded-control text-text-tertiary hover:text-text-secondary hover:bg-surface-muted transition-colors"
               aria-label="메뉴"
             >
               <MoreVertical className="w-4 h-4" />
             </button>
             {showMenu && (
-              <div className="absolute right-0 top-8 z-20 bg-white rounded-xl border border-black/10 shadow-lg w-32 overflow-hidden">
+              <div className="absolute right-0 top-8 z-20 bg-surface-card rounded-card border border-border-default shadow-floating w-32 overflow-hidden">
                 <button
                   onClick={handleDelete}
-                  className="w-full px-4 py-2.5 text-left text-[14px] text-[#DC2626] hover:bg-red-50 transition-colors"
+                  className="w-full px-4 py-2.5 text-left text-body text-text-danger hover:bg-surface-danger-soft transition-colors"
                 >
                   삭제
                 </button>
@@ -197,9 +164,9 @@ function FavoriteCard({
       </div>
 
       {/* 노선별 도착 정보 */}
-      <div className="divide-y divide-black/5">
+      <div className="divide-y divide-border-subtle">
         {stop.lines.length === 0 ? (
-          <div className="px-4 py-3 text-[13px] text-[#9CA3AF]">노선 정보 없음</div>
+          <div className="px-4 py-3 text-label text-text-tertiary">노선 정보 없음</div>
         ) : (
           stop.lines.map((line) => {
             const isSubway = stop.type === 'subway'
@@ -223,10 +190,10 @@ function FavoriteCard({
               const rightItems = grouped.down.length > 0 ? grouped.down : grouped.up.length > 0 ? [] : grouped.other.slice(Math.ceil(grouped.other.length / 2))
 
               return (
-                <div key={line} className="px-4 py-3.5 hover:bg-[#F9FAFB] transition-colors">
+                <div key={line} className="px-4 py-3 hover:bg-surface-input transition-colors">
                   {/* 호선 헤더 */}
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
+                    <div className="w-9 h-9 rounded-control bg-surface-input flex items-center justify-center flex-shrink-0">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M12 12h0"/><path d="M9.75 9.75h4.5"/><path d="M7 15h10"/>
                         <rect x="5" y="4" width="14" height="16" rx="2"/>
@@ -234,21 +201,21 @@ function FavoriteCard({
                       </svg>
                     </div>
                     <div className="min-w-0">
-                      <div className="text-[14px] font-semibold text-[#111827]">{displayLine}</div>
-                      <div className="text-[12px] text-[#6B7280]">전철</div>
+                      <div className="text-body font-semibold text-text-primary">{displayLine}</div>
+                      <div className="text-caption text-text-secondary">전철</div>
                     </div>
                   </div>
 
                   {/* 방향별 좌우 분리 표시 */}
                   {isArrivalLoading ? (
                     <div className="flex items-center gap-1.5 ml-[52px]">
-                      <Loader2 className="w-3.5 h-3.5 text-[#9CA3AF] animate-spin" />
-                      <span className="text-[13px] text-[#9CA3AF]">조회 중...</span>
+                      <Loader2 className="w-3.5 h-3.5 text-text-tertiary animate-spin" />
+                      <span className="text-label text-text-tertiary">조회 중...</span>
                     </div>
                   ) : allEmpty ? (
-                    <div className="ml-[52px] text-[13px] text-[#9CA3AF]">도착 정보 없음</div>
+                    <div className="ml-[52px] text-label text-text-tertiary">도착 정보 없음</div>
                   ) : (
-                    <div className="ml-[52px] grid grid-cols-2 gap-0 divide-x divide-black/5">
+                    <div className="ml-[52px] grid grid-cols-2 gap-0 divide-x divide-border-subtle">
                       {/* 왼쪽 열 — 상행 */}
                       <div className="pr-3 space-y-1">
                         {leftItems.slice(0, 2).map((item, itemIdx) => {
@@ -261,16 +228,16 @@ function FavoriteCard({
                           return (
                             <div key={itemIdx} className="flex items-baseline gap-1.5 min-w-0">
                               {item.headsign && (
-                                <span className={`${isSecondRow ? 'text-[10px]' : 'text-[11px]'} text-[#9CA3AF] shrink-0`}>{item.headsign}행</span>
+                                <span className={`${isSecondRow ? 'text-caption' : 'text-caption'} text-text-tertiary shrink-0`}>{item.headsign}행</span>
                               )}
-                              <span className={`${isSecondRow ? 'text-[12px] font-medium' : 'text-[14px] font-bold'} tabular-nums leading-tight ${itemIdx === 0 && isUrgentItem ? 'text-[#DC2626]' : itemIdx === 0 ? 'text-[#111827]' : 'text-[#9CA3AF]'}`}>
+                              <span className={`${isSecondRow ? 'text-caption font-medium' : 'text-body font-bold'} tabular-nums leading-tight ${itemIdx === 0 && isUrgentItem ? 'text-arrival-urgent' : itemIdx === 0 ? 'text-arrival-normal' : 'text-arrival-muted'}`}>
                                 {timeOnly}
                               </span>
                             </div>
                           )
                         })}
                         {leftItems.length === 0 && (
-                          <div className="text-[12px] text-[#D1D5DB]">정보 없음</div>
+                          <div className="text-caption text-arrival-empty">정보 없음</div>
                         )}
                       </div>
                       {/* 오른쪽 열 — 하행 */}
@@ -285,16 +252,16 @@ function FavoriteCard({
                           return (
                             <div key={itemIdx} className="flex items-baseline gap-1.5 min-w-0">
                               {item.headsign && (
-                                <span className={`${isSecondRow ? 'text-[10px]' : 'text-[11px]'} text-[#9CA3AF] shrink-0`}>{item.headsign}행</span>
+                                <span className={`${isSecondRow ? 'text-caption' : 'text-caption'} text-text-tertiary shrink-0`}>{item.headsign}행</span>
                               )}
-                              <span className={`${isSecondRow ? 'text-[12px] font-medium' : 'text-[14px] font-bold'} tabular-nums leading-tight ${itemIdx === 0 && isUrgentItem ? 'text-[#DC2626]' : itemIdx === 0 ? 'text-[#111827]' : 'text-[#9CA3AF]'}`}>
+                              <span className={`${isSecondRow ? 'text-caption font-medium' : 'text-body font-bold'} tabular-nums leading-tight ${itemIdx === 0 && isUrgentItem ? 'text-arrival-urgent' : itemIdx === 0 ? 'text-arrival-normal' : 'text-arrival-muted'}`}>
                                 {timeOnly}
                               </span>
                             </div>
                           )
                         })}
                         {rightItems.length === 0 && (
-                          <div className="text-[12px] text-[#D1D5DB]">정보 없음</div>
+                          <div className="text-caption text-arrival-empty">정보 없음</div>
                         )}
                       </div>
                     </div>
@@ -324,11 +291,11 @@ function FavoriteCard({
             const extraItems = hasMoreItems && isLineExpanded ? matchedSubwayItems.slice(2) : []
 
             return (
-              <div key={line} className="px-4 py-3.5 hover:bg-[#F9FAFB] transition-colors">
+              <div key={line} className="px-4 py-3 hover:bg-surface-input transition-colors">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     {isSubway ? (
-                      <div className="w-9 h-9 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
+                      <div className="w-9 h-9 rounded-control bg-surface-input flex items-center justify-center flex-shrink-0">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={subwayColorInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M12 12h0"/><path d="M9.75 9.75h4.5"/><path d="M7 15h10"/>
                           <rect x="5" y="4" width="14" height="16" rx="2"/>
@@ -336,7 +303,7 @@ function FavoriteCard({
                         </svg>
                       </div>
                     ) : (
-                      <div className="w-9 h-9 rounded-xl bg-[#F9FAFB] flex items-center justify-center flex-shrink-0">
+                      <div className="w-9 h-9 rounded-control bg-surface-input flex items-center justify-center flex-shrink-0">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={busTypeInfo?.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/>
                           <path d="m18 18 3-3-3-3"/>
@@ -346,10 +313,10 @@ function FavoriteCard({
                       </div>
                     )}
                     <div className="min-w-0">
-                      <div className="text-[14px] font-semibold text-[#111827]">
+                      <div className="text-body font-semibold text-text-primary">
                         {isSubway ? displayLine : `${line}번`}
                       </div>
-                      <div className="text-[12px] text-[#6B7280]">
+                      <div className="text-caption text-text-secondary">
                         {isSubway ? '전철' : (busTypeInfo?.label ?? '') + '버스'}
                       </div>
                     </div>
@@ -359,33 +326,33 @@ function FavoriteCard({
                     <div className="text-right space-y-1">
                       {isArrivalLoading ? (
                         <div className="flex items-center gap-1.5 justify-end">
-                          <Loader2 className="w-3.5 h-3.5 text-[#9CA3AF] animate-spin" />
-                          <span className="text-[14px] text-[#9CA3AF]">조회 중...</span>
+                          <Loader2 className="w-3.5 h-3.5 text-text-tertiary animate-spin" />
+                          <span className="text-body text-text-tertiary">조회 중...</span>
                         </div>
                       ) : noService ? (
-                        <span className="text-[13px] text-[#9CA3AF]">도착 정보 없음</span>
+                        <span className="text-label text-arrival-muted">도착 정보 없음</span>
                       ) : (
                         <>
                           <div className="flex items-baseline gap-1.5 justify-end">
                             {item1Headsign && (
-                              <span className="text-[11px] text-[#6B7280] whitespace-nowrap">{item1Headsign}행</span>
+                              <span className="text-caption text-text-secondary whitespace-nowrap">{item1Headsign}행</span>
                             )}
                             <ArrivalText
                               msg={arrivalTimeOnly}
-                              className={`text-[16px] font-bold tabular-nums whitespace-nowrap ${isUrgent ? 'text-[#DC2626]' : 'text-[#111827]'}`}
+                              className={`text-section font-bold tabular-nums whitespace-nowrap ${isUrgent ? 'text-arrival-urgent' : 'text-arrival-normal'}`}
                             />
                             {stopsBefore && (
-                              <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore}</span>
+                              <span className="text-caption text-text-tertiary whitespace-nowrap">{stopsBefore}</span>
                             )}
                           </div>
                           {arrivalText2 && (
                             <div className="flex items-baseline gap-1.5 justify-end">
                               {item2Headsign && (
-                                <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{item2Headsign}행</span>
+                                <span className="text-caption text-arrival-muted whitespace-nowrap">{item2Headsign}행</span>
                               )}
-                              <span className="text-[13px] text-[#9CA3AF] tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
+                              <span className="text-label text-arrival-muted tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
                               {stopsBefore2 && (
-                                <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap">{stopsBefore2}</span>
+                                <span className="text-caption text-text-tertiary whitespace-nowrap">{stopsBefore2}</span>
                               )}
                             </div>
                           )}
@@ -395,13 +362,13 @@ function FavoriteCard({
                     {hasMoreItems && (
                       <button
                         onClick={() => setExpandedLines(prev => ({ ...prev, [lineKey]: !prev[lineKey] }))}
-                        className="mt-0.5 p-1 rounded-lg hover:bg-[#F1F3F5] transition-colors"
+                        className="mt-0.5 p-1 rounded-control hover:bg-surface-muted transition-colors"
                         aria-label={isLineExpanded ? '접기' : '더 보기'}
                       >
                         {isLineExpanded ? (
-                          <ChevronUp className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                          <ChevronUp className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
                         ) : (
-                          <ChevronDown className="w-4 h-4 text-[#9CA3AF]" strokeWidth={2} />
+                          <ChevronDown className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
                         )}
                       </button>
                     )}
@@ -416,8 +383,8 @@ function FavoriteCard({
                       const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway')
                       return (
                         <div key={`${lineKey}-extra-${idx}`} className="flex items-center justify-between">
-                          <span className="text-[11px] text-[#9CA3AF]">{label}</span>
-                          <span className="text-[12px] text-[#9CA3AF] tabular-nums">{msg}</span>
+                          <span className="text-caption text-text-tertiary">{label}</span>
+                          <span className="text-caption text-arrival-muted tabular-nums">{msg}</span>
                         </div>
                       )
                     })}
@@ -474,18 +441,24 @@ export default function Favorites() {
     return cardOrder.flatMap(id => (map.has(id) ? [map.get(id)!] : []))
   }, [cardOrder, favorites])
 
-  const handleCardMove = useCallback((dragIdx: number, hoverIdx: number) => {
-    setCardOrder(prev => {
-      const next = [...prev]
-      const [removed] = next.splice(dragIdx, 1)
-      next.splice(hoverIdx, 0, removed)
-      return next
-    })
-  }, [])
+  const cardSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
-  const handleCardDrop = useCallback(async () => {
+  const handleCardDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIdx = cardOrder.indexOf(active.id as string)
+    const newIdx = cardOrder.indexOf(over.id as string)
+    if (oldIdx === -1 || newIdx === -1) return
+
+    const nextOrder = arrayMove(cardOrder, oldIdx, newIdx)
+    setCardOrder(nextOrder)
+
     const changed: Array<{ id: string; displayOrder: number }> = []
-    cardOrder.forEach((id, idx) => {
+    nextOrder.forEach((id, idx) => {
       const fav = favorites.find(f => f.id === id)
       if (!fav || fav.display_order !== idx) changed.push({ id, displayOrder: idx })
     })
@@ -586,58 +559,59 @@ export default function Favorites() {
 
   if (isLoading) {
     return (
-      <div className="h-dvh bg-[#F6F7F9] flex items-center justify-center pb-20">
-        <Loader2 className="w-6 h-6 animate-spin text-[#6B7280]" />
-        <BottomNav />
-      </div>
+      <PageShell>
+        <div className="flex-1 flex items-center justify-center py-16">
+          <Loader2 className="w-6 h-6 animate-spin text-text-secondary" />
+        </div>
+      </PageShell>
     )
   }
 
   if (isError) {
     return (
-      <div className="h-dvh bg-[#F6F7F9] flex items-center justify-center p-4 pb-20">
-        <Card className="max-w-md w-full p-8 text-center rounded-2xl border border-black/5">
-          <p className="text-[#DC2626] text-[15px] mb-4">즐겨찾기를 불러오지 못했습니다</p>
-          <Button onClick={() => refetch()} className="bg-[#111827] hover:bg-[#1F2937] rounded-xl">
-            다시 시도
-          </Button>
-        </Card>
-        <BottomNav />
-      </div>
+      <PageShell>
+        <div className="flex-1 flex items-center justify-center p-4 py-16">
+          <Card className="max-w-md w-full p-8 text-center rounded-card border border-border-subtle shadow-card bg-surface-card">
+            <p className="text-text-danger text-body mb-4">즐겨찾기를 불러오지 못했습니다</p>
+            <Button onClick={() => refetch()} className="bg-text-primary hover:bg-text-primary/90 rounded-control">
+              다시 시도
+            </Button>
+          </Card>
+        </div>
+      </PageShell>
     )
   }
 
   return (
-    <div className="h-dvh overflow-y-auto bg-[#F6F7F9] pb-24">
-      {/* 헤더 */}
-      <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="text-[17px] font-semibold text-[#111827]">즐겨찾기</h1>
-          <div className="flex items-center gap-1">
+    <PageShell>
+      <PageHeader
+        title="즐겨찾기"
+        right={
+          <>
             {favorites.length > 0 && (
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleRefresh}
-                className={`rounded-xl hover:bg-[#F1F3F5] w-9 h-9 ${isRefreshing ? 'animate-spin' : ''}`}
+                className={`rounded-control hover:bg-surface-muted w-9 h-9 ${isRefreshing ? 'animate-spin' : ''}`}
               >
-                <RefreshCw className="w-[18px] h-[18px] text-[#6B7280]" strokeWidth={2} />
+                <RefreshCw className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
               </Button>
             )}
             <Button
               variant="ghost"
               size="icon"
               onClick={() => navigate('/favorites/add')}
-              className="rounded-xl hover:bg-[#F1F3F5] w-9 h-9"
+              className="rounded-control hover:bg-surface-muted w-9 h-9"
               aria-label="즐겨찾기 추가"
             >
-              <Plus className="w-[18px] h-[18px] text-[#6B7280]" strokeWidth={2} />
+              <Plus className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
             </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <div className="max-w-2xl mx-auto px-4 pt-4">
+      <div className="max-w-[var(--page-max-width)] mx-auto px-[var(--page-padding-x)] pt-4">
         {favorites.length === 0 ? (
           <div className="flex items-center justify-center">
             <EmptyState
@@ -648,34 +622,38 @@ export default function Favorites() {
             />
           </div>
         ) : (
-          <div className="space-y-3">
-            {orderedFavorites.map((fav, idx) => {
-              // Map 기반 조회 — 인덱스 역산 패턴 제거
-              const stop = stopMap.get(fav.id)
-              if (!stop) return null
-              const arrResult = arrivalByStopId.get(stop.id)
-              const elapsedSec = (Date.now() - fetchedAtRef.current) / 1000
-              return (
-                <FavoriteCard
-                  key={fav.id}
-                  fav={fav}
-                  stop={stop}
-                  arrivalData={arrResult?.data ?? null}
-                  isArrivalLoading={arrResult?.isLoading ?? false}
-                  elapsedSec={elapsedSec}
-                  index={idx}
-                  onUpdateAlias={(alias) => handleUpdateAlias(fav, alias)}
-                  onDelete={() => handleDelete(fav)}
-                  onMove={handleCardMove}
-                  onDrop={handleCardDrop}
-                />
-              )
-            })}
-          </div>
+          <DndContext
+            sensors={cardSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleCardDragEnd}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+          >
+            <SortableContext items={cardOrder} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3" style={{ touchAction: 'pan-x' }}>
+                {orderedFavorites.map((fav) => {
+                  // Map 기반 조회 — 인덱스 역산 패턴 제거
+                  const stop = stopMap.get(fav.id)
+                  if (!stop) return null
+                  const arrResult = arrivalByStopId.get(stop.id)
+                  const elapsedSec = (Date.now() - fetchedAtRef.current) / 1000
+                  return (
+                    <FavoriteCard
+                      key={fav.id}
+                      fav={fav}
+                      stop={stop}
+                      arrivalData={arrResult?.data ?? null}
+                      isArrivalLoading={arrResult?.isLoading ?? false}
+                      elapsedSec={elapsedSec}
+                      onUpdateAlias={(alias) => handleUpdateAlias(fav, alias)}
+                      onDelete={() => handleDelete(fav)}
+                    />
+                  )
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
-
-      <BottomNav />
-    </div>
+    </PageShell>
   )
 }
