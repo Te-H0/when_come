@@ -12,6 +12,7 @@ import type {
   ApiFavoriteStop,
 } from '@/types/api'
 import { getJwt } from './supabase'
+import { logClientError } from './clientErrorLog'
 
 const BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 
@@ -71,28 +72,70 @@ function isLegacyError(val: unknown): val is LegacyErrorBody {
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = await getJwt()
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options?.headers,
-    },
-  })
+  const method = (options?.method ?? 'GET').toUpperCase()
+
+  let res: Response
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options?.headers,
+      },
+    })
+  } catch (e) {
+    // 네트워크/CORS/DNS 등 fetch 자체 실패 — status 없음
+    logClientError({
+      path,
+      method,
+      status: null,
+      code: null,
+      message: e instanceof Error ? e.message : String(e),
+    })
+    throw e
+  }
+
   if (!res.ok) {
     const body: unknown = await res.json().catch(() => ({}))
     if (isStructuredError(body)) {
+      logClientError({
+        path,
+        method,
+        status: res.status,
+        code: body.error.code,
+        message: body.error.message,
+      })
       throw new ApiError(body.error.code, body.error.message, res.status)
     }
     const msg = isLegacyError(body)
       ? (body.message ?? body.error ?? `HTTP ${res.status}`)
       : `HTTP ${res.status}`
+    logClientError({
+      path,
+      method,
+      status: res.status,
+      code: null,
+      message: msg,
+    })
     throw new ApiError('UNKNOWN', msg, res.status)
   }
+
   if (res.status === 204 || res.headers.get('Content-Length') === '0') {
     return undefined as T
   }
-  return res.json() as Promise<T>
+  try {
+    return await res.json() as T
+  } catch (parseErr) {
+    logClientError({
+      path,
+      method,
+      status: res.status,
+      code: 'PARSE_ERROR',
+      message: parseErr instanceof Error ? parseErr.message : String(parseErr),
+    })
+    throw parseErr
+  }
 }
 
 export function searchPlaces(q: string): Promise<ApiPlace[]> {

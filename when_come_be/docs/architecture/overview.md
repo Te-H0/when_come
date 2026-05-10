@@ -1,6 +1,8 @@
 # 백엔드 서비스 구조도
 
 > 아키텍처 변경 시 자동 업데이트됨
+>
+> 2026-05-10: CORS Allow-Methods에 PATCH 추가. POST /routes, POST /favorite-stops에서 display_order = max+1 자동 부여.
 
 ## 레이어 구조
 Request → Edge Function → _shared (auth/error/client/provider) → Supabase DB / 외부 API (서울 버스, GBIS, ODsay, 지하철)
@@ -29,6 +31,7 @@ supabase/
 │   ├── route-stops/             ← 정류장 별명 전용 PATCH (alias 단일 변경)  [신규 2026-05-09]
 │   ├── favorite-stops/          ← 즐겨찾기 CRUD (GET/POST/PATCH/DELETE, provider 자동 매핑)  [신규 2026-05-09]
 │   ├── subway-station-directions/ ← 지하철역 양방향 인접역 (ODsay subwayStationInfo 프록시)  [신규 2026-05-08]
+│   ├── client-log/              ← FE 클라이언트 에러 텔레메트리 (항상 204, anomaly_logs INSERT)  [신규 2026-05-10]
 │   └── sync-gbis-stations/      ← 경기도 정류소 DB 동기화 (cron용, service role 인증)
 ├── migrations/                  ← DB 스키마
 └── seed.sql
@@ -52,6 +55,7 @@ docs/
 | route-stops | route-stops | 정류장 별명 전용 PATCH (`alias` 단일 변경, RLS 부모 검증, 2026-05-09~) |
 | favorites | favorite-stops | 즐겨찾기 단일 정류장 CRUD. GET/POST(provider 자동 매핑)/PATCH/DELETE. D5 노선 0개 reject. (2026-05-09~) |
 | subway-directions | subway-station-directions | 지하철역 양방향 인접역. `?stationId={ODsay stationID}` → `{ stationName, lineName, subwayCode, directions[{updn, nextStop}] }`. (2026-05-08~) |
+| client-log | client-log | FE 클라이언트 에러 텔레메트리. `POST /client-log` → 항상 204. anomaly_logs에 source='client' 기록. JWT 선택적. (2026-05-10~) |
 | sync | sync-gbis-stations | 경기도 전체 정류소를 `gbis_stations` 테이블에 upsert (일 1회 cron, GitHub Actions) |
 
 ## DB 테이블

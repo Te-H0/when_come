@@ -8,6 +8,23 @@
 
 ---
 
+## 2026-05-10 — FE 클라이언트 에러 텔레메트리 endpoint 추가
+
+FE 클라이언트 에러 텔레메트리 endpoint `/client-log` 추가, anomaly_logs.source='client'로 누적. JWT 선택적 (익명/네트워크 실패 포함). 항상 204 반환 — catch 블록에서 호출해도 안전.
+
+운영 조회 SQL: `select created_at, category, detail->>'path' as path, detail->>'message' as msg, user_id from anomaly_logs where source = 'client' order by created_at desc limit 100;`
+
+---
+
+## 2026-05-10 — CORS PATCH 추가 + POST display_order 자동 부여 (BE 버그픽스)
+
+- CORS `Access-Control-Allow-Methods`에 `PATCH` 추가 — 운영에서 모든 PATCH preflight 실패 즉시 해소
+- `POST /routes` 신규 경로 저장 시 `display_order = max + 1` 자동 부여 (기존 DEFAULT 0 중복 → 정렬 무의미 버그 수정)
+- `POST /favorite-stops` 동일 패턴 적용 (기존 코드 `maybeSingle()` 패턴으로 일관화)
+- FE 변경 불필요. prod 머지 즉시 PATCH 요청 정상화.
+
+---
+
 ## 2026-05-10 — 디자인 시스템 토큰화 + Page Shell 표준화 (ADR-003) **[설계 완료, FE 구현 대기]**
 
 FE 페이지 8개에 누적된 디자인 일관성 부재 (hex/px 230+/190+ 곳 분산, 페이지마다 다른 헤더 sticky 패턴, BottomNav 가림/공백 미해결)를 토큰 시스템 + PageShell/PageHeader 공용 컴포넌트로 일괄 정리.
