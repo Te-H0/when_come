@@ -262,7 +262,17 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
     }
   }
 
-  // 1. routes 생성
+  // 1. routes 생성 — display_order: 사용자별 max+1 자동 부여
+  const { data: maxOrderRow } = await db
+    .from("routes")
+    .select("display_order")
+    .eq("user_id", user.id)
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const nextDisplayOrder = (maxOrderRow?.display_order ?? -1) + 1
+
   const { data: route, error: routeErr } = await db
     .from("routes")
     .insert({
@@ -272,6 +282,7 @@ async function createRoute(req: Request): Promise<CreateRouteResponse> {
       destination_name: destinationName.trim(),
       origin_coords: originCoords ?? null,
       destination_coords: destinationCoords ?? null,
+      display_order: nextDisplayOrder,
     })
     .select("id")
     .single()

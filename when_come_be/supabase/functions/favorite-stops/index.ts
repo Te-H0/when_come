@@ -193,17 +193,15 @@ async function createFavoriteStop(req: Request) {
     }
   }
 
-  // display_order: 현 사용자 max + 1
-  const { data: maxRow } = await db
+  // display_order: 현 사용자 max + 1 자동 부여 (RLS가 user_id 필터링 보장)
+  const { data: maxOrderRow } = await db
     .from("favorite_stops")
     .select("display_order")
     .order("display_order", { ascending: false })
     .limit(1)
+    .maybeSingle()
 
-  const maxOrder: number = Array.isArray(maxRow) && maxRow.length > 0
-    ? (maxRow[0].display_order ?? 0)
-    : -1
-  const displayOrder = maxOrder + 1
+  const displayOrder = (maxOrderRow?.display_order ?? -1) + 1
 
   // favorite_stops INSERT
   const { data: inserted, error: insertErr } = await db

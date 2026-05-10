@@ -801,6 +801,142 @@ supabaseTest("routes GET — route_stops에 direction_* 있으면 응답 JSON에
   )
 })
 
+// ─── POST — display_order 자동 부여 ──────────────────────────────────────────
+
+supabaseTest("routes POST — 기존 routes 0건이면 display_order=0으로 저장된다", async () => {
+  let capturedPayload: Record<string, unknown> | null = null
+
+  await withEnv(ENV, () =>
+    withMockFetch(
+      async (url, init) => {
+        if (url.includes("/auth/v1/user")) return mockSupabaseAuthSuccess(USER_ID)
+        if (url.includes("/rest/v1/routes")) {
+          // maybeSingle() GET (max 조회) — 빈 응답
+          if ((init?.method ?? "GET") === "GET" || !init?.method) return jsonResponse(null, 200)
+          // INSERT
+          try {
+            const b = JSON.parse(init?.body as string)
+            capturedPayload = Array.isArray(b) ? b[0] : b
+          } catch { /* ignore */ }
+          return mockDbInsertRoute()
+        }
+        if (url.includes("route_stops")) return mockDbInsertStops()
+        throw new Error(`Unmocked: ${url}`)
+      },
+      async () => {
+        await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "출근길",
+            originName: "집",
+            destinationName: "회사",
+            stops: [{
+              odsayStopId: "106186",
+              stopName: "강남역",
+              stopType: "subway",
+              sequence: 1,
+              stepGroup: 1,
+              stopRoutes: [],
+            }],
+          },
+        }))
+        if (capturedPayload) {
+          assertEquals(capturedPayload.display_order, 0)
+        }
+      },
+    )
+  )
+})
+
+supabaseTest("routes POST — 기존 routes 2건(display_order 0, 1)이면 신규는 display_order=2로 저장된다", async () => {
+  let capturedPayload: Record<string, unknown> | null = null
+
+  await withEnv(ENV, () =>
+    withMockFetch(
+      async (url, init) => {
+        if (url.includes("/auth/v1/user")) return mockSupabaseAuthSuccess(USER_ID)
+        if (url.includes("/rest/v1/routes")) {
+          if ((init?.method ?? "GET") === "GET" || !init?.method) {
+            // maybeSingle() — max display_order=1
+            return jsonResponse({ display_order: 1 }, 200)
+          }
+          try {
+            const b = JSON.parse(init?.body as string)
+            capturedPayload = Array.isArray(b) ? b[0] : b
+          } catch { /* ignore */ }
+          return mockDbInsertRoute()
+        }
+        if (url.includes("route_stops")) return mockDbInsertStops()
+        throw new Error(`Unmocked: ${url}`)
+      },
+      async () => {
+        await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "퇴근길",
+            originName: "회사",
+            destinationName: "집",
+            stops: [{
+              odsayStopId: "106186",
+              stopName: "강남역",
+              stopType: "subway",
+              sequence: 1,
+              stepGroup: 1,
+              stopRoutes: [],
+            }],
+          },
+        }))
+        if (capturedPayload) {
+          assertEquals(capturedPayload.display_order, 2)
+        }
+      },
+    )
+  )
+})
+
+supabaseTest("routes POST — 기존 routes 1건(display_order=5, 비연속)이면 신규는 display_order=6으로 저장된다", async () => {
+  let capturedPayload: Record<string, unknown> | null = null
+
+  await withEnv(ENV, () =>
+    withMockFetch(
+      async (url, init) => {
+        if (url.includes("/auth/v1/user")) return mockSupabaseAuthSuccess(USER_ID)
+        if (url.includes("/rest/v1/routes")) {
+          if ((init?.method ?? "GET") === "GET" || !init?.method) {
+            // maybeSingle() — max display_order=5 (비연속)
+            return jsonResponse({ display_order: 5 }, 200)
+          }
+          try {
+            const b = JSON.parse(init?.body as string)
+            capturedPayload = Array.isArray(b) ? b[0] : b
+          } catch { /* ignore */ }
+          return mockDbInsertRoute()
+        }
+        if (url.includes("route_stops")) return mockDbInsertStops()
+        throw new Error(`Unmocked: ${url}`)
+      },
+      async () => {
+        await handler(makeRouteRequest("POST", "", {
+          body: {
+            name: "주말 경로",
+            originName: "집",
+            destinationName: "마트",
+            stops: [{
+              odsayStopId: "200",
+              stopName: "역삼역",
+              stopType: "subway",
+              sequence: 1,
+              stepGroup: 1,
+              stopRoutes: [],
+            }],
+          },
+        }))
+        if (capturedPayload) {
+          assertEquals(capturedPayload.display_order, 6)
+        }
+      },
+    )
+  )
+})
+
 // ─── GET 응답 active / display_order / alias 컬럼 포함 검증 ────────────────
 
 function mockDbListRoutesWithAllFields() {
