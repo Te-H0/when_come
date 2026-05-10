@@ -108,12 +108,12 @@ export default function UnifiedStopPicker({ onComplete, onCancel }: UnifiedStopP
       <div className="flex items-center gap-2">
         <button
           onClick={handleBack}
-          className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#6B7280] hover:bg-[#F3F4F6] transition-colors"
+          className="inline-flex items-center justify-center w-8 h-8 rounded-chip text-text-secondary hover:bg-surface-muted transition-colors"
           aria-label="뒤로"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <span className="text-[13px] font-medium text-[#6B7280]">
+        <span className="text-caption font-medium text-text-secondary">
           {step.kind === 'searching' && '정류장/역 검색'}
           {step.kind === 'lineSelecting' && '호선 선택'}
         </span>
@@ -169,14 +169,14 @@ function SearchStep({
           value={query}
           onChange={(e) => onInput(e.target.value)}
           placeholder="정류장 또는 역 이름 입력"
-          className="w-full h-11 pl-3.5 pr-10 text-[15px] rounded-xl border border-black/10 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          className="w-full h-11 pl-3.5 pr-10 text-body rounded-control border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
         />
         {isSearching ? (
-          <Loader2 className="absolute right-3 top-3 w-5 h-5 text-[#9CA3AF] animate-spin" />
+          <Loader2 className="absolute right-3 top-3 w-5 h-5 text-text-tertiary animate-spin" />
         ) : query ? (
           <button
             onClick={onClear}
-            className="absolute right-3 top-3 text-[#9CA3AF] hover:text-[#6B7280]"
+            className="absolute right-3 top-3 text-text-tertiary hover:text-text-secondary"
             aria-label="지우기"
           >
             <X className="w-5 h-5" />
@@ -185,20 +185,20 @@ function SearchStep({
       </div>
 
       {results.length > 0 && (
-        <div className="rounded-xl border border-black/5 shadow-sm overflow-hidden max-h-64 overflow-y-auto bg-white">
+        <div className="rounded-control border border-border-subtle shadow-card overflow-hidden max-h-64 overflow-y-auto bg-surface-card">
           {results.map((stop) => (
             <button
               key={stop.id}
               onClick={() => onSelect(stop)}
-              className="w-full px-4 py-3 text-left hover:bg-[#F9FAFB] transition-colors flex items-center justify-between border-b border-black/5 last:border-0"
+              className="w-full px-4 py-3 text-left hover:bg-surface-input transition-colors flex items-center justify-between border-b border-border-subtle last:border-0"
             >
               <div>
-                <div className="text-[14px] font-medium text-[#111827]">{stop.name}</div>
-                <div className="text-[12px] text-[#6B7280]">
+                <div className="text-label font-medium text-text-primary">{stop.name}</div>
+                <div className="text-caption text-text-secondary">
                   {stop.type === 'bus' ? '버스 정류장' : stop.laneName ?? '지하철역'}
                 </div>
               </div>
-              <span className="text-[11px] px-2 py-0.5 rounded bg-[#F1F3F5] text-[#6B7280]">
+              <span className="text-caption px-2 py-0.5 rounded-chip bg-surface-muted text-text-secondary">
                 {stop.type === 'bus' ? '버스' : '지하철'}
               </span>
             </button>
@@ -217,13 +217,13 @@ interface LineSelectStepProps {
 function LineSelectStep({ candidates, onSelect }: LineSelectStepProps) {
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[13px] text-[#6B7280]">이용할 호선을 선택하세요</p>
+      <p className="text-caption text-text-secondary">이용할 호선을 선택하세요</p>
       <div className="flex flex-wrap gap-2">
         {candidates.map((stop) => (
           <button
             key={stop.id}
             onClick={() => onSelect(stop)}
-            className="px-3.5 py-2 rounded-xl border border-black/10 text-[13px] font-medium text-[#374151] bg-white hover:bg-[#F3F4F6] transition-colors"
+            className="px-3.5 py-2 rounded-control border border-border-default text-caption font-medium text-text-primary bg-surface-card hover:bg-surface-muted transition-colors"
           >
             {stop.laneName ?? stop.name}
           </button>

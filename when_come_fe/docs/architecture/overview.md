@@ -22,7 +22,9 @@ src/
 │   └── routes.ts
 ├── components/
 │   ├── ui/                   ← shadcn/ui 컴포넌트
-│   ├── BottomNav.tsx         ← 공유 내비게이션
+│   ├── BottomNav.tsx         ← 공유 내비게이션 (높이: var(--bottom-nav-height))
+│   ├── PageShell.tsx         ← 페이지 래퍼 (min-h-dvh + bg-surface-page + BottomNav 자동 렌더)
+│   ├── PageHeader.tsx        ← 스티키 헤더 (뒤로가기/제목/배지/우측슬롯/하단슬롯)
 │   ├── EmptyState.tsx        ← 공용 빈 상태 UI (아이콘+제목+설명+CTA 카드)
 │   ├── StopName.tsx          ← 정류장/역 이름 표시 (별명 병기 지원)
 │   ├── AliasEditor.tsx       ← 별명 인라인 편집 컴포넌트

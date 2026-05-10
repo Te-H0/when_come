@@ -8,6 +8,40 @@
 
 ---
 
+## 2026-05-10 — 디자인 시스템 토큰화 + Page Shell 표준화 (ADR-003) **[설계 완료, FE 구현 대기]**
+
+FE 페이지 8개에 누적된 디자인 일관성 부재 (hex/px 230+/190+ 곳 분산, 페이지마다 다른 헤더 sticky 패턴, BottomNav 가림/공백 미해결)를 토큰 시스템 + PageShell/PageHeader 공용 컴포넌트로 일괄 정리.
+
+### 산출물
+- **결정 문서:** [`docs/decisions/ADR-003-design-system.md`](decisions/ADR-003-design-system.md)
+- **실전 가이드:** [`docs/design-system.md`](design-system.md) — 토큰 카테고리 7개, theme.css 확장 명세, PageShell/PageHeader props 명세, 페이지별 마이그레이션 매핑
+- **강제 룰:** [`.claude/rules/design-system.md`](../.claude/rules/design-system.md) — `when_come_fe/src/**/*.{ts,tsx}` 자동 적용
+
+### 토큰 카테고리 요약
+- Color: 22개 신규 시멘틱 (text 6, surface 7, border 4, info 1, arrival domain 4) + shadcn 41개 유지 = 63개
+- Radius: 4개 신규 (chip/control/card/pill) + shadcn 4개 유지
+- Elevation: 3개 (flat/card/floating)
+- Motion: 5개 (3 duration + 2 easing)
+- Typography: 7개 시멘틱 utility (`text-page-title`/`section`/`card-title`/`body`/`label`/`caption`/`button`)
+- Layout: 5개 (`--bottom-nav-height/total`, `--page-header-height`, `--page-max-width`, `--page-padding-x`)
+
+### BE 영향: 없음 (FE 전용 변경).
+
+### FE 작업 (FE-DS-1 ~ FE-DS-5, fe-agent 위임)
+- **FE-DS-1.** `src/styles/theme.css` 확장 (위 토큰 카테고리 일괄 추가)
+- **FE-DS-2.** `<PageShell>`, `<PageHeader>` 신설
+- **FE-DS-3.** BottomNav 높이를 CSS custom property로 노출
+- **FE-DS-4.** 페이지 8개 일괄 토큰 마이그레이션 (Home/Favorites/AddFavorite/RouteManagement/SetupRoute/UnifiedStopPicker/BottomNav/EmptyState)
+- **FE-DS-5.** `npm run check:tokens` grep 기반 검출 스크립트
+
+### 마이그레이션 정책
+일괄 진행. 점진 정리는 ADR-003 §1 (4개월 누적 안티패턴)에서 기각됨. 단 PR은 페이지별 또는 도메인별로 분리 권장.
+
+### `when_come_fe/CLAUDE.md` 갱신 필요
+`## 개발 원칙`에 한 줄 추가: "디자인 토큰만 사용 — hex/px hardcode 금지. 페이지는 `<PageShell>` + `<PageHeader>`. 상세 [`docs/design-system.md`](../docs/design-system.md), 정책 [ADR-003](../docs/decisions/ADR-003-design-system.md)."
+
+---
+
 ## 2026-05-10 — 전역 에러 핸들링 표준 (ADR-002) **[구현 완료]**
 
 Java Spring 스타일 enum 코드 기반 전역 에러 표준 — Phase 0~4 전구간 구현 완료.

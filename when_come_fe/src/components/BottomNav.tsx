@@ -12,25 +12,31 @@ export default function BottomNav() {
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-black/5 z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+    <div
+      className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-border-subtle z-50"
+      style={{
+        height: 'var(--bottom-nav-height)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
       <div className="max-w-2xl mx-auto px-4 py-2">
         <div className="flex items-center justify-around">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
             const Icon = item.icon;
-            
+
             return (
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`flex flex-col items-center gap-1 px-6 py-2 rounded-xl transition-colors ${
-                  isActive 
-                    ? "text-[#111827]" 
-                    : "text-[#9CA3AF] hover:text-[#6B7280]"
+                className={`flex flex-col items-center gap-1 px-6 py-2 rounded-control transition-colors ${
+                  isActive
+                    ? "text-text-primary"
+                    : "text-text-tertiary hover:text-text-secondary"
                 }`}
               >
                 <Icon className="w-6 h-6" strokeWidth={isActive ? 2.5 : 2} />
-                <span className={`text-[11px] ${isActive ? 'font-semibold' : 'font-medium'}`}>
+                <span className={`text-caption ${isActive ? 'font-semibold' : 'font-medium'}`}>
                   {item.label}
                 </span>
               </button>

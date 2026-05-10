@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Loader2, Check } from 'lucide-react'
+import { Loader2, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { showApiErrorToast } from '@/lib/errorToast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import PageShell from '@/components/PageShell'
+import PageHeader from '@/components/PageHeader'
 import UnifiedStopPicker from '@/features/stop-picker/UnifiedStopPicker'
 import type { PickerPayload } from '@/features/stop-picker/UnifiedStopPicker'
 import { getStopBuses, createFavoriteStop } from '@/lib/api'
@@ -45,28 +47,28 @@ function BusRouteSelectStep({
     <div className="flex flex-col gap-4">
       {/* 정류장 정보 */}
       <div className="px-1">
-        <div className="text-[16px] font-semibold text-[#111827]">{stop.name}</div>
-        <div className="text-[13px] text-[#6B7280] mt-0.5">
+        <div className="text-section font-semibold text-text-primary">{stop.name}</div>
+        <div className="text-caption text-text-secondary mt-0.5">
           버스 정류장
-          {stop.arsId && <span className="ml-1.5 font-mono text-[#9CA3AF]">ARS {stop.arsId}</span>}
+          {stop.arsId && <span className="ml-1.5 font-mono text-text-tertiary">ARS {stop.arsId}</span>}
         </div>
       </div>
 
       {/* 노선 선택 */}
       <div>
-        <p className="text-[14px] font-medium text-[#374151] mb-2">
+        <p className="text-label font-medium text-text-primary mb-2">
           이 정류장에서 탑승할 노선을 선택하세요
-          <span className="ml-1.5 text-[12px] text-[#9CA3AF] font-normal">(1개 이상 필수)</span>
+          <span className="ml-1.5 text-caption text-text-tertiary font-normal">(1개 이상 필수)</span>
         </p>
         {isLoading ? (
-          <div className="flex items-center gap-2 py-4 text-[14px] text-[#9CA3AF]">
+          <div className="flex items-center gap-2 py-4 text-label text-text-tertiary">
             <Loader2 className="w-4 h-4 animate-spin" />
             노선 조회 중...
           </div>
         ) : busLines.length === 0 ? (
-          <p className="text-[13px] text-[#9CA3AF] py-2">이 정류장의 노선 정보를 불러올 수 없어요</p>
+          <p className="text-caption text-text-tertiary py-2">이 정류장의 노선 정보를 불러올 수 없어요</p>
         ) : (
-          <div className="max-h-96 overflow-y-auto rounded-xl border border-black/10">
+          <div className="max-h-96 overflow-y-auto rounded-control border border-border-default">
             {busLines.map((line) => {
               const busInfo = getBusTypeByOdsay(
                 seoulBisTypeToOdsayBusType(line.busRouteType),
@@ -77,15 +79,15 @@ function BusRouteSelectStep({
                 <button
                   key={line.routeName}
                   onClick={() => onToggleRoute(line.routeName)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-b border-black/5 last:border-0 ${
-                    isSelected ? 'bg-[#EFF6FF]' : 'hover:bg-[#F9FAFB]'
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-b border-border-subtle last:border-0 ${
+                    isSelected ? 'bg-surface-info-soft' : 'hover:bg-surface-input'
                   }`}
                 >
                   <div
                     className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border"
                     style={{
                       backgroundColor: isSelected ? busInfo.color : 'transparent',
-                      borderColor: isSelected ? busInfo.color : '#D1D5DB',
+                      borderColor: isSelected ? busInfo.color : 'var(--border-default)',
                     }}
                   >
                     {isSelected && (
@@ -103,11 +105,11 @@ function BusRouteSelectStep({
                   <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: busInfo.color }} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[14px] font-medium text-[#111827]">{line.routeName}번</span>
-                      <span className="text-[12px] text-[#9CA3AF]">{busInfo.label}버스</span>
+                      <span className="text-label font-medium text-text-primary">{line.routeName}번</span>
+                      <span className="text-caption text-text-tertiary">{busInfo.label}버스</span>
                     </div>
                     {(line.startStation || line.endStation) && (
-                      <div className="text-[11px] text-[#9CA3AF] truncate">
+                      <div className="text-caption text-text-tertiary truncate">
                         {line.startStation}
                         {line.startStation && line.endStation ? ' ~ ' : ''}
                         {line.endStation}
@@ -123,8 +125,8 @@ function BusRouteSelectStep({
 
       {/* 별명 입력 */}
       <div>
-        <label className="text-[14px] font-medium text-[#374151] mb-2 block">
-          별명 <span className="text-[12px] text-[#9CA3AF] font-normal">(선택사항)</span>
+        <label className="text-label font-medium text-text-primary mb-2 block">
+          별명 <span className="text-caption text-text-tertiary font-normal">(선택사항)</span>
         </label>
         <input
           type="text"
@@ -132,7 +134,7 @@ function BusRouteSelectStep({
           onChange={(e) => onAliasChange(e.target.value)}
           placeholder="예: 회사 가는 버스"
           maxLength={20}
-          className="w-full h-11 px-3.5 text-[15px] rounded-xl border border-black/10 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          className="w-full h-11 px-3.5 text-body rounded-control border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
         />
       </div>
 
@@ -140,8 +142,8 @@ function BusRouteSelectStep({
       <Button
         onClick={onSave}
         disabled={!canSave}
-        className="w-full h-12 rounded-xl text-[15px] font-medium"
-        style={{ backgroundColor: canSave ? '#111827' : '#9CA3AF' }}
+        className="w-full h-12 rounded-control text-body font-medium"
+        style={{ backgroundColor: canSave ? 'var(--text-primary)' : 'var(--text-tertiary)' }}
       >
         {isSaving ? (
           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -177,17 +179,17 @@ function SubwayConfirmStep({
     <div className="flex flex-col gap-4">
       {/* 역 정보 */}
       <div className="px-1">
-        <div className="text-[16px] font-semibold text-[#111827]">{formatStationName(stop.name)}</div>
+        <div className="text-section font-semibold text-text-primary">{formatStationName(stop.name)}</div>
         <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <span className="text-[13px] text-[#6B7280]">{stop.laneName ?? '지하철역'}</span>
-          <span className="text-[12px] text-[#6B7280]">이 호선의 양방향 도착 정보가 모두 표시돼요</span>
+          <span className="text-caption text-text-secondary">{stop.laneName ?? '지하철역'}</span>
+          <span className="text-caption text-text-secondary">이 호선의 양방향 도착 정보가 모두 표시돼요</span>
         </div>
       </div>
 
       {/* 별명 입력 */}
       <div>
-        <label className="text-[14px] font-medium text-[#374151] mb-2 block">
-          별명 <span className="text-[12px] text-[#9CA3AF] font-normal">(선택사항)</span>
+        <label className="text-label font-medium text-text-primary mb-2 block">
+          별명 <span className="text-caption text-text-tertiary font-normal">(선택사항)</span>
         </label>
         <input
           type="text"
@@ -195,7 +197,7 @@ function SubwayConfirmStep({
           onChange={(e) => onAliasChange(e.target.value)}
           placeholder="예: 출근 지하철"
           maxLength={20}
-          className="w-full h-11 px-3.5 text-[15px] rounded-xl border border-black/10 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          className="w-full h-11 px-3.5 text-body rounded-control border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
         />
       </div>
 
@@ -203,7 +205,7 @@ function SubwayConfirmStep({
       <Button
         onClick={onSave}
         disabled={isSaving}
-        className="w-full h-12 rounded-xl text-[15px] font-medium bg-[#111827] hover:bg-[#1F2937]"
+        className="w-full h-12 rounded-control text-body font-medium bg-text-primary hover:bg-text-primary/90"
       >
         {isSaving ? (
           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -366,23 +368,11 @@ export default function AddFavorite() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F6F7F9]">
-      {/* 헤더 */}
-      <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-10 border-b border-black/5">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button
-            onClick={handleBack}
-            className="inline-flex items-center justify-center w-9 h-9 rounded-xl text-[#6B7280] hover:bg-[#F3F4F6] transition-colors"
-            aria-label="뒤로"
-          >
-            <ArrowLeft className="w-5 h-5" strokeWidth={2} />
-          </button>
-          <h1 className="text-[17px] font-semibold text-[#111827]">즐겨찾기 추가</h1>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader back={handleBack} title="즐겨찾기 추가" />
 
-      <div className="max-w-2xl mx-auto px-4 pt-4 pb-24">
-        <Card className="p-4 rounded-2xl border border-black/5 shadow-sm bg-white">
+      <div className="max-w-[var(--page-max-width)] mx-auto px-[var(--page-padding-x)] pt-4">
+        <Card className="p-4 rounded-card border border-border-subtle shadow-card bg-surface-card">
           {pageStep.kind === 'picking' && (
             <UnifiedStopPicker
               onComplete={handlePickerComplete}
@@ -416,6 +406,6 @@ export default function AddFavorite() {
           )}
         </Card>
       </div>
-    </div>
+    </PageShell>
   )
 }
