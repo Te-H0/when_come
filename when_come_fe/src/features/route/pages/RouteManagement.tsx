@@ -37,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input";
 import StopName from "@/components/StopName";
 import AliasEditor from "@/components/AliasEditor";
+import StopRouteChips from "@/components/StopRouteChips";
 import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 import {
   listRoutes,
@@ -314,9 +315,13 @@ function FavoriteRow({ fav, onUpdateAlias, onDelete }: FavoriteRowProps) {
           />
           <AliasEditor initialAlias={fav.alias} onSave={onUpdateAlias} />
         </div>
-        <div className="text-caption mt-0.5">
-          {fav.favorite_stop_routes.map(r => r.route_name).join(' · ')}
-        </div>
+        <StopRouteChips
+          stopType={fav.stop_type}
+          routes={fav.favorite_stop_routes.map(r => ({
+            routeName: r.route_name,
+            busType: r.bus_type,
+          }))}
+        />
       </div>
 
       {/* 삭제 버튼 */}

@@ -29,15 +29,12 @@ export default function BottomNav() {
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`relative flex flex-col items-center gap-1 px-6 py-2 rounded-control transition-colors ${
+                className={`flex flex-col items-center gap-1 px-6 py-2 rounded-control transition-colors ${
                   isActive
                     ? "text-text-primary"
                     : "text-text-tertiary hover:text-text-secondary"
                 }`}
               >
-                {isActive && (
-                  <span className="absolute top-0 h-0.5 w-8 bg-text-primary rounded-full" />
-                )}
                 <Icon className="w-6 h-6" strokeWidth={isActive ? 2.5 : 2} />
                 <span className={`text-caption ${isActive ? 'font-semibold' : 'font-normal'}`}>
                   {item.label}
