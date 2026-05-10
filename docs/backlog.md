@@ -1,6 +1,6 @@
 # 통합 백로그
 
-> 마지막 업데이트: 2026-05-10
+> 마지막 업데이트: 2026-05-10 (세션 #N — 경로 수정/polling 최적화/focus ring 토큰화/검은 버튼 룰 follow-up 4건 추가)
 > BE 전용 항목은 `when_come_be/docs/backlog.md` 참고.
 
 ## 🔴 High
@@ -34,6 +34,10 @@
 - [ ] #21 | [chore] `anomaly_logs` source='client' 자동 정리 cron — `/client-log` endpoint가 anon 호출 가능 + rate limit 없어 spam 시 `anomaly_logs` 폭증 위험. pg_cron으로 30일 이전 client 로그 삭제 또는 일별 per-user_id INSERT 제한 RLS. CORS 사고 작업 코드리뷰 I-1. | 2026-05-10
 - [ ] #22 | [refactor] `PageShell` BottomNav 분리 — 현재 PageShell이 `<BottomNav />`를 자식으로 렌더하지만 BottomNav는 `fixed`라 flex layout에서 공간을 차지하지 않음. PageShell의 `paddingBottom: var(--bottom-nav-total)` 보정으로 동작은 OK이나 의도와 구현 불일치. App.tsx 최상위에서 BottomNav 렌더하는 구조로 검토. CORS 사고 작업 코드리뷰 I-8. | 2026-05-10
 - [ ] #23 | [feat] vite-plugin-pwa 도입 — 오프라인 동작 + Service Worker 캐시 + Android WebAPK 자동 설치. 현재는 useVersionCheck 훅으로 새 버전 감지만. 오프라인 요구사항 올라올 때 진행. spa-version-check tech-note 참고. | 2026-05-10
+- [ ] #24 | [feat] 경로 수정 기능 — `RouteManagement` ⋯ 메뉴에 "경로 수정" 추가 + `SetupRoute`에 `editingRouteId` 파라미터로 수정 모드. 기존 경로 GET → nodes 초기화 → 저장 시 `PATCH /routes/:id` (BE는 stops 부분 수정 PATCH 이미 지원). 헤더 타이틀 "경로 등록" → "경로 수정" 토글. 자동검색 결과로 만든 경로 수정 시 검색 결과 재사용 여부 결정 필요. | 2026-05-10
+- [ ] #25 | [chore] Home `allSegments` polling 비용 최적화 — 2026-05-10에 isPast 펼침 통합 위해 fetch 범위를 nonPastSegments → allSegments로 확장. 현재 `handleRefresh`가 과거 정류장까지 refetch함. 옵션: (a) `handleRefresh`에서 nonPast만 refetch, (b) isPast는 펼친 경우만 동적 fetch. 경로가 길어질수록 비용 증가. | 2026-05-10
+- [ ] #26 | [chore] AliasEditor focus ring 임의 색 토큰화 — `AliasEditor.tsx:91`의 `focus:ring-blue-500/30 focus:border-blue-400`이 ADR-003 시멘틱 토큰 정책 위반. `--ring-focus`/`--border-focus` 토큰 신설 후 적용. 다른 input 컴포넌트도 같은 패턴이면 일괄. | 2026-05-10
+- [ ] #27 | [chore] `bg-text-primary` 사용처 text-white 강제 룰 — 시멘틱 타이포 utility(text-body/caption/label)가 색을 묶어 정의해 검은 배경 위에 글씨 사라지는 회귀 자주 발생. 디자인 시스템 룰 §9 code-reviewer 체크리스트에 항목 추가 + grep 기반 사전 검사 가능 (`grep "bg-text-primary" \| grep -v "text-white"`). 자세한 회고는 `docs/tech-notes/dark-button-text-disappear.md`. | 2026-05-10
 
 ## ✅ 완료
 - [x] #B2 | [bug] SetupRoute 수동 검색에서 지하철 검색 안 됨 — `search-stops`에서 ODsay 응답을 subway-first 안정 정렬로 수정. 원인: ODsay가 `[버스, 지하철]` 순으로 merge → FE `slice(0, 10)` cap에서 지하철 잘림 (완료일: 2026-05-09)
