@@ -629,7 +629,7 @@ export default function Favorites() {
             modifiers={[restrictToVerticalAxis, restrictToParentElement]}
           >
             <SortableContext items={cardOrder} strategy={verticalListSortingStrategy}>
-              <div className="space-y-3" style={{ touchAction: 'pan-x' }}>
+              <div className="space-y-3">
                 {orderedFavorites.map((fav) => {
                   // Map 기반 조회 — 인덱스 역산 패턴 제거
                   const stop = stopMap.get(fav.id)

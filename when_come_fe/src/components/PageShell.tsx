@@ -16,8 +16,9 @@ interface PageShellProps {
  * 모든 페이지의 최상위 컨테이너.
  *
  * 책임:
- * - min-h-dvh (모바일 viewport — 키보드 올라와도 안 잘림)
+ * - h-dvh flex-col 구조 (html/body는 overflow:hidden으로 잠겨있으므로 main이 스크롤 담당)
  * - background-color: var(--surface-page)
+ * - main: flex-1 overflow-y-auto → 페이지 본문 스크롤 가능, pull-to-refresh 차단 유지
  * - padding-bottom: var(--bottom-nav-total) 자동 처리 (BottomNav 가림 방지)
  * - BottomNav 자동 렌더링 (각 페이지에서 직접 import 불필요)
  */
@@ -27,8 +28,9 @@ export default function PageShell({
   reserveStickyFooter = false,
 }: PageShellProps) {
   return (
-    <div className={`min-h-dvh bg-surface-page ${className}`}>
+    <div className={`h-dvh flex flex-col bg-surface-page ${className}`}>
       <main
+        className="flex-1 overflow-y-auto overscroll-contain"
         style={{
           paddingBottom: reserveStickyFooter
             ? 'calc(var(--bottom-nav-total) + 56px)'
