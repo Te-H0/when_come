@@ -30,6 +30,10 @@
 - [ ] #17 | [chore] `text-label` 토큰 색상 정책 재검토 — 현재 `text-label`이 `color: text-secondary`를 포함하지만 코드에서 `text-label text-text-primary` 조합이 자주 등장. `text-label-strong` 별도 토큰 신설 또는 label에서 color 제거 후 조합 패턴으로 변경 검토. | 2026-05-10
 - [ ] #18 | [chore] 구버전 컴포넌트 토큰 마이그레이션 — `src/features/route/components/TransitCard.tsx`, `RouteProgress.tsx`, `RouteOption.tsx`에 `text-gray-900`, `text-gray-500`, `text-gray-600` 잔존 (이번 ADR-003 작업 범위 밖이었음). 사용 여부 확인 후 토큰화 또는 deprecated 제거. | 2026-05-10
 - [ ] #19 | [chore] `theme.css @layer base` html 블록 두 곳 병합 — overflow/scrollbar 블록(L232~)과 font-size 블록(L262~)이 분리됨. 동작 이상 없으나 미관 정리. | 2026-05-10
+- [ ] #20 | [refactor] POST `/routes` / `/favorite-stops` display_order 자동 부여 race condition — 동시 POST 두 번이면 같은 max를 읽어 동률 INSERT 가능. 현재는 다음 PATCH로 정렬 가능하므로 무시. PostgreSQL sequence 또는 `INSERT ... SELECT max+1` 단일 쿼리로 atomic 처리. CORS 사고 작업 코드리뷰 I-2. | 2026-05-10
+- [ ] #21 | [chore] `anomaly_logs` source='client' 자동 정리 cron — `/client-log` endpoint가 anon 호출 가능 + rate limit 없어 spam 시 `anomaly_logs` 폭증 위험. pg_cron으로 30일 이전 client 로그 삭제 또는 일별 per-user_id INSERT 제한 RLS. CORS 사고 작업 코드리뷰 I-1. | 2026-05-10
+- [ ] #22 | [refactor] `PageShell` BottomNav 분리 — 현재 PageShell이 `<BottomNav />`를 자식으로 렌더하지만 BottomNav는 `fixed`라 flex layout에서 공간을 차지하지 않음. PageShell의 `paddingBottom: var(--bottom-nav-total)` 보정으로 동작은 OK이나 의도와 구현 불일치. App.tsx 최상위에서 BottomNav 렌더하는 구조로 검토. CORS 사고 작업 코드리뷰 I-8. | 2026-05-10
+- [ ] #23 | [feat] vite-plugin-pwa 도입 — 오프라인 동작 + Service Worker 캐시 + Android WebAPK 자동 설치. 현재는 useVersionCheck 훅으로 새 버전 감지만. 오프라인 요구사항 올라올 때 진행. spa-version-check tech-note 참고. | 2026-05-10
 
 ## ✅ 완료
 - [x] #B2 | [bug] SetupRoute 수동 검색에서 지하철 검색 안 됨 — `search-stops`에서 ODsay 응답을 subway-first 안정 정렬로 수정. 원인: ODsay가 `[버스, 지하철]` 순으로 merge → FE `slice(0, 10)` cap에서 지하철 잘림 (완료일: 2026-05-09)

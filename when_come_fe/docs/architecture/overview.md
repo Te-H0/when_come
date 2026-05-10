@@ -22,12 +22,13 @@ src/
 │   └── routes.ts
 ├── components/
 │   ├── ui/                   ← shadcn/ui 컴포넌트
-│   ├── BottomNav.tsx         ← 공유 내비게이션 (높이: var(--bottom-nav-height))
-│   ├── PageShell.tsx         ← 페이지 래퍼 (min-h-dvh + bg-surface-page + BottomNav 자동 렌더)
+│   ├── BottomNav.tsx         ← 공유 내비게이션 (아이콘 28px + 라벨 text-body, indicator 없음)
+│   ├── PageShell.tsx         ← 페이지 래퍼 (h-dvh flex-col, main을 flex-1 overflow-y-auto 스크롤 컨테이너로)
 │   ├── PageHeader.tsx        ← 스티키 헤더 (뒤로가기/제목/배지/우측슬롯/하단슬롯)
 │   ├── EmptyState.tsx        ← 공용 빈 상태 UI (아이콘+제목+설명+CTA 카드)
 │   ├── StopName.tsx          ← 정류장/역 이름 표시 (별명 병기 지원)
 │   ├── AliasEditor.tsx       ← 별명 인라인 편집 컴포넌트
+│   ├── StopRouteChips.tsx    ← 정류장 노선 chip 렌더링 공용 컴포넌트 (버스/지하철 transitColors 적용)
 │   └── figma/
 │       └── ImageWithFallback.tsx
 ├── features/
@@ -50,6 +51,8 @@ src/
 │   ├── mockData.ts           ← TransitStop, SavedRoute 타입 정의 + mock 데이터
 │   ├── errorMessages.ts      ← 에러 코드 → 사용자 메시지 매핑 (ADR-002)
 │   ├── errorToast.ts         ← showApiErrorToast/getErrorMessage 헬퍼 (dev에서 [CODE/STATUS] prefix)
+│   ├── clientErrorLog.ts     ← logClientError — apiFetch catch에서 fire-and-forget BE 송신 (네트워크/4xx/5xx/parse 에러 → /client-log)
+│   ├── useVersionCheck.ts    ← 새 배포 감지 훅 (5분 polling + visibilitychange) → sonner 토스트 + 새로고침 액션
 │   └── supabase.ts           ← Supabase 클라이언트 + dev 자동 로그인 분기
 ├── types/
 │   ├── api.ts                ← API DTO 타입
