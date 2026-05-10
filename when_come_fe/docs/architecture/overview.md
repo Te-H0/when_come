@@ -44,14 +44,22 @@ src/
 │   └── stop-picker/
 │       └── UnifiedStopPicker.tsx ← 검색+호선+방향 multi-step 정류장 선택 UI
 ├── lib/
-│   ├── api.ts                ← API 클라이언트 함수
+│   ├── api.ts                ← API 클라이언트 함수 (ApiError 포함)
 │   ├── arrival.ts            ← 실시간 도착정보 fetch/파싱 로직
 │   ├── mappers.ts            ← API 응답 → 도메인 모델 변환
-│   └── mockData.ts           ← TransitStop, SavedRoute 타입 정의 + mock 데이터
+│   ├── mockData.ts           ← TransitStop, SavedRoute 타입 정의 + mock 데이터
+│   ├── errorMessages.ts      ← 에러 코드 → 사용자 메시지 매핑 (ADR-002)
+│   ├── errorToast.ts         ← showApiErrorToast/getErrorMessage 헬퍼 (dev에서 [CODE/STATUS] prefix)
+│   └── supabase.ts           ← Supabase 클라이언트 + dev 자동 로그인 분기
+├── types/
+│   ├── api.ts                ← API DTO 타입
+│   └── errorCodes.ts         ← BE errorCodes.ts 거울복사 (수동 동기화)
 ├── utils/
-│   └── transitColors.ts      ← 버스/지하철 공식 색상 매핑
+│   ├── transitColors.ts      ← 버스/지하철 공식 색상 매핑
+│   ├── stationName.ts        ← 지하철 역명 정규화
+│   └── arrivalDisplay.tsx    ← ArrivalText/splitArrival/parseArrivalToken (Home/Favorites 공용)
 └── styles/
-    └── theme.css             ← Tailwind v4 CSS custom properties
+    └── theme.css             ← Tailwind v4 CSS custom properties + 디자인 토큰 (ADR-003)
 ```
 
 ## 도메인

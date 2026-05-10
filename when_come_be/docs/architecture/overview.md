@@ -12,7 +12,8 @@ supabase/
 │   ├── _shared/
 │   │   ├── cors.ts              ← CORS 헤더
 │   │   ├── auth.ts              ← JWT 검증
-│   │   ├── error.ts             ← 에러 처리
+│   │   ├── error.ts             ← 에러 처리 (AppError + structured response + 운영 마스킹 isProduction())
+│   │   ├── errorCodes.ts        ← 에러 코드 union (53개, 11개 도메인). ADR-002
 │   │   ├── odsayClient.ts       ← ODsay API 클라이언트
 │   │   ├── gbisClient.ts        ← GBIS(경기 버스) API 클라이언트 (노선 조회 + DB 정류소 검색, 5분 캐시)
 │   │   ├── gbisOpenApiClient.ts ← 경기도 자체 OpenAPI 클라이언트 (BusStation — 시군 페이징 다운로드)
