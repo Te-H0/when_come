@@ -34,7 +34,7 @@ export default function PageShell({
         style={{
           paddingBottom: reserveStickyFooter
             ? 'calc(var(--bottom-nav-total) + 56px)'
-            : 'var(--bottom-nav-total)',
+            : 'calc(var(--bottom-nav-total) + 24px)',
         }}
       >
         {children}

@@ -12,6 +12,7 @@ export default function AliasEditor({ initialAlias, onSave, className }: AliasEd
   const [inputValue, setInputValue] = useState(initialAlias ?? '')
   const [isSaving, setIsSaving] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -19,6 +20,19 @@ export default function AliasEditor({ initialAlias, onSave, className }: AliasEd
       // 다음 프레임에서 포커스
       requestAnimationFrame(() => inputRef.current?.focus())
     }
+  }, [isOpen, initialAlias])
+
+  // 외부 클릭 시 닫기 (입력 내용은 cancel — 명시적 ✓로만 저장)
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+        setInputValue(initialAlias ?? '')
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [isOpen, initialAlias])
 
   const handleOpen = () => setIsOpen(true)
@@ -65,7 +79,7 @@ export default function AliasEditor({ initialAlias, onSave, className }: AliasEd
   }
 
   return (
-    <div className={`inline-flex items-center gap-1.5 ${className ?? ''}`}>
+    <div ref={containerRef} className={`inline-flex items-center gap-1.5 ${className ?? ''}`}>
       <input
         ref={inputRef}
         type="text"
