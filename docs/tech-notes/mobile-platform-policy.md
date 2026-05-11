@@ -105,6 +105,19 @@ shadcn `<Input>`은 `text-base md:text-sm`이라 모바일 16px → OK.
    - TanStack의 `refetchOnWindowFocus` 자동 동작은 30초 이상 백그라운드에서만 작동 — staleTime 무시 명시 refetch가 체감 신선도 차이.
    - 첫 mount는 `skipFirstVisibleRef`로 스킵 — useQuery가 이미 자동 fetch 함.
 
+**iOS Safari PWA standalone 신뢰성 보강 (2026-05-12~):**
+
+`visibilitychange` 단독으로는 iOS PWA가 메모리에서 freeze된 후 복귀하는 일부 esoteric 케이스 누락 가능. `pageshow` 이벤트(특히 `event.persisted=true` bfcache 복원)를 함께 listen해 안전망 확보.
+
+| 케이스 | visibilitychange | pageshow |
+|---|---|---|
+| 앱 스위처 / 화면 잠금 / 다른 탭 전환 | ✅ | ─ |
+| bfcache 복원 (뒤로가기) | ✅ | ✅ (persisted=true) |
+| iOS PWA 메모리 freeze 후 복귀 | 일부 환경 누락 | ✅ |
+| 일반 사파리 탭 복귀 | ✅ | ─ |
+
+알려진 한계: 페이지가 visible 상태 유지하면서 pageshow만 발화하는 케이스에선 React state 멱등이라 refetch effect 트리거 안 됨. 실제 발생률 매우 낮음 — 사용자가 새로고침 버튼 누르면 해소.
+
 ### LocalStorage 안전 wrapper
 
 `src/lib/safeStorage.ts` 신규 — try/catch wrapper.
