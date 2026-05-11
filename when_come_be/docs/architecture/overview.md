@@ -2,6 +2,8 @@
 
 > 아키텍처 변경 시 자동 업데이트됨
 >
+> 2026-05-11: `arrival-info` 지하철 응답에 5필드 추가 (non-breaking, 옵셔널) — `trainType`(btrainSttus raw, "급행"/"ITX"/"특급"/"일반"/미지), `destinationName`(bstatnNm), `arrivalSeconds`(barvlDt), `dataTimestamp`(recptnDt), `isLastTrain`(lstcarAt). 미지 enum은 `anomaly_logs`(category=`subway.unknown_train_type`)에 기록 후 raw 그대로 보존. `dedupeSubwayItems` key가 4-tuple → 5-tuple(+arrmsg2)로 확장.
+>
 > 2026-05-10: routes.origin_name / destination_name nullable 전환 (수동 등록 모드 대응). POST/PATCH /routes 검증 완화 — name만 required, origin/destination optional + nullable. 기존 placeholder string row(`'출발지'`/`'도착지'` AND coords IS NULL)는 마이그레이션이 NULL로 정리.
 >
 > 2026-05-10: CORS Allow-Methods에 PATCH 추가. POST /routes, POST /favorite-stops에서 display_order = max+1 자동 부여.

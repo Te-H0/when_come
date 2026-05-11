@@ -241,6 +241,157 @@ Deno.test("arrival-info subway — 정상 도착정보 목록을 반환한다", 
   )
 })
 
+// ─── subway btrainSttus / bstatnNm / barvlDt / recptnDt / lstcarAt (2026-05-11~) ─────
+
+Deno.test("arrival-info subway — 신규 5필드(trainType/destinationName/arrivalSeconds/dataTimestamp/isLastTrain) raw 동봉", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [
+          {
+            subwayId: "1001",
+            trainLineNm: "광명행 - 급행",
+            arvlMsg2: "2분 40초 후",
+            arvlMsg3: "구로",
+            arvlCd: "99",
+            updnLine: "하행",
+            btrainSttus: "급행",
+            bstatnNm: "광명",
+            barvlDt: "160",
+            recptnDt: "2026-05-11 09:23:18",
+            lstcarAt: "0",
+          },
+        ],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=구로`))
+      assertEquals(res.status, 200)
+      const body = await res.json()
+      assertEquals(body.length, 1)
+      assertEquals(body[0].trainType, "급행")
+      assertEquals(body[0].destinationName, "광명")
+      assertEquals(body[0].arrivalSeconds, 160)
+      assertEquals(body[0].dataTimestamp, "2026-05-11 09:23:18")
+      assertEquals(body[0].isLastTrain, false)
+    })
+  )
+})
+
+Deno.test("arrival-info subway — btrainSttus '일반'은 raw 그대로 노출 (FE에서 표시 안 함 정책)", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [
+          {
+            subwayId: "1002",
+            trainLineNm: "성수행 - 역삼방면",
+            arvlMsg2: "2분 40초 후",
+            arvlMsg3: "서초",
+            arvlCd: "99",
+            updnLine: "외선",
+            btrainSttus: "일반",
+          },
+        ],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=강남`))
+      const body = await res.json()
+      // BE는 raw 보존 — FE의 formatTrainTypeShort가 '일반' → null로 변환해 UI 라벨 미노출
+      assertEquals(body[0].trainType, "일반")
+    })
+  )
+})
+
+Deno.test("arrival-info subway — btrainSttus 빈 문자열/누락은 trainType=null", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [
+          {
+            subwayId: "1002",
+            trainLineNm: "성수행 - 역삼방면",
+            arvlMsg2: "2분 40초 후",
+            arvlMsg3: "서초",
+            arvlCd: "99",
+            updnLine: "외선",
+            // btrainSttus 누락
+          },
+        ],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=강남`))
+      const body = await res.json()
+      assertEquals(body[0].trainType, null)
+    })
+  )
+})
+
+Deno.test("arrival-info subway — btrainSttus 미지의 값은 raw 그대로 노출 (정보 손실 방지)", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [
+          {
+            subwayId: "1075",
+            trainLineNm: "야탑행",
+            arvlMsg2: "5분 후",
+            arvlMsg3: "분당",
+            arvlCd: "99",
+            updnLine: "하행",
+            btrainSttus: "K급행", // 가상의 미지 enum
+          },
+        ],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=분당`))
+      const body = await res.json()
+      // raw 그대로 — FE가 매핑 실패 시 raw chip 노출 + anomaly 로깅
+      assertEquals(body[0].trainType, "K급행")
+    })
+  )
+})
+
+Deno.test("arrival-info subway — barvlDt 누락/빈 문자열은 arrivalSeconds=null", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [
+          {
+            subwayId: "1002",
+            trainLineNm: "성수행 - 역삼방면",
+            arvlMsg2: "2분 40초 후",
+            arvlMsg3: "서초",
+            arvlCd: "99",
+            updnLine: "외선",
+          },
+        ],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=강남`))
+      const body = await res.json()
+      assertEquals(body[0].arrivalSeconds, null)
+    })
+  )
+})
+
+Deno.test("arrival-info subway — lstcarAt='1'은 isLastTrain=true (막차)", async () => {
+  await withEnv(ENV, () =>
+    withMockFetch(async () =>
+      jsonResponse({
+        realtimeArrivalList: [
+          {
+            subwayId: "1002",
+            trainLineNm: "성수행",
+            arvlMsg2: "운행 종료",
+            arvlMsg3: "강남",
+            arvlCd: "99",
+            updnLine: "외선",
+            lstcarAt: "1",
+          },
+        ],
+      }), async () => {
+      const res = await handler(makeRequest("GET", `${BASE}?type=subway&stationName=강남`))
+      const body = await res.json()
+      assertEquals(body[0].isLastTrain, true)
+    })
+  )
+})
+
 Deno.test("arrival-info subway — realtimeArrivalList가 없으면 빈 배열을 반환한다", async () => {
   await withEnv(ENV, () =>
     withMockFetch(async () => jsonResponse({}), async () => {

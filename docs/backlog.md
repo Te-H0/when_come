@@ -1,6 +1,6 @@
 # 통합 백로그
 
-> 마지막 업데이트: 2026-05-10 (세션 #N — 경로 수정/polling 최적화/focus ring 토큰화/검은 버튼 룰 follow-up 4건 추가)
+> 마지막 업데이트: 2026-05-11 (세션 #N+2 — 급행 표시(btrainSttus + 4필드 동시 도입) + 모바일 보강 M1~M14 일괄 + Dialog 키보드 회피)
 > BE 전용 항목은 `when_come_be/docs/backlog.md` 참고.
 
 ## 🔴 High
@@ -24,7 +24,7 @@
 - [ ] #11 | [refactor] `place-search/index.ts:73` `await res.json() as NaverLocalResponse` `as` 단언 제거 — 타입 가드 함수(`isNaverLocalResponse`)로 대체. typescript-conventions 규칙 위반. ADR-002 코드 리뷰 F-3. | 2026-05-10
 - [ ] #12 | [chore] `anomaly_logs` 적재량 모니터링 자동화 — ADR-002 §5.2 SQL을 cron 또는 대시보드로 주기 실행. 임계치 초과 시 알람. 현재는 수동 확인. | 2026-05-10
 - [ ] #13 | [refactor] dnd-kit 마이그레이션 — Home 칩, Favorites 카드 드래그앤드롭. react-dnd HTML5Backend는 모바일 터치 미지원 + ghost preview 빈약. 풀스택 마이그레이션 후 우선순위 검토. | 2026-05-10
-- [ ] #14 | [feat] 전철 급행 표시 (예: "급 용산행" 빨간 배지 + 행선지) — BE `arrival-info`가 `trainLineNm`에서 "급행" 키워드 추출해 `isExpress` 또는 `trainType` 필드 응답 추가, FE `transitColors.ts:rapid` 토큰 재사용해 배지 렌더. | 2026-05-10
+- ~~[ ] #14 | [feat] 전철 급행 표시~~ → #31, #BB8로 통합 완료 (2026-05-11)
 - [ ] #15 | [refactor] `PageHeader.back` prop → `onBack` 컨벤션 통일 — component-rules.md "콜백은 `on` 접두사" 규칙 위반. `back?: boolean | (() => void)` 유니온이라 어색하지만 `onBack?: () => void; showBack?: boolean` 분리 검토. ADR-003 코드리뷰 I-3. | 2026-05-10
 - [ ] #16 | [feat] `PageShell.noHeader` prop 구현 — design-system.md §8.1 명세에는 있으나 미구현. 풀스크린 검색 모달/picker 패턴에서 필요. | 2026-05-10
 - [ ] #17 | [chore] `text-label` 토큰 색상 정책 재검토 — 현재 `text-label`이 `color: text-secondary`를 포함하지만 코드에서 `text-label text-text-primary` 조합이 자주 등장. `text-label-strong` 별도 토큰 신설 또는 label에서 color 제거 후 조합 패턴으로 변경 검토. | 2026-05-10
@@ -39,7 +39,30 @@
 - [ ] #26 | [chore] AliasEditor focus ring 임의 색 토큰화 — `AliasEditor.tsx:91`의 `focus:ring-blue-500/30 focus:border-blue-400`이 ADR-003 시멘틱 토큰 정책 위반. `--ring-focus`/`--border-focus` 토큰 신설 후 적용. 다른 input 컴포넌트도 같은 패턴이면 일괄. | 2026-05-10
 - [ ] #27 | [chore] `bg-text-primary` 사용처 text-white 강제 룰 — 시멘틱 타이포 utility(text-body/caption/label)가 색을 묶어 정의해 검은 배경 위에 글씨 사라지는 회귀 자주 발생. 디자인 시스템 룰 §9 code-reviewer 체크리스트에 항목 추가 + grep 기반 사전 검사 가능 (`grep "bg-text-primary" \| grep -v "text-white"`). 자세한 회고는 `docs/tech-notes/dark-button-text-disappear.md`. | 2026-05-10
 
+- [ ] #28 | [feat] 미니카드 헤더와 펼침 첫 row 정보 중복 — isFuture 카드에서 fastest("전역 도착")가 헤더에 표시되고 펼치면 같은 line의 첫 row가 같은 텍스트 + 다음 차 정보. 호선 1개일 때 두 번 보임. 정책: 헤더는 fastest만, 펼침은 첫 차 행선지/시간 + 다음 차 + 3번째+. 또는 펼침에 노선 row 묶음 단순화. backlog #14(급행 표시)와 같이 처리. | 2026-05-11
+- [ ] #29 | [chore] BottomNav 키보드 떴을 때 띄움 vs 숨김 정책 확정 — 현재 (b) 위로 띄움 채택. 실 디바이스 사용 후 (a) 숨김으로 전환 고려. iOS PWA standalone에서 상태바 잔상 quirk 모니터링. tech-notes/mobile-platform-policy.md 참고. | 2026-05-11
+- [ ] #30 | [chore] 디자인 룰 §11 신설 — `<input>` 직접 사용 시 font-size ≥ 16px, sticky/fixed bottom 요소는 `+ var(--keyboard-inset-height, 0px)` 보정, 새 페이지는 PageShell+PageHeader 통과. design-system.md §8 옆에 추가. tech-notes/mobile-platform-policy.md 참고. | 2026-05-11
+- ~~[ ] #31 | [feat] 급행 표시~~ → #BB8로 완료 (2026-05-11)
+
+- [ ] #32 | [chore] manifest maskable 아이콘 safe zone 검증 — 현재 `icon_192.png`/`icon_512.png`를 `purpose: "any"`와 `purpose: "maskable"` 둘 다로 중복 등록. maskable.app 검증 후 안전 영역(80%) 위반이면 maskable 전용 파일(`icon_192_maskable.png`) 별도 준비. 미위반 시 그대로 유지. | 2026-05-11
+- [ ] #33 | [chore] BE AppError code 누락 정리 — `arrival-info/index.ts`의 `busApiKey()`/`subwayApiKey()` 500 throw에 code 없음. ADR-002 신규 코드 필수 규칙 위반. 신규 코드라기보다 기존 잔재라 백로그. `COMMON_INTERNAL_ERROR` 부여. | 2026-05-11
+- [ ] #34 | [refactor] `useSubmitGuard` 헬퍼 일괄 적용 또는 제거 — 현재 4곳 모두 inline `savingLockRef` 패턴. 헬퍼는 만들었지만 사용 안 함. 같은 컴포넌트 2핸들러 lock 공유 케이스(AddFavorite) 대응 후 일괄 적용하거나, 헬퍼 자체 제거. | 2026-05-11
+- [ ] #35 | [chore] FE `safeStorage` 적용 확대 — 현재 Home의 SELECTED_ROUTE_KEY 1곳만. 향후 신규 localStorage 사용처 추가 시 반드시 `safeStorage`만 사용 — design-system.md 또는 typescript-conventions.md에 룰 추가. | 2026-05-11
+- [ ] #36 | [feat] 막차(`isLastTrain`) UI 라벨 — BE 응답에 `isLastTrain: boolean` 도입됨. FE 도착 카드에 truthy일 때 "막차" 배지 추가 (예: 도착 시간 옆 회색 chip). 적용 위치: Home/Favorites 모든 도착 row. 운행 종료 후의 도착 0건 케이스와 구분에 도움. | 2026-05-11
+- [ ] #37 | [feat] `arrivalSeconds` / `dataTimestamp` 활용 카운트다운 정밀도 — 현재 `arrmsg1`("2분 40초 후") 텍스트 정규식 파싱. 새로 들어온 `arrivalSeconds` 정수 + `dataTimestamp` 시각으로 지연 보정 (`now - dataTimestamp` 만큼 빼서 표시). 정확도 향상. arrival.ts `getArrivalMin`/`applyCountdownToArrmsg` 리팩터. | 2026-05-11
+- [ ] #38 | [chore] 모바일 폭별 레이아웃 audit + 패턴 정착 (iPhone SE 320 ~ Pro Max 430) — 사용자 보고(2026-05-12): "기기마다 글씨 줄바뀜/짤림/버튼 가려짐". 현재 베이스 폭 명시 없음. 작업: (1) Chrome DevTools에서 320/360/375/414px 4개 폭으로 모든 페이지 audit. (2) 깨지는 곳 일괄 정리 — 정류장 이름/별명 `truncate min-w-0`, 도착 시간/호선 칩 `whitespace-nowrap flex-shrink-0` 유지, 부가 정보 `whitespace-normal`. (3) `design-system.md §11 Mobile width policy` 명문화 — 베이스 폭 375, 폭별 분기 금지 정책, truncate vs line-clamp 가이드. (4) 컨테이너 쿼리 도입 검토(중장기). 도착 카드 흩어진 `whitespace-nowrap`이 가장 의심. | 2026-05-12
+
 ## ✅ 완료
+- [x] #BB8 | [feat] 지하철 급행 표시 (`(급)` prefix) — BE 응답 `btrainSttus` raw 동봉 (5종 enum + 미지 anomaly) + FE `formatTrainTypeShort` 헬퍼 + Home/Favorites 도착 카드 모든 위치(9곳)에 헤드사인 prefix. 색 강조 없이 일반 텍스트색. 추가로 4필드 (`destinationName`/`arrivalSeconds`/`dataTimestamp`/`isLastTrain`) 동시 도입. seoul-subway.md 전체 필드표 갱신. BE 테스트 6건. (완료일: 2026-05-11)
+- [x] #BB9 | [chore] 모바일 보강 일괄 — M1(Dialog 키보드 회피 translate calc), M2(safeStorage), M3(usePageVisibility로 백그라운드 polling 정지), M4(savingLockRef 더블탭 가드 4곳), M5(manifest portrait + display_override + categories + maskable), M6(--border-focus/--ring-focus 토큰화 4곳), M8(UnifiedStopPicker IME composition), M9(Toaster safe-area-inset-top offset), M10(touch-action: manipulation 전역), M11(BottomNav backdrop-blur fallback alpha), M14(useOnlineStatus 오프라인 토스트). 백로그 #29/#30/#32/#33/#34/#35로 follow-up 분리. (완료일: 2026-05-11)
+- [x] #BB1 | [bug] SetupRoute sticky 저장 버튼 검은 직사각형 (글씨 안 보임) — 어제 검은 버튼 일괄 fix(#27)에서 line 584(자동검색)만 적용되고 line 735(sticky 저장)가 누락. `text-white` 추가. (완료일: 2026-05-11)
+- [x] #BB2 | [bug] AddFavorite BusRouteSelectStep 저장 버튼 검은 직사각형 (잠재) — line 145에 `text-white` 누락. 같은 회귀 패턴이라 함께 fix. (완료일: 2026-05-11)
+- [x] #BB3 | [bug] Home 도착 상세 카드 3번째/4번째 행에 행선지(headsign) 누락 — `extraItems` 매핑에서 `item.headsign` 표시 안 함. isGrouped true/false 둘 다 추가. (완료일: 2026-05-11)
+- [x] #BB4 | [bug] Home 미니카드 펼침 row에 지하철 headsign 누락 — 4호선처럼 양방향이 모두 표시되는 stop에서 어느 방향인지 분간 불가. `getMatchedSubwayItems` 적용해 첫 차/두 번째 차 headsign 표시. (완료일: 2026-05-11)
+- [x] #BB5 | [bug] UnifiedStopPicker 검색 결과 row에 ARS 번호 누락 — 사용자 보고. 다른 화면(Home/Favorites/AddFavorite/RouteNodeCard/SearchResultNode)에는 다 표시되는데 picker만 빠짐. (완료일: 2026-05-11)
+- [x] #BB6 | [chore] 모바일 플랫폼 정책 인프라 — `<meta color-scheme=light>` + `theme-color=#F6F7F9` + manifest + `interactive-widget=resizes-content` + `useKeyboardInset` 훅 + PageShell/BottomNav/SetupRoute sticky 키보드 회피. 자세한 내용은 `docs/tech-notes/mobile-platform-policy.md`. (완료일: 2026-05-11)
+- [x] #BB7 | [chore] 직접 `<input>` font-size 16px 보장 — UnifiedStopPicker / AddFavorite alias input 2곳. iOS Safari zoom-in 차단. (완료일: 2026-05-11)
+
 - [x] #B2 | [bug] SetupRoute 수동 검색에서 지하철 검색 안 됨 — `search-stops`에서 ODsay 응답을 subway-first 안정 정렬로 수정. 원인: ODsay가 `[버스, 지하철]` 순으로 merge → FE `slice(0, 10)` cap에서 지하철 잘림 (완료일: 2026-05-09)
 - [x] #B3 | [bug] 경로 노드 드래그앤드롭 안 됨 — 의도적으로 제거된 기능이었음. 무효 처리 (완료일: 2026-05-09)
 - [x] #1 | [feat] GET /stop-routes — 정류장 노선 목록 API (서울 버스 API `getRouteByStation` 권한 승인 확인 + 테스트 완료) | 2026-04-21

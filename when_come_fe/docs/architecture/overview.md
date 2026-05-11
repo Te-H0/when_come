@@ -53,6 +53,11 @@ src/
 │   ├── errorToast.ts         ← showApiErrorToast/getErrorMessage 헬퍼 (dev에서 [CODE/STATUS] prefix)
 │   ├── clientErrorLog.ts     ← logClientError — apiFetch catch에서 fire-and-forget BE 송신 (네트워크/4xx/5xx/parse 에러 → /client-log)
 │   ├── useVersionCheck.ts    ← 새 배포 감지 훅 (5분 polling + visibilitychange) → sonner 토스트 + 새로고침 액션
+│   ├── useKeyboardInset.ts   ← 모바일 키보드 가시영역 → CSS 변수 `--keyboard-inset-height` 갱신 (visualViewport 기반). PageShell/BottomNav/SetupRoute sticky 저장 버튼/Dialog가 참조. App 최상위 1회 호출.
+│   ├── usePageVisibility.ts  ← `document.visibilitychange` 추적. Home/Favorites 카운트다운 1초 tick을 화면 안 보일 때 정지 + visible 복귀 시 도착정보 즉시 refetch (TanStack staleTime 30s 무시) — 배터리/CPU 절약 + 체감 신선도 (2026-05-11~)
+│   ├── useOnlineStatus.ts    ← online/offline 이벤트 → 오프라인 진입 시 sonner 토스트(duration Infinity) + 복귀 시 자동 dismiss. App 최상위 1회 호출 (2026-05-11~)
+│   ├── safeStorage.ts        ← localStorage try/catch wrapper — 사파리 사적 브라우징/quota 차단 환경에서 throw 차단. 모든 localStorage 접근은 이것만 사용 (2026-05-11~)
+│   ├── useSubmitGuard.ts     ← 저장 버튼 더블탭 가드 헬퍼 (참고용). 실제로는 각 핸들러에 inline `savingLockRef` 패턴 사용 — 같은 컴포넌트 내 다른 핸들러가 lock 공유 케이스 대응 (2026-05-11~)
 │   └── supabase.ts           ← Supabase 클라이언트 + dev 자동 로그인 분기
 ├── types/
 │   ├── api.ts                ← API DTO 타입
@@ -121,6 +126,7 @@ fetchArrival(stop)
   - 트레이드오프: past 스텝까지 polling 비용 증가 (수동 새로고침 1회당 요청 수 ↑). 경로 길이가 짧아 실질적 부담은 낮음
 - **역명 표시 정규화 (2026-05-06~):** BE는 ODsay 원본 저장 + 다단계 fallback 시도. FE는 표시 시점에만 `formatStationName`으로 정규화 (`src/utils/stationName.ts`). `TransitStop.displayName`에 매핑 시점 계산. API 호출 인자에는 원본 `stop.name` 사용. 0건 응답은 "도착 정보 없음"으로 표시 (막차 이외 케이스 포함).
 - **노선 매칭 규칙 (2026-05-08~):** BE 응답 `items` 순서는 provider 응답 도착 순서로 무보장이며 사용자 미저장 노선도 섞일 수 있음. FE는 **인덱스가 아닌 노선번호**로 매칭 (`busRouteAbrv === line` 또는 `routeName === line`). 같은 노선번호 중복 시 `traTime1` 최솟값 채택. 자세한 내용은 `docs/tech-notes/arrival-route-matching.md`.
+- **지하철 열차 종류 표시 (2026-05-11~):** BE 응답 `trainType` raw (서울 API `btrainSttus` 5종 enum: 급행/ITX/특급/일반/미지) → FE `formatTrainTypeShort` 헬퍼로 짧은 라벨 (`"급행" → "급"`, `"특급" → "특"`, `"ITX" → "ITX"`, `"일반"/"" → null`, 미지 → raw). 헤드사인 앞 prefix `(급)용산행` 패턴. Home/Favorites 모든 도착 카드 렌더링에 일괄 적용. 색 강조 없음 — 헤드사인과 동일 텍스트색.
 
 ### 지하철 방향 매칭 규칙 (2026-04-28~)
 

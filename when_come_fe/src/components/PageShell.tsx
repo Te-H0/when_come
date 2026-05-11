@@ -33,8 +33,8 @@ export default function PageShell({
         className="flex-1 overflow-y-auto overscroll-contain"
         style={{
           paddingBottom: reserveStickyFooter
-            ? 'calc(var(--bottom-nav-total) + 56px)'
-            : 'calc(var(--bottom-nav-total) + 24px)',
+            ? 'calc(var(--bottom-nav-total) + 56px + var(--keyboard-inset-height, 0px))'
+            : 'calc(var(--bottom-nav-total) + 24px + var(--keyboard-inset-height, 0px))',
         }}
       >
         {children}

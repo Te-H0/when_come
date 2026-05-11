@@ -16,6 +16,20 @@ interface SubwayDirection {
   updn: 'up' | 'down' | null
 }
 
+/**
+ * 서울 지하철 `btrainSttus`를 화면용 짧은 라벨로 변환.
+ * "급행" → "급", "특급" → "특", "ITX" → "ITX", "일반"/"" → null (표시 안 함).
+ * 미지의 값은 raw 그대로 노출 (BE가 anomaly 기록 + FE는 정보 손실 방지).
+ */
+export function formatTrainTypeShort(raw: string | null | undefined): string | null {
+  const value = (raw ?? '').trim()
+  if (value === '' || value === '일반') return null
+  if (value === '급행') return '급'
+  if (value === '특급') return '특'
+  if (value === 'ITX') return 'ITX'
+  return value
+}
+
 // 서울 지하철 API가 동일 열차를 byte-identical row로 중복 반환하는 quirk 방어
 // 다른 트레인이 우연히 같은 메시지를 갖는 경우는 서로 다른 row이므로 제거하지 않음
 function dedupeSubwayItems(items: ApiSubwayArrivalItem[]): ApiSubwayArrivalItem[] {

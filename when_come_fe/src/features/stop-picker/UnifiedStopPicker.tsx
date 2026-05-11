@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { ArrowLeft, Loader2, X } from 'lucide-react'
 import { searchStops } from '@/lib/api'
 import type { ApiStop } from '@/types/api'
@@ -36,6 +36,8 @@ export default function UnifiedStopPicker({ onComplete, onCancel }: UnifiedStopP
   const [results, setResults] = useState<ApiStop[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 한글 IME composition 진행 중에는 API 호출 대기 — "강+"/"강나" 단계마다 검색 발사 방지.
+  const isComposingRef = useRef(false)
 
   useEffect(() => {
     return () => {
@@ -43,12 +45,12 @@ export default function UnifiedStopPicker({ onComplete, onCancel }: UnifiedStopP
     }
   }, [])
 
-  // ── 검색 ──
-  const handleInput = (text: string) => {
-    setQuery(text)
+  const scheduleSearch = (text: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
     if (!text.trim()) { setResults([]); return }
     timerRef.current = setTimeout(async () => {
+      // composition 중이면 다음 사이클까지 대기 (compositionend가 다시 트리거)
+      if (isComposingRef.current) return
       setIsSearching(true)
       try {
         const data = await searchStops(text)
@@ -59,6 +61,22 @@ export default function UnifiedStopPicker({ onComplete, onCancel }: UnifiedStopP
         setIsSearching(false)
       }
     }, 300)
+  }
+
+  // ── 검색 ──
+  const handleInput = (text: string) => {
+    setQuery(text)
+    scheduleSearch(text)
+  }
+
+  const handleCompositionStart = () => {
+    isComposingRef.current = true
+  }
+
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
+    isComposingRef.current = false
+    // composition 끝난 시점의 완성형 텍스트로 검색
+    scheduleSearch(e.currentTarget.value)
   }
 
   const handleClear = () => {
@@ -126,6 +144,8 @@ export default function UnifiedStopPicker({ onComplete, onCancel }: UnifiedStopP
           results={results}
           isSearching={isSearching}
           onInput={handleInput}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           onClear={handleClear}
           onSelect={handleSelectStop}
         />
@@ -149,6 +169,8 @@ interface SearchStepProps {
   results: ApiStop[]
   isSearching: boolean
   onInput: (text: string) => void
+  onCompositionStart: () => void
+  onCompositionEnd: (e: React.CompositionEvent<HTMLInputElement>) => void
   onClear: () => void
   onSelect: (stop: ApiStop) => void
 }
@@ -158,6 +180,8 @@ function SearchStep({
   results,
   isSearching,
   onInput,
+  onCompositionStart,
+  onCompositionEnd,
   onClear,
   onSelect,
 }: SearchStepProps) {
@@ -168,8 +192,14 @@ function SearchStep({
           type="text"
           value={query}
           onChange={(e) => onInput(e.target.value)}
+          onCompositionStart={onCompositionStart}
+          onCompositionEnd={onCompositionEnd}
           placeholder="정류장 또는 역 이름 입력"
-          className="w-full h-11 pl-3.5 pr-10 text-body rounded-control border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          className="w-full h-11 pl-3.5 pr-10 rounded-control border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-ring-focus focus:border-border-focus"
+          style={{ fontSize: '16px' }}
         />
         {isSearching ? (
           <Loader2 className="absolute right-3 top-3 w-5 h-5 text-text-tertiary animate-spin" />
@@ -190,15 +220,18 @@ function SearchStep({
             <button
               key={stop.id}
               onClick={() => onSelect(stop)}
-              className="w-full px-4 py-3 text-left hover:bg-surface-input transition-colors flex items-center justify-between border-b border-border-subtle last:border-0"
+              className="w-full px-4 py-3 text-left hover:bg-surface-input transition-colors flex items-center justify-between gap-3 border-b border-border-subtle last:border-0"
             >
-              <div>
-                <div className="text-label font-medium text-text-primary">{stop.name}</div>
-                <div className="text-caption text-text-secondary">
-                  {stop.type === 'bus' ? '버스 정류장' : stop.laneName ?? '지하철역'}
+              <div className="min-w-0">
+                <div className="text-label font-medium text-text-primary truncate">{stop.name}</div>
+                <div className="text-caption text-text-secondary flex items-center gap-1.5 flex-wrap">
+                  <span>{stop.type === 'bus' ? '버스 정류장' : stop.laneName ?? '지하철역'}</span>
+                  {stop.type === 'bus' && stop.arsId && (
+                    <span className="font-mono text-text-tertiary">ARS {stop.arsId}</span>
+                  )}
                 </div>
               </div>
-              <span className="text-caption px-2 py-0.5 rounded-chip bg-surface-muted text-text-secondary">
+              <span className="text-caption px-2 py-0.5 rounded-chip bg-surface-muted text-text-secondary flex-shrink-0">
                 {stop.type === 'bus' ? '버스' : '지하철'}
               </span>
             </button>

@@ -32,9 +32,10 @@ import AliasEditor from '@/components/AliasEditor'
 import { listFavoriteStops, updateFavoriteStop, deleteFavoriteStop } from '@/lib/api'
 import { getJwt } from '@/lib/supabase'
 import { mapApiFavoriteStopToTransitStop } from '@/lib/mappers'
-import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg, getMatchedSubwayItems, groupSubwayItemsByDirection } from '@/lib/arrival'
+import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg, getMatchedSubwayItems, groupSubwayItemsByDirection, formatTrainTypeShort } from '@/lib/arrival'
 import type { ArrivalData } from '@/lib/arrival'
 import { ApiError } from '@/lib/api'
+import { usePageVisibility } from '@/lib/usePageVisibility'
 import { ArrivalText, splitArrival } from '@/utils/arrivalDisplay'
 import { getBusTypeByOdsay, getSubwayColor, normalizeSubwayLineName } from '@/utils/transitColors'
 import type { ApiFavoriteStop } from '@/types/api'
@@ -225,10 +226,13 @@ function FavoriteCard({
                           const minVal = item.displayMsg != null ? 0 : (rawMsg.match(/(\d+)분/) ? parseInt(rawMsg.match(/(\d+)분/)![1]) : null)
                           const isUrgentItem = minVal !== null && minVal < 3
                           const isSecondRow = itemIdx === 1
+                          const itemTrainType = formatTrainTypeShort(item.trainType)
                           return (
                             <div key={itemIdx} className="flex items-baseline gap-1.5 min-w-0">
-                              {item.headsign && (
-                                <span className={`${isSecondRow ? 'text-caption' : 'text-caption'} text-text-tertiary shrink-0`}>{item.headsign}행</span>
+                              {(itemTrainType || item.headsign) && (
+                                <span className={`${isSecondRow ? 'text-caption' : 'text-caption'} text-text-tertiary shrink-0`}>
+                                  {itemTrainType && `(${itemTrainType})`}{item.headsign && `${item.headsign}행`}
+                                </span>
                               )}
                               <span className={`${isSecondRow ? 'text-caption font-medium' : 'text-body font-bold'} tabular-nums leading-tight ${itemIdx === 0 && isUrgentItem ? 'text-arrival-urgent' : itemIdx === 0 ? 'text-arrival-normal' : 'text-arrival-muted'}`}>
                                 {timeOnly}
@@ -249,10 +253,13 @@ function FavoriteCard({
                           const minVal = item.displayMsg != null ? 0 : (rawMsg.match(/(\d+)분/) ? parseInt(rawMsg.match(/(\d+)분/)![1]) : null)
                           const isUrgentItem = minVal !== null && minVal < 3
                           const isSecondRow = itemIdx === 1
+                          const itemTrainType = formatTrainTypeShort(item.trainType)
                           return (
                             <div key={itemIdx} className="flex items-baseline gap-1.5 min-w-0">
-                              {item.headsign && (
-                                <span className={`${isSecondRow ? 'text-caption' : 'text-caption'} text-text-tertiary shrink-0`}>{item.headsign}행</span>
+                              {(itemTrainType || item.headsign) && (
+                                <span className={`${isSecondRow ? 'text-caption' : 'text-caption'} text-text-tertiary shrink-0`}>
+                                  {itemTrainType && `(${itemTrainType})`}{item.headsign && `${item.headsign}행`}
+                                </span>
                               )}
                               <span className={`${isSecondRow ? 'text-caption font-medium' : 'text-body font-bold'} tabular-nums leading-tight ${itemIdx === 0 && isUrgentItem ? 'text-arrival-urgent' : itemIdx === 0 ? 'text-arrival-normal' : 'text-arrival-muted'}`}>
                                 {timeOnly}
@@ -286,6 +293,8 @@ function FavoriteCard({
 
             const item1Headsign = isSubway && matchedSubwayItems[0]?.headsign ? matchedSubwayItems[0].headsign : null
             const item2Headsign = isSubway && matchedSubwayItems[1]?.headsign ? matchedSubwayItems[1].headsign : null
+            const item1TrainType = isSubway ? formatTrainTypeShort(matchedSubwayItems[0]?.trainType) : null
+            const item2TrainType = isSubway ? formatTrainTypeShort(matchedSubwayItems[1]?.trainType) : null
             const hasMoreItems = isSubway && matchedSubwayItems.length > 2
             const isLineExpanded = expandedLines[lineKey] ?? false
             const extraItems = hasMoreItems && isLineExpanded ? matchedSubwayItems.slice(2) : []
@@ -334,8 +343,10 @@ function FavoriteCard({
                       ) : (
                         <>
                           <div className="flex items-baseline gap-1.5 justify-end">
-                            {item1Headsign && (
-                              <span className="text-caption text-text-secondary whitespace-nowrap">{item1Headsign}행</span>
+                            {(item1TrainType || item1Headsign) && (
+                              <span className="text-caption text-text-secondary whitespace-nowrap">
+                                {item1TrainType && `(${item1TrainType})`}{item1Headsign && `${item1Headsign}행`}
+                              </span>
                             )}
                             <ArrivalText
                               msg={arrivalTimeOnly}
@@ -347,8 +358,10 @@ function FavoriteCard({
                           </div>
                           {arrivalText2 && (
                             <div className="flex items-baseline gap-1.5 justify-end">
-                              {item2Headsign && (
-                                <span className="text-caption text-arrival-muted whitespace-nowrap">{item2Headsign}행</span>
+                              {(item2TrainType || item2Headsign) && (
+                                <span className="text-caption text-arrival-muted whitespace-nowrap">
+                                  {item2TrainType && `(${item2TrainType})`}{item2Headsign && `${item2Headsign}행`}
+                                </span>
                               )}
                               <span className="text-label text-arrival-muted tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
                               {stopsBefore2 && (
@@ -381,10 +394,18 @@ function FavoriteCard({
                       const label = idx === 0 ? '3번째' : `${idx + 3}번째`
                       const rawMsg = item.displayMsg ?? item.arrmsg1
                       const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway')
+                      const itemTrainType = formatTrainTypeShort(item.trainType)
                       return (
-                        <div key={`${lineKey}-extra-${idx}`} className="flex items-center justify-between">
-                          <span className="text-caption text-text-tertiary">{label}</span>
-                          <span className="text-caption text-arrival-muted tabular-nums">{msg}</span>
+                        <div key={`${lineKey}-extra-${idx}`} className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-caption text-text-tertiary whitespace-nowrap">{label}</span>
+                            {(itemTrainType || item.headsign) && (
+                              <span className="text-caption text-text-secondary truncate">
+                                {itemTrainType && `(${itemTrainType})`}{item.headsign && `${item.headsign}행`}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-caption text-arrival-muted tabular-nums whitespace-nowrap">{msg}</span>
                         </div>
                       )
                     })}
@@ -407,12 +428,14 @@ export default function Favorites() {
   const queryClient = useQueryClient()
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [, forceUpdate] = useState(0)
+  const isPageVisible = usePageVisibility()
 
-  // 1초마다 카운트다운 리렌더링
+  // 1초마다 카운트다운 리렌더링. 화면 안 보일 때 정지.
   useEffect(() => {
+    if (!isPageVisible) return
     const id = setInterval(() => forceUpdate(n => n + 1), 1000)
     return () => clearInterval(id)
-  }, [])
+  }, [isPageVisible])
 
   const { data: favData, isLoading, isError, refetch } = useQuery({
     queryKey: ['favorite-stops'],
@@ -526,6 +549,18 @@ export default function Favorites() {
     fetchedAtRef.current = Date.now()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalDataKey])
+
+  // 백그라운드 → 포그라운드 복귀 시 도착 정보 즉시 갱신 (TanStack staleTime 30s 무시).
+  // 첫 mount는 스킵 — useQuery가 이미 자동 fetch 함.
+  const allArrivalResultsRef = useRef(allArrivalResults)
+  allArrivalResultsRef.current = allArrivalResults
+  const skipFirstVisibleRef = useRef(true)
+  useEffect(() => {
+    if (skipFirstVisibleRef.current) { skipFirstVisibleRef.current = false; return }
+    if (!isPageVisible) return
+    refetch()
+    allArrivalResultsRef.current.forEach(r => r.refetch())
+  }, [isPageVisible, refetch])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
