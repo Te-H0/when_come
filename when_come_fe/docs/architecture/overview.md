@@ -54,7 +54,7 @@ src/
 │   ├── clientErrorLog.ts     ← logClientError — apiFetch catch에서 fire-and-forget BE 송신 (네트워크/4xx/5xx/parse 에러 → /client-log)
 │   ├── useVersionCheck.ts    ← 새 배포 감지 훅 (5분 polling + visibilitychange) → sonner 토스트 + 새로고침 액션
 │   ├── useKeyboardInset.ts   ← 모바일 키보드 가시영역 → CSS 변수 `--keyboard-inset-height` 갱신 (visualViewport 기반). PageShell/BottomNav/SetupRoute sticky 저장 버튼/Dialog가 참조. App 최상위 1회 호출.
-│   ├── usePageVisibility.ts  ← `document.visibilitychange` 추적. Home/Favorites 카운트다운 1초 tick을 화면 안 보일 때 정지 — 배터리/CPU 절약 (2026-05-11~)
+│   ├── usePageVisibility.ts  ← `document.visibilitychange` 추적. Home/Favorites 카운트다운 1초 tick을 화면 안 보일 때 정지 + visible 복귀 시 도착정보 즉시 refetch (TanStack staleTime 30s 무시) — 배터리/CPU 절약 + 체감 신선도 (2026-05-11~)
 │   ├── useOnlineStatus.ts    ← online/offline 이벤트 → 오프라인 진입 시 sonner 토스트(duration Infinity) + 복귀 시 자동 dismiss. App 최상위 1회 호출 (2026-05-11~)
 │   ├── safeStorage.ts        ← localStorage try/catch wrapper — 사파리 사적 브라우징/quota 차단 환경에서 throw 차단. 모든 localStorage 접근은 이것만 사용 (2026-05-11~)
 │   ├── useSubmitGuard.ts     ← 저장 버튼 더블탭 가드 헬퍼 (참고용). 실제로는 각 핸들러에 inline `savingLockRef` 패턴 사용 — 같은 컴포넌트 내 다른 핸들러가 lock 공유 케이스 대응 (2026-05-11~)

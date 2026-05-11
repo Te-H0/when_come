@@ -93,12 +93,17 @@ shadcn `<Input>`은 `text-base md:text-sm`이라 모바일 16px → OK.
 
 ## 2026-05-11 추가 — M1~M14 후속 정책
 
-### 화면 가시성 + Polling 일시정지
+### 화면 가시성 + Polling 일시정지 + 포그라운드 복귀 refetch
 
 `src/lib/usePageVisibility.ts` 신규 — `document.visibilitychange` 기반.
 
-- Home / Favorites의 카운트다운 `setInterval(forceUpdate, 1000)`을 화면 안 보일 때 정지.
-- 모바일 백그라운드 진입 시 배터리/CPU 영향 큰 매초 tick 제거.
+**두 가지 효과 동시 처리:**
+1. Home / Favorites의 카운트다운 `setInterval(forceUpdate, 1000)`을 화면 안 보일 때 정지.
+   - 모바일 백그라운드 진입 시 배터리/CPU 영향 큰 매초 tick 제거.
+2. visible 복귀 시 도착정보 강제 `refetch()` — TanStack Query `staleTime: 30s`로 갭이 있는 부분 보강.
+   - 사용자가 카톡 답장 10초 후 복귀해도 즉시 새 도착 정보 확인 가능.
+   - TanStack의 `refetchOnWindowFocus` 자동 동작은 30초 이상 백그라운드에서만 작동 — staleTime 무시 명시 refetch가 체감 신선도 차이.
+   - 첫 mount는 `skipFirstVisibleRef`로 스킵 — useQuery가 이미 자동 fetch 함.
 
 ### LocalStorage 안전 wrapper
 

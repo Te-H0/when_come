@@ -376,6 +376,18 @@ export default function Home() {
     return () => clearInterval(id);
   }, [isPageVisible]);
 
+  // 백그라운드 → 포그라운드 복귀 시 도착 정보 즉시 갱신 (TanStack staleTime 30s 무시).
+  // 첫 mount는 스킵 — useQuery가 이미 자동 fetch 함.
+  const allArrivalResultsRef = useRef(allArrivalResults);
+  allArrivalResultsRef.current = allArrivalResults;
+  const skipFirstVisibleRef = useRef(true);
+  useEffect(() => {
+    if (skipFirstVisibleRef.current) { skipFirstVisibleRef.current = false; return; }
+    if (!isPageVisible) return;
+    refetch();
+    allArrivalResultsRef.current.forEach(r => r.refetch());
+  }, [isPageVisible, refetch]);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await Promise.all([refetch(), ...allArrivalResults.map(r => r.refetch())]);
