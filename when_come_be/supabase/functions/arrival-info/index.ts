@@ -66,6 +66,16 @@ export interface SubwayArrivalItem {
   updnLine: string
   displayMsg: string | null
   headsign: string | null
+  /** 서울 지하철 API `btrainSttus` raw 그대로. "급행"|"ITX"|"특급"|"일반"|"" 또는 미지의 값. FE는 whitelist 매핑 후 표시. (2026-05-11~) */
+  trainType: string | null
+  /** 종착역명 (`bstatnNm`). `direction` 파싱 실패 시 fallback. */
+  destinationName: string | null
+  /** 도착 예정 초 (`barvlDt`). 정수. arrmsg1 정규식 우회용. */
+  arrivalSeconds: number | null
+  /** API 데이터 생성 시각 (`recptnDt` "YYYY-MM-DD HH:mm:ss" KST 가정). 지연 보정용. */
+  dataTimestamp: string | null
+  /** 막차 여부 (`lstcarAt` "1"==막차). */
+  isLastTrain: boolean
 }
 
 // ─── 지하철 행선지(headsign) 추출 ────────────────────────────────────────────
@@ -287,6 +297,34 @@ interface SeoulSubwayArrivalItem {
   arvlMsg3: string
   arvlCd: string
   updnLine: string
+  /** 열차 종류 — 공식 enum "급행"|"ITX"|"특급"|"일반"|"". 누락된 노선(코레일/공항철도 일부)에서는 빈 문자열 또는 비표준 값 가능. */
+  btrainSttus?: string
+  /** 종착역명. */
+  bstatnNm?: string
+  /** 도착 예정 초 (문자열 정수). */
+  barvlDt?: string
+  /** 데이터 생성 시각 "YYYY-MM-DD HH:mm:ss". */
+  recptnDt?: string
+  /** 막차 여부 "0"/"1". */
+  lstcarAt?: string
+}
+
+/** 서울 지하철 `btrainSttus` 공식 enum (whitelist). 이 외 값은 anomaly 기록 후 raw 그대로 동봉. */
+const KNOWN_TRAIN_TYPES = new Set(["급행", "ITX", "특급", "일반", ""])
+
+function validateTrainType(
+  raw: string | undefined,
+  context: { lineName: string; stationName: string; direction: string },
+): string | null {
+  const value = (raw ?? "").trim()
+  if (KNOWN_TRAIN_TYPES.has(value)) return value === "" ? null : value
+  // 미지의 enum — fire-and-forget 로깅, raw는 그대로 보존
+  logAnomaly({
+    source: "arrival-info",
+    category: "subway.unknown_train_type",
+    detail: { raw, ...context },
+  })
+  return value
 }
 
 interface SeoulSubwayApiResponse {
@@ -321,6 +359,22 @@ async function fetchSubwayArrivalRaw(name: string): Promise<SubwayArrivalItem[]>
     // headsign: trainLineNm 우선 → arrmsg1 괄호 fallback
     const headsign = extractHeadsign(item.trainLineNm, arrmsg1, { lineName: item.subwayId })
 
+    // trainType: btrainSttus raw. 미지의 값이면 anomaly 기록 후 그대로 노출 (정보 손실 방지).
+    const trainType = validateTrainType(item.btrainSttus, {
+      lineName: item.subwayId,
+      stationName: name,
+      direction: item.trainLineNm ?? "",
+    })
+
+    // arrivalSeconds: barvlDt 정수 파싱. NaN/음수는 null.
+    const barvlRaw = item.barvlDt
+    const arrivalSecondsParsed = barvlRaw === undefined || barvlRaw === ""
+      ? NaN
+      : Number(barvlRaw)
+    const arrivalSeconds = Number.isFinite(arrivalSecondsParsed) && arrivalSecondsParsed >= 0
+      ? arrivalSecondsParsed
+      : null
+
     return {
       lineName: item.subwayId,
       direction: item.trainLineNm,
@@ -329,15 +383,21 @@ async function fetchSubwayArrivalRaw(name: string): Promise<SubwayArrivalItem[]>
       updnLine: item.updnLine,
       displayMsg,
       headsign,
+      trainType,
+      destinationName: item.bstatnNm?.trim() || null,
+      arrivalSeconds,
+      dataTimestamp: item.recptnDt?.trim() || null,
+      isLastTrain: item.lstcarAt === "1",
     }
   })
 }
 
-/** (lineName, updnLine, arrmsg1, trainLineNm) 조합으로 중복 제거 */
+/** (lineName, updnLine, arrmsg1, arrmsg2, direction) 5-tuple 조합 byte-identical 중복 제거.
+ *  arrmsg2 포함 — FE dedupe와 정합. arrmsg2가 다르면 다른 차로 간주(보수적). */
 function dedupeSubwayItems(items: SubwayArrivalItem[]): SubwayArrivalItem[] {
   const seen = new Set<string>()
   return items.filter((item) => {
-    const key = `${item.lineName}|${item.updnLine}|${item.arrmsg1}|${item.direction}`
+    const key = `${item.lineName}|${item.updnLine}|${item.arrmsg1}|${item.arrmsg2}|${item.direction}`
     if (seen.has(key)) return false
     seen.add(key)
     return true

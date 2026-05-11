@@ -13,10 +13,15 @@ export default function BottomNav() {
 
   return (
     <div
-      className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-border-subtle z-50"
+      className="fixed left-0 right-0 border-t border-border-subtle z-50"
       style={{
+        bottom: 'var(--keyboard-inset-height, 0px)',
         height: 'var(--bottom-nav-total)',
         paddingBottom: 'env(safe-area-inset-bottom)',
+        // backdrop-blur 미지원 환경 fallback — 본문 글씨 비침 방지
+        backgroundColor: 'rgba(255, 255, 255, 0.96)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
       }}
     >
       <div className="max-w-2xl mx-auto px-4 py-1">

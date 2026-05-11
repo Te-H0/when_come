@@ -1,4 +1,4 @@
-import { useMemo, useState, Fragment } from "react";
+import { useMemo, useState, useRef, Fragment } from "react";
 import { useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -77,16 +77,22 @@ function RouteRenameDialog({
   isPending,
 }: RouteRenameDialogProps) {
   const [value, setValue] = useState(currentName);
+  const submittedRef = useRef(false);
 
   // Dialog가 열릴 때마다 currentName으로 초기화
   const handleOpenChange = (o: boolean) => {
-    if (o) setValue(currentName);
+    if (o) {
+      setValue(currentName);
+      submittedRef.current = false;
+    }
     if (!o) onClose();
   };
 
   const handleSubmit = () => {
+    if (submittedRef.current) return;
     const trimmed = value.trim();
     if (!trimmed) return;
+    submittedRef.current = true;
     onConfirm(trimmed);
   };
 

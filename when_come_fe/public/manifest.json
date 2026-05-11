@@ -1,21 +1,41 @@
 {
   "name": "언제와",
   "short_name": "언제와",
-  "description": "출퇴근 경로 도착정보 앱",
+  "description": "한국 출퇴근 대중교통 도착 시간을 한눈에 — 경로별/즐겨찾기별 실시간 도착정보 앱",
+  "lang": "ko",
+  "dir": "ltr",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#F6F7F9",
+  "theme_color": "#F6F7F9",
+  "categories": ["travel", "navigation", "utilities"],
   "icons": [
     {
       "src": "/icon_192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon_192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/icon_512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

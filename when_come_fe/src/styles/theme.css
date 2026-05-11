@@ -65,6 +65,9 @@
   --border-default: rgba(17, 24, 39, 0.10);
   --border-strong: #E5E7EB;
   --border-accent: #3B82F6;
+  /* Focus 상태 — input/button focus visible 시 */
+  --border-focus: #60A5FA;
+  --ring-focus: rgba(59, 130, 246, 0.30);
 
   /* Domain — arrival */
   --arrival-urgent: #DC2626;
@@ -96,6 +99,12 @@
   --page-header-height: 56px;
   --page-max-width: 42rem;
   --page-padding-x: 1rem;
+
+  /* Mobile — 키보드 가시영역 보정.
+     visualViewport API로 useKeyboardInset 훅이 매 프레임 갱신. (단위 px 필수)
+     iOS Safari/Android Chrome에서 input focus 시 sticky 버튼이 키보드에 가려지지 않도록
+     PageShell padding-bottom / BottomNav bottom / sticky 저장 버튼 bottom에 더해 사용. */
+  --keyboard-inset-height: 0px;
 }
 
 .dark {
@@ -198,6 +207,8 @@
   --color-border-default: var(--border-default);
   --color-border-strong: var(--border-strong);
   --color-border-accent: var(--border-accent);
+  --color-border-focus: var(--border-focus);
+  --color-ring-focus: var(--ring-focus);
 
   /* Design System — Arrival domain */
   --color-arrival-urgent: var(--arrival-urgent);
@@ -254,6 +265,14 @@
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /**
+   * 모바일 더블탭 zoom 지연(~300ms) 제거. iOS Safari/Android Chrome 모두 지원.
+   * 인터랙티브 요소에만 적용 — text selection이나 페이지 본문 줌 영향 X.
+   */
+  button, a, [role="button"], input, textarea, select, label {
+    touch-action: manipulation;
   }
 
   /**

@@ -134,7 +134,8 @@ function BusRouteSelectStep({
           onChange={(e) => onAliasChange(e.target.value)}
           placeholder="예: 회사 가는 버스"
           maxLength={20}
-          className="w-full h-11 px-3.5 text-body rounded-control border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          className="w-full h-11 px-3.5 rounded-control border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-ring-focus focus:border-border-focus"
+          style={{ fontSize: '16px' }}
         />
       </div>
 
@@ -142,7 +143,7 @@ function BusRouteSelectStep({
       <Button
         onClick={onSave}
         disabled={!canSave}
-        className="w-full h-12 rounded-control text-body font-medium"
+        className="w-full h-12 rounded-control text-body font-medium text-white"
         style={{ backgroundColor: canSave ? 'var(--text-primary)' : 'var(--text-tertiary)' }}
       >
         {isSaving ? (
@@ -197,7 +198,8 @@ function SubwayConfirmStep({
           onChange={(e) => onAliasChange(e.target.value)}
           placeholder="예: 출근 지하철"
           maxLength={20}
-          className="w-full h-11 px-3.5 text-body rounded-control border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          className="w-full h-11 px-3.5 rounded-control border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-ring-focus focus:border-border-focus"
+          style={{ fontSize: '16px' }}
         />
       </div>
 
@@ -232,6 +234,7 @@ export default function AddFavorite() {
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([])
   const [alias, setAlias] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const savingLockRef = useRef(false)
   const busLinesRef = useRef<ApiStopBus[]>([])
 
   // 버스 노선 로드
@@ -276,6 +279,8 @@ export default function AddFavorite() {
   const handleSaveBus = async () => {
     if (pageStep.kind !== 'bus-routes') return
     if (selectedRoutes.length === 0) return
+    if (savingLockRef.current) return
+    savingLockRef.current = true
     setIsSaving(true)
     try {
       const jwt = await getJwt()
@@ -312,11 +317,14 @@ export default function AddFavorite() {
       showApiErrorToast(e, '저장에 실패했어요')
     } finally {
       setIsSaving(false)
+      savingLockRef.current = false
     }
   }
 
   const handleSaveSubway = async () => {
     if (pageStep.kind !== 'subway-confirm') return
+    if (savingLockRef.current) return
+    savingLockRef.current = true
     setIsSaving(true)
     try {
       const jwt = await getJwt()
@@ -356,6 +364,7 @@ export default function AddFavorite() {
       showApiErrorToast(e, '저장에 실패했어요')
     } finally {
       setIsSaving(false)
+      savingLockRef.current = false
     }
   }
 

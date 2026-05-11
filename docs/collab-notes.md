@@ -782,3 +782,38 @@ FavoriteStops(단일 정류장 즐겨찾기) 도메인 + 정류장/역 별명(al
 - **FE 권장:** `arrival-info` 지하철 호출 시 `stop.subwayCode`(route_stops → stop_routes[0].subway_code)를 함께 전달하면 정확도 향상. 없어도 기존 동작 유지.
 - **임시 해결책 주의:** backlog #9 (subway_code 전체 정비) 완료 전까지의 임시 패치. subway_code가 NULL인 기존 stop은 효과 없음.
 - 영향 컴포넌트: `Home.tsx`
+
+---
+
+## 2026-05-11 — 지하철 도착정보 응답에 5필드 추가 (non-breaking, 옵셔널)
+
+**대상:** `GET /arrival-info?type=subway&stationName=...` (모든 stopId 경로 포함)
+
+**배경:** 서울 지하철 API `realtimeStationArrival` 응답에는 `btrainSttus`(열차 종류 enum) 등 우리가 미수신하던 5개 유의미 필드가 존재. 어제 백로그 #14/31의 "급행 표시"가 이 필드의 직접 활용으로 해결.
+
+**응답 `SubwayArrivalItem`에 추가된 필드:**
+
+| 필드 | 타입 | 의미 |
+|------|------|------|
+| `trainType` | `string \| null` | 열차 종류 raw — `"급행"`/`"ITX"`/`"특급"`/`"일반"` 또는 미지의 값 (anomaly 기록 후 raw 그대로). `""`/누락은 `null` |
+| `destinationName` | `string \| null` | 종착역명 (`bstatnNm`) — direction 파싱 실패 fallback |
+| `arrivalSeconds` | `number \| null` | 도착 예정 초 정수 (`barvlDt`) — 카운트다운 정밀도 ↑ |
+| `dataTimestamp` | `string \| null` | 데이터 생성 시각 `"YYYY-MM-DD HH:mm:ss"` KST (`recptnDt`) — API 지연 보정용 |
+| `isLastTrain` | `boolean` | 막차 여부 (`lstcarAt === "1"`) |
+
+**FE 적용:**
+- `formatTrainTypeShort(trainType)` 헬퍼: `"급행" → "급"`, `"특급" → "특"`, `"ITX" → "ITX"`, `"일반"/"" → null`(표시 안 함), 미지 → raw 그대로.
+- 헤드사인 prefix 패턴: `(급)용산행` — 색 강조 없음, 일반 텍스트 흐름.
+- 적용 화면: Home(현재 카드 grouped/non-grouped, extraItems 펼침, 미니카드 펼침), Favorites(bidirectional 좌/우, 단방향, extraItems).
+- 미지 enum 값 발견 시 anomaly_logs 적재 + `formatTrainTypeShort` 업데이트로 학습.
+
+**[non-breaking]** 모든 신규 필드 옵셔널(`?`) — 구버전 BE 응답에서 누락돼도 FE 안전.
+
+**dedupe key 변경:** BE `dedupeSubwayItems`가 4-tuple(lineName, updnLine, arrmsg1, direction)에서 5-tuple(+ arrmsg2)로 확장 — FE dedupe key와 정합. arrmsg2가 다르면 다른 차로 보존(보수적).
+
+**영향 파일:**
+- BE: `arrival-info/index.ts` (SubwayArrivalItem / SeoulSubwayArrivalItem / fetchSubwayArrivalRaw / dedupeSubwayItems)
+- FE: `types/api.ts`, `lib/arrival.ts`, `features/home/pages/Home.tsx`, `features/favorites/pages/Favorites.tsx`
+- 외부 API 문서: `when_come_be/docs/external-apis/seoul-subway.md` 전체 필드표 갱신
+
+**테스트:** `arrival-info_test.ts` 6건 추가 (정상 5필드 매핑 / "일반" raw 보존 / 누락 시 null / 미지 enum raw / barvlDt 파싱 / lstcarAt=막차).

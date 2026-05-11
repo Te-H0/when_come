@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -126,6 +126,7 @@ export default function SetupRoute() {
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const savingLockRef = useRef(false);
 
   // 대안 정류장 추가 모드: 어떤 stepGroup에 추가할지 (null = 일반 추가 모드)
   const [addingAlternativeToStep, setAddingAlternativeToStep] = useState<number | null>(null);
@@ -370,6 +371,8 @@ export default function SetupRoute() {
   const handleSave = async () => {
     if (!routeName.trim() || nodes.length === 0) return;
     if (hasBusNodeWithoutRoute) return;
+    if (savingLockRef.current) return;
+    savingLockRef.current = true;
     setIsSaving(true);
     try {
       const jwt = await getJwt();
@@ -440,6 +443,7 @@ export default function SetupRoute() {
       showApiErrorToast(e, '저장에 실패했어요');
     } finally {
       setIsSaving(false);
+      savingLockRef.current = false;
     }
   };
 
@@ -722,7 +726,7 @@ export default function SetupRoute() {
         <div
           className="fixed left-0 right-0 z-20 px-4 pb-3 pt-2"
           style={{
-            bottom: 'var(--bottom-nav-total)',
+            bottom: 'calc(var(--bottom-nav-total) + var(--keyboard-inset-height, 0px))',
             background: 'linear-gradient(to top, var(--surface-page) 60%, transparent)',
           }}
         >
@@ -734,7 +738,7 @@ export default function SetupRoute() {
             )}
             <Button
               onClick={handleSave}
-              className="w-full rounded-control h-12 text-body font-medium shadow-floating disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-control h-12 text-body font-medium text-white shadow-floating disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 backgroundColor: hasBusNodeWithoutRoute || !routeName.trim() ? 'var(--text-tertiary)' : 'var(--text-primary)',
               }}

@@ -36,9 +36,11 @@ import { listRoutes, updateRoute } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
 import { mapApiRoute } from "@/lib/mappers";
 import type { TransitStop, SavedRoute } from "@/lib/mockData";
-import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg, getMatchedSubwayItems } from "@/lib/arrival";
+import { fetchArrival, getArrivalDisplay, getArrivalDisplay2, getArrivalMin, applyCountdownToArrmsg, getMatchedSubwayItems, formatTrainTypeShort } from "@/lib/arrival";
 import type { ArrivalData } from "@/lib/arrival";
 import { ApiError } from "@/lib/api";
+import { safeStorage } from "@/lib/safeStorage";
+import { usePageVisibility } from "@/lib/usePageVisibility";
 import { ArrivalText, splitArrival } from "@/utils/arrivalDisplay";
 
 const SELECTED_ROUTE_KEY = 'when_come:selectedRouteId';
@@ -241,7 +243,7 @@ export default function Home() {
   }, [chipOrder, activeRoutes, queryClient]);
 
   const [selectedRouteId, setSelectedRouteId] = useState<string>(() => {
-    return localStorage.getItem(SELECTED_ROUTE_KEY) ?? '';
+    return safeStorage.get(SELECTED_ROUTE_KEY) ?? '';
   });
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -258,7 +260,7 @@ export default function Home() {
   const handleSelectRoute = (id: string) => {
     setSelectedRouteId(id);
     setCurrentSegmentIndex(0);
-    localStorage.setItem(SELECTED_ROUTE_KEY, id);
+    safeStorage.set(SELECTED_ROUTE_KEY, id);
   };
   const currentSegment = currentRoute?.segments[currentSegmentIndex];
 
@@ -365,12 +367,14 @@ export default function Home() {
     setExpandedUpcoming(new Set())
   }, [currentGroupIndex])
 
-  // 1초마다 리렌더링 → 카운트다운 효과
+  // 1초마다 리렌더링 → 카운트다운 효과. 화면 안 보일 때(다른 탭/앱 백그라운드) 정지로 배터리 절약.
   const [, forceUpdate] = useState(0);
+  const isPageVisible = usePageVisibility();
   useEffect(() => {
+    if (!isPageVisible) return;
     const id = setInterval(() => forceUpdate(n => n + 1), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [isPageVisible]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -646,6 +650,9 @@ export default function Home() {
                                 const item2Headsign = isSubway && matchedSubwayItems[1]?.headsign
                                   ? matchedSubwayItems[1].headsign
                                   : null;
+                                // (급)/(특)/(ITX) prefix — formatTrainTypeShort가 null이면 표시 안 함
+                                const item1TrainType = isSubway ? formatTrainTypeShort(matchedSubwayItems[0]?.trainType) : null;
+                                const item2TrainType = isSubway ? formatTrainTypeShort(matchedSubwayItems[1]?.trainType) : null;
                                 const lineKey = `${seg.id}-${line}`;
                                 const isLineExpanded = expandedLines[lineKey] ?? false;
 
@@ -708,8 +715,10 @@ export default function Home() {
                                           <>
                                             {/* 첫 번째 차 — isUrgent 빨강 */}
                                             <div className="flex items-center gap-1.5" aria-label="이번 차">
-                                              {item1Headsign && (
-                                                <span className="text-caption text-text-secondary whitespace-nowrap font-medium">{item1Headsign}행</span>
+                                              {(item1TrainType || item1Headsign) && (
+                                                <span className="text-caption text-text-secondary whitespace-nowrap font-medium">
+                                                  {item1TrainType && `(${item1TrainType})`}{item1Headsign && `${item1Headsign}행`}
+                                                </span>
                                               )}
                                               <span className={`text-label font-bold tabular-nums whitespace-nowrap ${isUrgent ? 'text-arrival-urgent' : 'text-arrival-normal'}`}>
                                                 {arrivalTimeOnly}
@@ -721,8 +730,10 @@ export default function Home() {
                                             {/* 두 번째 차 — 항상 회색 */}
                                             {arrivalText2 && (
                                               <div className="flex items-center gap-1.5" aria-label="다음 차">
-                                                {item2Headsign && (
-                                                  <span className="text-caption text-text-tertiary whitespace-nowrap">{item2Headsign}행</span>
+                                                {(item2TrainType || item2Headsign) && (
+                                                  <span className="text-caption text-text-tertiary whitespace-nowrap">
+                                                    {item2TrainType && `(${item2TrainType})`}{item2Headsign && `${item2Headsign}행`}
+                                                  </span>
                                                 )}
                                                 <span className="text-caption text-arrival-muted tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
                                                 {stopsBefore2 && (
@@ -753,10 +764,19 @@ export default function Home() {
                                               const label = extraIdx === 0 ? '3번째' : `${extraIdx + 3}번째`;
                                               const rawMsg = item.displayMsg ?? item.arrmsg1;
                                               const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway');
+                                              const itemHeadsign = item.headsign ?? null;
+                                              const itemTrainType = formatTrainTypeShort(item.trainType);
                                               return (
-                                                <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between">
-                                                  <div className="text-caption text-text-tertiary">{label}</div>
-                                                  <div className="text-caption text-arrival-muted tabular-nums">{msg}</div>
+                                                <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between gap-2">
+                                                  <div className="flex items-center gap-1.5 min-w-0">
+                                                    <span className="text-caption text-text-tertiary whitespace-nowrap">{label}</span>
+                                                    {(itemTrainType || itemHeadsign) && (
+                                                      <span className="text-caption text-text-secondary truncate">
+                                                        {itemTrainType && `(${itemTrainType})`}{itemHeadsign && `${itemHeadsign}행`}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <div className="text-caption text-arrival-muted tabular-nums whitespace-nowrap">{msg}</div>
                                                 </div>
                                               );
                                             })}
@@ -828,8 +848,10 @@ export default function Home() {
                                             <>
                                               {/* 첫 번째 차 */}
                                               <div className="flex items-center gap-1.5 justify-end" aria-label="이번 차">
-                                                {item1Headsign && (
-                                                  <span className="text-caption text-text-secondary whitespace-nowrap font-medium">{item1Headsign}행</span>
+                                                {(item1TrainType || item1Headsign) && (
+                                                  <span className="text-caption text-text-secondary whitespace-nowrap font-medium">
+                                                    {item1TrainType && `(${item1TrainType})`}{item1Headsign && `${item1Headsign}행`}
+                                                  </span>
                                                 )}
                                                 <span className={`font-bold tabular-nums leading-tight whitespace-nowrap text-section ${isUrgent ? 'text-arrival-urgent' : 'text-arrival-normal'}`}>
                                                   {arrivalTimeOnly}
@@ -841,8 +863,10 @@ export default function Home() {
                                               {/* 두 번째 차 — 항상 회색 */}
                                               {arrivalText2 && (
                                                 <div className="flex items-center gap-1.5 justify-end" aria-label="다음 차">
-                                                  {item2Headsign && (
-                                                    <span className="text-caption text-arrival-muted whitespace-nowrap">{item2Headsign}행</span>
+                                                  {(item2TrainType || item2Headsign) && (
+                                                    <span className="text-caption text-arrival-muted whitespace-nowrap">
+                                                      {item2TrainType && `(${item2TrainType})`}{item2Headsign && `${item2Headsign}행`}
+                                                    </span>
                                                   )}
                                                   <span className="text-body text-arrival-muted tabular-nums whitespace-nowrap">{arrivalTimeOnly2}</span>
                                                   {stopsBefore2 && <span className="text-caption text-text-tertiary whitespace-nowrap">{stopsBefore2}</span>}
@@ -875,10 +899,16 @@ export default function Home() {
                                           const label = extraIdx === 0 ? '3번째' : `${extraIdx + 3}번째`;
                                           const rawMsg = item.displayMsg ?? item.arrmsg1;
                                           const msg = item.displayMsg ? rawMsg : applyCountdownToArrmsg(rawMsg, elapsedSec, 'subway');
+                                          const itemHeadsign = item.headsign ?? null;
                                           return (
-                                            <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between">
-                                              <div className="text-caption text-text-tertiary">{label}</div>
-                                              <div className="text-caption text-arrival-muted tabular-nums">{msg}</div>
+                                            <div key={`${lineKey}-extra-${extraIdx}`} className="flex items-center justify-between gap-2">
+                                              <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className="text-caption text-text-tertiary whitespace-nowrap">{label}</span>
+                                                {itemHeadsign && (
+                                                  <span className="text-caption text-text-secondary truncate">{itemHeadsign}행</span>
+                                                )}
+                                              </div>
+                                              <div className="text-caption text-arrival-muted tabular-nums whitespace-nowrap">{msg}</div>
                                             </div>
                                           );
                                         })}
@@ -982,6 +1012,11 @@ export default function Home() {
                                 const noSvc = arrData !== null && arrText === '--'
                                 const { time: miniT1, stops: miniS1 } = splitArrival(arrText)
                                 const { time: miniT2, stops: miniS2 } = splitArrival(arrText2)
+                                const miniMatchedItems = isSubway ? getMatchedSubwayItems(seg.stop, line, arrData) : []
+                                const miniHeadsign1 = miniMatchedItems[0]?.headsign ?? null
+                                const miniHeadsign2 = miniMatchedItems[1]?.headsign ?? null
+                                const miniTrainType1 = isSubway ? formatTrainTypeShort(miniMatchedItems[0]?.trainType) : null
+                                const miniTrainType2 = isSubway ? formatTrainTypeShort(miniMatchedItems[1]?.trainType) : null
                                 return (
                                   <div key={line} className="px-4 py-3 flex items-center justify-between">
                                     <div className="flex items-center gap-2 min-w-0">
@@ -1003,11 +1038,21 @@ export default function Home() {
                                       ) : (
                                         <>
                                           <div className="flex items-baseline justify-end gap-1.5 tabular-nums">
+                                            {(miniTrainType1 || miniHeadsign1) && (
+                                              <span className="text-caption text-text-secondary font-medium whitespace-nowrap">
+                                                {miniTrainType1 && `(${miniTrainType1})`}{miniHeadsign1 && `${miniHeadsign1}행`}
+                                              </span>
+                                            )}
                                             <span className="text-label font-semibold text-text-primary">{miniT1}</span>
                                             {miniS1 && <span className="text-caption text-text-tertiary">{miniS1}</span>}
                                           </div>
                                           {arrText2 && (
                                             <div className="flex items-baseline justify-end gap-1.5 tabular-nums">
+                                              {(miniTrainType2 || miniHeadsign2) && (
+                                                <span className="text-caption text-arrival-muted whitespace-nowrap">
+                                                  {miniTrainType2 && `(${miniTrainType2})`}{miniHeadsign2 && `${miniHeadsign2}행`}
+                                                </span>
+                                              )}
                                               <span className="text-caption text-arrival-muted">{miniT2}</span>
                                               {miniS2 && <span className="text-caption text-text-tertiary">{miniS2}</span>}
                                             </div>

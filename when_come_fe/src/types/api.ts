@@ -165,6 +165,16 @@ export interface ApiSubwayArrivalItem {
   displayMsg?: string | null
   /** BE가 응답에 동봉하는 행선지 (예: "온수", "인천공항2터미널"). null이면 fallback */
   headsign?: string | null
+  /** 서울 지하철 API `btrainSttus` raw — "급행"|"ITX"|"특급"|"일반"|"" 또는 미지의 값. (2026-05-11~) */
+  trainType?: string | null
+  /** 종착역명 (`bstatnNm`). direction 파싱 실패 시 fallback. */
+  destinationName?: string | null
+  /** 도착 예정 초 (정수). arrmsg1 정규식 우회용. */
+  arrivalSeconds?: number | null
+  /** API 데이터 생성 시각 "YYYY-MM-DD HH:mm:ss" KST. 지연 보정용. */
+  dataTimestamp?: string | null
+  /** 막차 여부. true일 때 화면에 "막차" 라벨. BE 미반영 응답에선 누락될 수 있으므로 옵셔널 + 사용처에서 truthy 체크. */
+  isLastTrain?: boolean | undefined
 }
 
 // ──────────────────────── Favorite Stops ────────────────────────

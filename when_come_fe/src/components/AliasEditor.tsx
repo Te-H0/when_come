@@ -88,7 +88,7 @@ export default function AliasEditor({ initialAlias, onSave, className }: AliasEd
         onKeyDown={handleKeyDown}
         disabled={isSaving}
         placeholder="예: 회사 앞"
-        className="h-8 px-2.5 text-caption rounded-chip border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 disabled:opacity-50 min-w-0 w-32"
+        className="h-8 px-2.5 text-caption rounded-chip border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-ring-focus focus:border-border-focus disabled:opacity-50 min-w-0 w-32"
       />
       {/* 저장 */}
       <button
