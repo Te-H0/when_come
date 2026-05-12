@@ -320,10 +320,11 @@ export async function resolveStopProvider(
 
   const region = detectRegion({ lng: odsayStop.x, lat: odsayStop.y })
 
-  // 경기 노선 힌트: ODsay ID 2xxx 또는 busType===6(경기버스)이면
+  // 경기 노선 힌트: ODsay ID 2xxx 또는 busType===6(경기버스) 또는 busType===8(Seoul BIS 광역버스)이면
   // 서울 bbox이더라도 경기 정류소일 수 있음 (ADR-002 D3-supplement, 2026-05-05)
+  // busType===8: Seoul BIS API가 반환하는 광역버스 타입 — 수동 추가 경로에서 도착
   const hasGyeonggiRouteHint = expectedRoutes.some(
-    (r) => String(r.odsayRouteId ?? "").startsWith("2") || r.busType === 6,
+    (r) => String(r.odsayRouteId ?? "").startsWith("2") || r.busType === 6 || r.busType === 8,
   )
 
   if (region === "seoul" && !hasGyeonggiRouteHint) {

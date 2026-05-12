@@ -2,6 +2,8 @@
 
 > 아키텍처 변경 시 자동 업데이트됨
 >
+> 2026-05-12: 서울 bbox 정류장의 경기버스 도착정보 "없음" 버그 수정. `stop_routes.provider` 결정 원칙 변경: stopProvider='seoul'(gbis_station_id 없음)이면 경기버스 노선도 'seoul'로 저장 — Seoul BIS가 경기버스 도착정보도 함께 반환하기 때문. `arrival-info`의 `resolveStopRouteProvider`에 런타임 안전망 추가: sr.provider='gyeonggi' + gbis_station_id NULL + ars_id 있으면 'seoul'로 강등. `regionMapper.ts` busType 8(Seoul BIS 광역버스) hint 추가. 마이그레이션으로 기존 잘못 저장된 stop_routes/favorite_stop_routes 일괄 정정.
+>
 > 2026-05-11: `arrival-info` 지하철 응답에 5필드 추가 (non-breaking, 옵셔널) — `trainType`(btrainSttus raw, "급행"/"ITX"/"특급"/"일반"/미지), `destinationName`(bstatnNm), `arrivalSeconds`(barvlDt), `dataTimestamp`(recptnDt), `isLastTrain`(lstcarAt). 미지 enum은 `anomaly_logs`(category=`subway.unknown_train_type`)에 기록 후 raw 그대로 보존. `dedupeSubwayItems` key가 4-tuple → 5-tuple(+arrmsg2)로 확장.
 >
 > 2026-05-10: routes.origin_name / destination_name nullable 전환 (수동 등록 모드 대응). POST/PATCH /routes 검증 완화 — name만 required, origin/destination optional + nullable. 기존 placeholder string row(`'출발지'`/`'도착지'` AND coords IS NULL)는 마이그레이션이 NULL로 정리.
@@ -90,12 +92,18 @@ GET /arrival-info?stopId={uuid}
   dominant 우선순위: gyeonggi > seoul > odsay_fallback
 ```
 
-stop_routes.provider 저장 흐름 (POST /routes):
+stop_routes.provider 저장 흐름 (POST /routes, 2026-05-12 수정):
 ```
-odsay_route_id 첫 자리 → routeIdToProvider()
-  '1...' → 'seoul'
-  '2...' → 'gyeonggi'
-  그 외  → 'odsay_fallback'
+resolveStopRouteProviderOnSave(odsayRouteId, stopProvider, busType)
+  stopProvider='odsay_fallback' → 'odsay_fallback'
+  경기버스 판별 (busType===6 OR busType===8 OR odsayRouteId.startsWith('2')):
+    stopProvider='gyeonggi' (GBIS 정류소 찾음) → 'gyeonggi'
+    stopProvider='seoul' (서울 bbox, GBIS 못 찾음) → 'seoul'
+      이유: Seoul BIS getStationByUid가 경기버스 도착정보도 함께 반환
+  서울 노선 ('1...'): → 'seoul'
+  비표준 노선 ('3...' 등):
+    stopProvider='gyeonggi' → 'gyeonggi'
+    그 외 → 'seoul'
 ```
 
 route_stops.provider 저장 흐름 (변경 없음):
@@ -104,6 +112,14 @@ lat/lng 좌표 → detectRegion (bounding box)
   seoul   → provider='seoul'
   gyeonggi → GBIS 정류소 검색 → verifyGbisMapping → 'gyeonggi' 또는 'odsay_fallback'
   unknown  → 'odsay_fallback'
+```
+
+arrival-info 런타임 안전망 (resolveStopRouteProvider, 2026-05-12~):
+```
+sr.provider='gyeonggi' + gbis_station_id=NULL + ars_id 있음 → 'seoul'로 강등
+이유: 저장 시 잘못 기록된 데이터 + 마이그레이션 이후 엣지케이스 방어
+     gbis_station_id 없으면 GyeonggiBusProvider.canHandle=false → 조용히 스킵
+     arsId 있으면 Seoul BIS로 대신 처리 가능
 ```
 
 ## 지하철 도착정보 역명 fallback 전략 (getSubwayArrival, 2026-05-09~)

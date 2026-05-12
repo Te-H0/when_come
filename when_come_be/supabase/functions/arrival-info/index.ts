@@ -495,18 +495,35 @@ function supabaseClient(authHeader: string) {
  *
  * stopProvider: route_stops.provider — odsay_route_id가 3xxx~ 등 비표준 prefix를 가진
  * 경기 경계 지역 노선(광명사거리 12번, 27번 등)을 올바르게 gyeonggi로 승격하기 위해 사용.
+ *
+ * 안전망: stop_routes.provider='gyeonggi'인데 gbisStationId가 없으면
+ * GyeonggiBusProvider.canHandle이 false → 조용히 스킵되는 버그 방어.
+ * arsId 있으면 Seoul BIS로 강등 (서울 bbox 경기버스 케이스).
+ * 이 분기는 저장 시 잘못 기록된 기존 데이터 + 마이그레이션 이후 엣지케이스 대응.
  */
 function resolveStopRouteProvider(
   sr: StopRouteRow,
   stopProvider: "seoul" | "gyeonggi" | "odsay_fallback" | null,
+  stopArsId: string | null,
+  stopGbisStationId: string | null,
 ): "seoul" | "gyeonggi" | "odsay_fallback" {
+  // 안전망: gyeonggi로 저장됐지만 gbis_station_id가 없는 경우 (서울 bbox 경기버스 잘못 저장)
+  // arsId가 있으면 Seoul BIS로 강등하여 도착정보 조회 가능하게 함
+  if (sr.provider === "gyeonggi" && !stopGbisStationId && stopArsId) {
+    return "seoul"
+  }
+
   if (sr.provider === "seoul" || sr.provider === "gyeonggi" || sr.provider === "odsay_fallback") {
     return sr.provider
   }
   // null (백필 전 기존 rows) — odsay_route_id 첫 자리로 재추론
   if (sr.odsay_route_id) {
     if (sr.odsay_route_id.startsWith("1")) return "seoul"
-    if (sr.odsay_route_id.startsWith("2")) return "gyeonggi"
+    if (sr.odsay_route_id.startsWith("2")) {
+      // 같은 원칙: gbis_station_id 없으면 seoul
+      if (!stopGbisStationId && stopArsId) return "seoul"
+      return "gyeonggi"
+    }
     // 3xxx~ 등 비표준: stop 자체가 gyeonggi면 경기로 승격
     if (stopProvider === "gyeonggi") return "gyeonggi"
   }
@@ -781,10 +798,10 @@ async function fetchArrivalByStopId(
     return await provider.fetchArrivals(ctx)
   }
 
-  // stop_routes별 provider 분류 (stop 자체 provider를 hint로 전달)
-  const seoulRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr, stopRow.provider) === "seoul")
-  const gyeonggiRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr, stopRow.provider) === "gyeonggi")
-  const odsayRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr, stopRow.provider) === "odsay_fallback")
+  // stop_routes별 provider 분류 (stop 자체 provider + ars_id + gbis_station_id를 hint로 전달)
+  const seoulRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr, stopRow.provider, stopRow.ars_id, stopRow.gbis_station_id) === "seoul")
+  const gyeonggiRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr, stopRow.provider, stopRow.ars_id, stopRow.gbis_station_id) === "gyeonggi")
+  const odsayRoutes = stopRoutes.filter((sr) => resolveStopRouteProvider(sr, stopRow.provider, stopRow.ars_id, stopRow.gbis_station_id) === "odsay_fallback")
 
   const usedProviders = new Set<"seoul" | "gyeonggi" | "odsay_fallback">()
   const allItems: BusArrivalItem[] = []
