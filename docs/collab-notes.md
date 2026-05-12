@@ -8,6 +8,19 @@
 
 ---
 
+## 2026-05-12 — 서울 bbox 경기버스 도착정보 수정 (BE 전용, FE 변경 없음)
+
+서울 bbox 정류장에 경기버스만 등록된 경우 도착 정보가 누락되던 버그 수정.
+
+- **원인:** `stop_routes.provider`가 경기버스이면 무조건 'gyeonggi'로 저장되어, GBIS 정류소(`gbis_station_id`) 없는 서울 bbox 정류장에서 GyeonggiBusProvider.canHandle=false → 스킵.
+- **수정:** `resolveStopRouteProviderOnSave` 원칙 변경 — stopProvider='seoul'(gbis_station_id 없음)이면 경기버스 노선도 'seoul'로 저장. Seoul BIS getStationByUid가 경기버스 포함 모든 버스 도착정보를 반환하기 때문.
+- **런타임 안전망:** `arrival-info`의 `resolveStopRouteProvider`에 sr.provider='gyeonggi' + gbis_station_id=NULL + ars_id 있음 → 'seoul'로 강등 로직 추가.
+- **마이그레이션:** `20260512000000_demote_gyeonggi_to_seoul_when_gbis_missing.sql` — 기존 잘못 저장된 stop_routes/favorite_stop_routes 일괄 정정.
+- **API 응답 변경:** 없음. 동일 엔드포인트, 동일 응답 구조. FE는 변경 필요 없음.
+- **영향 컴포넌트:** FE 없음. BE: `routes/index.ts`, `favorite-stops/index.ts`, `arrival-info/index.ts`, `_shared/regionMapper.ts`.
+
+---
+
 ## 2026-05-10 — `routes.origin_name` / `destination_name` nullable
 
 수동 등록 시 출발지/도착지를 명시하지 않아도 되도록 nullable로 전환.

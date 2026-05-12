@@ -92,28 +92,43 @@ function routeIdToProvider(id: string): "seoul" | "gyeonggi" | "odsay_fallback" 
 
 /**
  * stop_routes.provider 최종 결정.
- * routeIdToProvider()가 odsay_fallback을 반환하더라도
- * 정류장 자체가 gyeonggi provider로 확정된 경우 해당 노선도 gyeonggi로 처리한다.
- * (광명사거리 등 경기 경계 지역 마을/일반버스 — ODsay ID가 2xxx 아닌 경우 커버)
  *
- * ADR-002 D3-supplement: busType===6(경기버스)이면 route ID prefix보다 busType 우선 — 무조건 gyeonggi.
+ * 원칙: stop_routes.provider는 실제로 어떤 API가 호출될지를 정확히 반영해야 한다.
+ * - stopProvider='gyeonggi'(GBIS 정류소 찾음) → 경기버스 노선은 'gyeonggi'
+ * - stopProvider='seoul'(서울 BIS 정류소 — GBIS 못 찾았거나 진짜 서울) → 모든 노선은 'seoul'
+ *   이유: Seoul BIS getStationByUid는 해당 정류장의 경기버스 도착정보도 함께 반환한다.
+ *   잘못된 'gyeonggi' 저장 시 GyeonggiBusProvider.canHandle(gbisStationId=null)이 false → 조용히 스킵.
+ * - stopProvider='odsay_fallback' → 모든 노선은 'odsay_fallback'
+ *
+ * 경기버스 판별: busType===6(ODsay 경기버스) 또는 busType===8(Seoul BIS API 반환 광역버스) 또는 odsay_route_id "2xxx"
  */
 function resolveStopRouteProviderOnSave(
   odsayRouteId: string,
   stopProvider: "seoul" | "gyeonggi" | "odsay_fallback",
   busType?: number | null,
 ): "seoul" | "gyeonggi" | "odsay_fallback" {
-  // busType===6(경기버스): route ID 패턴보다 우선 → 무조건 gyeonggi
-  if (busType === 6) return "gyeonggi"
+  // odsay_fallback stop: 어차피 ODsay만 가능
+  if (stopProvider === "odsay_fallback") return "odsay_fallback"
+
+  // 경기버스 판별:
+  // - ODsay busType 6: 경기버스 직접 표시
+  // - busType 8: Seoul BIS API의 광역버스 타입 (seoulBisTypeToOdsayBusType 변환 후 8로 올 수 있음)
+  // - route ID "2xxx": ODsay 경기 노선 prefix
+  const isGyeonggiRoute =
+    busType === 6 ||
+    busType === 8 ||
+    routeIdToProvider(odsayRouteId) === "gyeonggi"
+
+  if (isGyeonggiRoute) {
+    // GBIS 정류소 찾았으면 GBIS 사용, 못 찾았으면(서울 bbox) Seoul BIS가 경기버스 도착정보도 반환
+    return stopProvider === "gyeonggi" ? "gyeonggi" : "seoul"
+  }
 
   const byRouteId = routeIdToProvider(odsayRouteId)
-  // 1xxx → 서울: route ID 기반 결과 사용 (경기 정류장에 서울버스 공존 가능)
   if (byRouteId === "seoul") return "seoul"
-  // 2xxx → 경기: route ID 기반 결과 사용
-  if (byRouteId === "gyeonggi") return "gyeonggi"
-  // 그 외(3xxx~): stopProvider가 gyeonggi면 경기로 승격
-  if (stopProvider === "gyeonggi") return "gyeonggi"
-  return byRouteId
+
+  // 3xxx 등 비표준 노선: stop provider 따름
+  return stopProvider === "gyeonggi" ? "gyeonggi" : "seoul"
 }
 
 // ─── 환경변수 lazy 읽기 ───────────────────────────────────────────────────────

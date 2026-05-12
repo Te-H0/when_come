@@ -44,11 +44,33 @@ interface UpdateFavoriteStopRequest {
   routes?: FavoriteStopRouteInput[]
 }
 
-// ─── 노선 ID → provider 추론 ─────────────────────────────────────────────────
-function routeIdToProvider(id: string): "seoul" | "gyeonggi" | "odsay_fallback" {
-  if (id.startsWith("1")) return "seoul"
-  if (id.startsWith("2")) return "gyeonggi"
-  return "odsay_fallback"
+// ─── stop_routes.provider 결정 (routes/index.ts와 동일 원칙) ─────────────────
+/**
+ * stop_routes.provider 최종 결정.
+ * 원칙: stopProvider가 'gyeonggi'(GBIS 찾음)인 경우만 경기버스 노선을 'gyeonggi'로 저장.
+ * stopProvider='seoul'(서울 bbox)이면 모든 노선을 'seoul'로 저장 —
+ * Seoul BIS가 경기버스 도착정보도 함께 반환하기 때문.
+ */
+function resolveStopRouteProviderOnSave(
+  odsayRouteId: string,
+  stopProvider: "seoul" | "gyeonggi" | "odsay_fallback",
+  busType?: number | null,
+): "seoul" | "gyeonggi" | "odsay_fallback" {
+  if (stopProvider === "odsay_fallback") return "odsay_fallback"
+
+  const isGyeonggiRoute =
+    busType === 6 ||
+    busType === 8 ||
+    odsayRouteId.startsWith("2")
+
+  if (isGyeonggiRoute) {
+    return stopProvider === "gyeonggi" ? "gyeonggi" : "seoul"
+  }
+
+  if (odsayRouteId.startsWith("1")) return "seoul"
+
+  // 3xxx 등 비표준 노선: stop provider 따름
+  return stopProvider === "gyeonggi" ? "gyeonggi" : "seoul"
 }
 
 // ─── alias 정규화 ─────────────────────────────────────────────────────────────
@@ -242,7 +264,7 @@ async function createFavoriteStop(req: Request) {
     station_name: r.stationName ?? null,
     gbis_route_id: r.gbisRouteId ?? null,
     gbis_sta_order: r.gbisStaOrder ?? null,
-    provider: routeIdToProvider(r.odsayRouteId),
+    provider: resolveStopRouteProviderOnSave(r.odsayRouteId, provider, r.busType),
     display_order: idx,
     subway_code: r.subwayCode ?? null,
   }))
@@ -274,10 +296,10 @@ async function updateFavoriteStop(req: Request, id: string) {
     throw new AppError("요청 본문이 올바른 JSON이 아닙니다", 400, "COMMON_INVALID_JSON" satisfies CommonErrorCode)
   }
 
-  // 본인 row 존재 확인
+  // 본인 row 존재 확인 (provider도 함께 읽어 routes 교체 시 provider 계산에 활용)
   const { data: existing, error: findErr } = await db
     .from("favorite_stops")
-    .select("id")
+    .select("id, provider")
     .eq("id", id)
     .single()
 
@@ -324,6 +346,7 @@ async function updateFavoriteStop(req: Request, id: string) {
 
     if (delErr) throw new AppError("노선 삭제 실패", 500, "FAVORITE_ROUTES_DELETE_FAILED" satisfies FavoriteErrorCode)
 
+    const existingStopProvider = (existing.provider ?? "seoul") as "seoul" | "gyeonggi" | "odsay_fallback"
     const routePayloads = body.routes.map((r, idx) => ({
       favorite_stop_id: id,
       odsay_route_id: r.odsayRouteId,
@@ -335,7 +358,7 @@ async function updateFavoriteStop(req: Request, id: string) {
       station_name: r.stationName ?? null,
       gbis_route_id: r.gbisRouteId ?? null,
       gbis_sta_order: r.gbisStaOrder ?? null,
-      provider: routeIdToProvider(r.odsayRouteId),
+      provider: resolveStopRouteProviderOnSave(r.odsayRouteId, existingStopProvider, r.busType),
       display_order: idx,
       subway_code: r.subwayCode ?? null,
     }))
