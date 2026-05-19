@@ -1,6 +1,6 @@
 # 통합 백로그
 
-> 마지막 업데이트: 2026-05-11 (세션 #N+2 — 급행 표시(btrainSttus + 4필드 동시 도입) + 모바일 보강 M1~M14 일괄 + Dialog 키보드 회피)
+> 마지막 업데이트: 2026-05-12 (세션 #N+3 — 서울 bbox 정류장 경기버스 도착정보 누락 fix + follow-up 백로그 3건)
 > BE 전용 항목은 `when_come_be/docs/backlog.md` 참고.
 
 ## 🔴 High
@@ -51,6 +51,10 @@
 - [ ] #36 | [feat] 막차(`isLastTrain`) UI 라벨 — BE 응답에 `isLastTrain: boolean` 도입됨. FE 도착 카드에 truthy일 때 "막차" 배지 추가 (예: 도착 시간 옆 회색 chip). 적용 위치: Home/Favorites 모든 도착 row. 운행 종료 후의 도착 0건 케이스와 구분에 도움. | 2026-05-11
 - [ ] #37 | [feat] `arrivalSeconds` / `dataTimestamp` 활용 카운트다운 정밀도 — 현재 `arrmsg1`("2분 40초 후") 텍스트 정규식 파싱. 새로 들어온 `arrivalSeconds` 정수 + `dataTimestamp` 시각으로 지연 보정 (`now - dataTimestamp` 만큼 빼서 표시). 정확도 향상. arrival.ts `getArrivalMin`/`applyCountdownToArrmsg` 리팩터. | 2026-05-11
 - [ ] #38 | [chore] 모바일 폭별 레이아웃 audit + 패턴 정착 (iPhone SE 320 ~ Pro Max 430) — 사용자 보고(2026-05-12): "기기마다 글씨 줄바뀜/짤림/버튼 가려짐". 현재 베이스 폭 명시 없음. 작업: (1) Chrome DevTools에서 320/360/375/414px 4개 폭으로 모든 페이지 audit. (2) 깨지는 곳 일괄 정리 — 정류장 이름/별명 `truncate min-w-0`, 도착 시간/호선 칩 `whitespace-nowrap flex-shrink-0` 유지, 부가 정보 `whitespace-normal`. (3) `design-system.md §11 Mobile width policy` 명문화 — 베이스 폭 375, 폭별 분기 금지 정책, truncate vs line-clamp 가이드. (4) 컨테이너 쿼리 도입 검토(중장기). 도착 카드 흩어진 `whitespace-nowrap`이 가장 의심. | 2026-05-12
+
+- [ ] #39 | [refactor] `resolveStopRouteProviderOnSave` 중복 구현 통합 — `routes/index.ts`와 `favorite-stops/index.ts`에 거의 동일한 함수가 별도로 존재. 한쪽만 수정 시 동작이 갈라질 위험. `_shared/`로 추출해 단일 import. 경기버스 도착정보 fix(2026-05-12) 코드리뷰에서 발견. | 2026-05-12
+- [ ] #40 | [refactor] arrival-info `resolveStopRouteProvider` 안전망 edge case — `sr.provider='gyeonggi'` + `gbis_station_id=NULL` + `arsId=NULL`인 경우 안전망 통과 → GBIS 호출 → canHandle false → 스킵으로 원래 버그 재현. 현실 빈도 낮으나 `arsId ? "seoul" : "odsay_fallback"` 패턴으로 명시화. 경기버스 fix(2026-05-12) 코드리뷰에서 발견. | 2026-05-12
+- [ ] #41 | [refactor] `favorite-stops/index.ts:349` `as` 타입 단언 제거 — `existing.provider as "seoul" | "gyeonggi" | "odsay_fallback"`. typescript-conventions.md "`as` 단언 금지" 위반. `isStopProvider` 타입 가드 함수로 대체. 경기버스 fix(2026-05-12) 코드리뷰에서 발견. | 2026-05-12
 
 ## ✅ 완료
 - [x] #BB8 | [feat] 지하철 급행 표시 (`(급)` prefix) — BE 응답 `btrainSttus` raw 동봉 (5종 enum + 미지 anomaly) + FE `formatTrainTypeShort` 헬퍼 + Home/Favorites 도착 카드 모든 위치(9곳)에 헤드사인 prefix. 색 강조 없이 일반 텍스트색. 추가로 4필드 (`destinationName`/`arrivalSeconds`/`dataTimestamp`/`isLastTrain`) 동시 도입. seoul-subway.md 전체 필드표 갱신. BE 테스트 6건. (완료일: 2026-05-11)
