@@ -975,14 +975,18 @@ export default function Home() {
                             <div className="truncate">
                               <StopName name={seg.stop.displayName ?? seg.stop.name} alias={seg.stop.alias ?? undefined} size="sm" />
                             </div>
-                            <div className="flex flex-wrap gap-1 mt-1">
+                            <div className="flex flex-nowrap gap-1 mt-1 overflow-hidden min-w-0">
                               {seg.stop.lines.slice(0, 3).map(line => (
-                                <span key={line} className="text-caption px-1.5 py-0.5 rounded-chip bg-surface-muted text-text-tertiary">
+                                <span
+                                  key={line}
+                                  className="text-caption px-1.5 py-0.5 rounded-chip bg-surface-muted text-text-tertiary whitespace-nowrap flex-shrink-0 truncate"
+                                  style={{ maxWidth: '8ch' }}
+                                >
                                   {seg.stop.type === 'subway' ? line : `${line}번`}
                                 </span>
                               ))}
                               {seg.stop.lines.length > 3 && (
-                                <span className="text-caption text-text-tertiary">+{seg.stop.lines.length - 3}</span>
+                                <span className="text-caption text-text-tertiary whitespace-nowrap flex-shrink-0">+{seg.stop.lines.length - 3}</span>
                               )}
                             </div>
                           </div>

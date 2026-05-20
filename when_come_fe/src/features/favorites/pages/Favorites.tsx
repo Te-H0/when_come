@@ -28,7 +28,8 @@ import PageShell from '@/components/PageShell'
 import PageHeader from '@/components/PageHeader'
 import EmptyState from '@/components/EmptyState'
 import StopName from '@/components/StopName'
-import AliasEditor from '@/components/AliasEditor'
+import AliasEditDialog from '@/components/AliasEditDialog'
+import StopRouteChips from '@/components/StopRouteChips'
 import { listFavoriteStops, updateFavoriteStop, deleteFavoriteStop } from '@/lib/api'
 import { getJwt } from '@/lib/supabase'
 import { mapApiFavoriteStopToTransitStop } from '@/lib/mappers'
@@ -138,9 +139,21 @@ function FavoriteCard({
         </div>
 
         <div className="flex items-center gap-1 flex-shrink-0">
-          <AliasEditor
+          <AliasEditDialog
             initialAlias={fav.alias}
             onSave={onUpdateAlias}
+            header={
+              <div className="flex flex-col gap-1">
+                <StopName name={stop.displayName} size="sm" />
+                <StopRouteChips
+                  stopType={stop.type}
+                  routes={stop.lines.map((line, i) => ({
+                    routeName: line,
+                    busType: stop.stopRoutes?.[i]?.busType,
+                  }))}
+                />
+              </div>
+            }
           />
           <div className="relative" ref={menuRef}>
             <button

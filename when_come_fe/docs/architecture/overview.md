@@ -27,7 +27,7 @@ src/
 │   ├── PageHeader.tsx        ← 스티키 헤더 (뒤로가기/제목/배지/우측슬롯/하단슬롯)
 │   ├── EmptyState.tsx        ← 공용 빈 상태 UI (아이콘+제목+설명+CTA 카드)
 │   ├── StopName.tsx          ← 정류장/역 이름 표시 (별명 병기 지원)
-│   ├── AliasEditor.tsx       ← 별명 인라인 편집 컴포넌트 (외부 클릭 시 cancel + 닫기, mousedown 감지)
+│   ├── AliasEditDialog.tsx   ← 별명 편집 모달 (Dialog 기반, 정류장 컨텍스트 헤더 + 별칭 입력)
 │   ├── StopRouteChips.tsx    ← 정류장 노선 chip 렌더링 공용 컴포넌트 (버스/지하철 transitColors 적용)
 │   └── figma/
 │       └── ImageWithFallback.tsx
