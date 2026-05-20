@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import StopName from "@/components/StopName";
-import AliasEditor from "@/components/AliasEditor";
+import AliasEditDialog from "@/components/AliasEditDialog";
 import StopRouteChips from "@/components/StopRouteChips";
 import { getBusTypeByOdsay, getSubwayColor } from "@/utils/transitColors";
 import {
@@ -259,9 +259,24 @@ function RouteCard({
                           alias={segment.stop.alias ?? undefined}
                           size="sm"
                         />
-                        <AliasEditor
+                        <AliasEditDialog
                           initialAlias={segment.stop.alias ?? null}
                           onSave={(alias) => onUpdateStopAlias(segment.id, alias)}
+                          header={
+                            <div className="flex flex-col gap-1">
+                              <StopName
+                                name={segment.stop.displayName ?? segment.stop.name}
+                                size="sm"
+                              />
+                              <StopRouteChips
+                                stopType={segment.stop.type}
+                                routes={segment.stop.lines.map((line, i) => ({
+                                  routeName: line,
+                                  busType: segment.stop.stopRoutes?.[i]?.busType,
+                                }))}
+                              />
+                            </div>
+                          }
                         />
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -321,7 +336,22 @@ function FavoriteRow({ fav, onUpdateAlias, onDelete }: FavoriteRowProps) {
             alias={fav.alias ?? undefined}
             size="sm"
           />
-          <AliasEditor initialAlias={fav.alias} onSave={onUpdateAlias} />
+          <AliasEditDialog
+            initialAlias={fav.alias}
+            onSave={onUpdateAlias}
+            header={
+              <div className="flex flex-col gap-1">
+                <StopName name={fav.stop_name} size="sm" />
+                <StopRouteChips
+                  stopType={fav.stop_type}
+                  routes={fav.favorite_stop_routes.map(r => ({
+                    routeName: r.route_name,
+                    busType: r.bus_type,
+                  }))}
+                />
+              </div>
+            }
+          />
         </div>
         <StopRouteChips
           stopType={fav.stop_type}
