@@ -137,14 +137,9 @@ function getFastestArrivalText(stop: TransitStop, arrival: ArrivalData, elapsedS
 }
 
 // ─── Sortable card wrapper (isCurrent + group.length === 2) ───────────────────
-interface DragHandleProps {
-  attributes: ReturnType<typeof useSortable>['attributes'];
-  listeners: ReturnType<typeof useSortable>['listeners'];
-}
-
 interface SortableSegmentCardProps {
   seg: RouteSegment;
-  children: (handleProps: DragHandleProps) => React.ReactNode;
+  children: React.ReactNode;
 }
 
 function SortableSegmentCard({ seg, children }: SortableSegmentCardProps) {
@@ -166,9 +161,11 @@ function SortableSegmentCard({ seg, children }: SortableSegmentCardProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex-1 min-w-0 ${isDragging ? 'opacity-50 scale-[0.97]' : ''}`}
+      {...attributes}
+      {...listeners}
+      className={`flex-1 min-w-0 touch-none ${isDragging ? 'opacity-50 scale-[0.97]' : ''}`}
     >
-      {children({ attributes, listeners })}
+      {children}
     </div>
   );
 }
@@ -714,16 +711,12 @@ export default function Home() {
                           const segArrivalError = segArrivalResult?.error ?? null;
                           const elapsedSec = (Date.now() - fetchedAtRef.current) / 1000;
 
-                          const renderCard = (handleProps?: DragHandleProps) => (
+                          const card = (
                             <Card
                               className={`rounded-card border border-border-subtle shadow-card bg-surface-card overflow-hidden ${isGrouped ? 'w-full' : ''}`}
                             >
-                          {/* 정류장 정보 — drag handle (꾹 누르기 영역) */}
-                          <div
-                            {...(handleProps?.attributes ?? {})}
-                            {...(handleProps?.listeners ?? {})}
-                            className={`${isGrouped ? "px-3 py-3" : "p-5"} border-b border-border-subtle ${handleProps ? "touch-none select-none cursor-grab active:cursor-grabbing" : ""}`}
-                          >
+                          {/* 정류장 정보 */}
+                          <div className={isGrouped ? "px-3 py-3 border-b border-border-subtle" : "p-5 border-b border-border-subtle"}>
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex-1 min-w-0">
                                 <div className="mb-1">
@@ -1071,11 +1064,11 @@ export default function Home() {
                           if (group.length === 2) {
                             return (
                               <SortableSegmentCard key={seg.id} seg={seg}>
-                                {(handleProps) => renderCard(handleProps)}
+                                {card}
                               </SortableSegmentCard>
                             );
                           }
-                          return <div key={seg.id} className="flex-1 min-w-0">{renderCard()}</div>;
+                          return <div key={seg.id} className="flex-1 min-w-0">{card}</div>;
                         })}
                       </div>
                     );
