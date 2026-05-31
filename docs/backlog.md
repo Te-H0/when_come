@@ -1,6 +1,6 @@
 # 통합 백로그
 
-> 마지막 업데이트: 2026-05-12 (세션 #N+3 — 서울 bbox 정류장 경기버스 도착정보 누락 fix + follow-up 백로그 3건)
+> 마지막 업데이트: 2026-05-31 (세션 #N+4 — 경로 추가 UX 분석 #42 + swap 인터랙션 개선 #43)
 > BE 전용 항목은 `when_come_be/docs/backlog.md` 참고.
 
 ## 🔴 High
@@ -55,6 +55,8 @@
 - [ ] #39 | [refactor] `resolveStopRouteProviderOnSave` 중복 구현 통합 — `routes/index.ts`와 `favorite-stops/index.ts`에 거의 동일한 함수가 별도로 존재. 한쪽만 수정 시 동작이 갈라질 위험. `_shared/`로 추출해 단일 import. 경기버스 도착정보 fix(2026-05-12) 코드리뷰에서 발견. | 2026-05-12
 - [ ] #40 | [refactor] arrival-info `resolveStopRouteProvider` 안전망 edge case — `sr.provider='gyeonggi'` + `gbis_station_id=NULL` + `arsId=NULL`인 경우 안전망 통과 → GBIS 호출 → canHandle false → 스킵으로 원래 버그 재현. 현실 빈도 낮으나 `arsId ? "seoul" : "odsay_fallback"` 패턴으로 명시화. 경기버스 fix(2026-05-12) 코드리뷰에서 발견. | 2026-05-12
 - [ ] #41 | [refactor] `favorite-stops/index.ts:349` `as` 타입 단언 제거 — `existing.provider as "seoul" | "gyeonggi" | "odsay_fallback"`. typescript-conventions.md "`as` 단언 금지" 위반. `isStopProvider` 타입 가드 함수로 대체. 경기버스 fix(2026-05-12) 코드리뷰에서 발견. | 2026-05-12
+
+- [ ] #42 | [feat/UX] 경로 추가 플로우 전면 개편 — 사용자 보고(2026-05-31): "경로 추가가 너무 불편하다". **P0-1 입력 UX 재정비**: 출발/도착 세로 스택, "집/회사" 즐겨찾기 단축(favorites 도메인 재활용), 현재 위치 버튼(Geolocation), 둘 다 채워지면 자동 검색 트리거, 경로 이름 `출발지 → 도착지` 자동 생성. **P0-2 ODsay 옵션 풀가동**(코드 결함 명확 — `route-search/index.ts:92`, `odsayClient.ts:222-228` SX/SY/EX/EY/apiKey만 보냄): `SearchPathType` 토글(전체/지하철만/버스만), 정렬 칩 → 서버 재호출(`OPT` 변경), 초기 검색 시 OPT=0(추천)+OPT=4(최소환승) 병렬 호출 후 merge+dedupe, "ODsay 기반이라 네이버와 다를 수 있어요" onboarding 1회. **P1-1 결과 카드 시각화(지도 옵션 A)**: subPath 미리보기 펼친 채로 한 줄 표시(`🚶5분 → 🚌146(8정거장) → 🚇2 강남→역삼 → 🚶3분`), 노선 색상 chip 가로 배치, SVG 폴리라인 미니맵(좌표 점만). **P1-2 "전체 추가" 의도 일치**: ODsay route-search 결과의 노선을 `busNumbers`에 자동 체크, 노선 미선택 노드 인라인 빨간 보더 즉시 표시(저장 누르기 전부터), 추가 후 첫 미선택 노드로 자동 스크롤. **P2 정적 지도 이미지(옵션 B)**: 네이버/카카오 Static Map API 도입, 결과 카드+RouteNodeCard 썸네일, 좌표쌍 1일 캐시. 작은 follow-up: PlacePicker 결과 8→20개 + 거리순, UnifiedStopPicker 지하철 방향 선택 복원. 상세 분석 conversation 참고. | 2026-05-31
 
 ## ✅ 완료
 - [x] #BB8 | [feat] 지하철 급행 표시 (`(급)` prefix) — BE 응답 `btrainSttus` raw 동봉 (5종 enum + 미지 anomaly) + FE `formatTrainTypeShort` 헬퍼 + Home/Favorites 도착 카드 모든 위치(9곳)에 헤드사인 prefix. 색 강조 없이 일반 텍스트색. 추가로 4필드 (`destinationName`/`arrivalSeconds`/`dataTimestamp`/`isLastTrain`) 동시 도입. seoul-subway.md 전체 필드표 갱신. BE 테스트 6건. (완료일: 2026-05-11)
