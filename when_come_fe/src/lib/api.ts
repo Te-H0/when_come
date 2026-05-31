@@ -241,7 +241,7 @@ export function saveRoute(data: SaveRouteRequest, jwt: string): Promise<{ id: st
 
 export function updateRoute(
   id: string,
-  data: { is_active?: boolean; name?: string; displayOrder?: number },
+  data: { is_active?: boolean; name?: string; displayOrder?: number; stops?: SaveRouteStop[] },
 ): Promise<void> {
   return apiFetch<{ ok: boolean }>(`/routes/${id}`, {
     method: 'PATCH',

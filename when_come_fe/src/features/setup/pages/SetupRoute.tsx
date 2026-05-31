@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Search, MapPin, ChevronDown, ChevronUp, Loader2, Plus,
+  Search, MapPin, ChevronDown, ChevronUp, Loader2, Plus, ArrowLeftRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -327,6 +327,23 @@ export default function SetupRoute() {
     });
   };
 
+  /**
+   * 같은 stepGroup 두 노드의 order를 교환 — Home 가로 2분할 좌/우 순서 변경.
+   * 저장 버튼을 눌러야 BE에 반영됨 (로컬 state만 업데이트).
+   */
+  const handleSwapGroupOrder = (stepGroup: number) => {
+    setNodes(prev => {
+      const groupNodes = prev.filter(n => n.stepGroup === stepGroup);
+      if (groupNodes.length !== 2) return prev;
+      const [first, second] = groupNodes;
+      return prev.map(n => {
+        if (n.id === first.id) return { ...n, order: second.order };
+        if (n.id === second.id) return { ...n, order: first.order };
+        return n;
+      });
+    });
+  };
+
   const handleUpdateBusNumbers = (nodeId: string, busNumbers: string[]) => {
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, busNumbers } : n));
   };
@@ -360,7 +377,10 @@ export default function SetupRoute() {
       if (!groups.has(n.stepGroup)) groups.set(n.stepGroup, [])
       groups.get(n.stepGroup)!.push(n)
     }
-    return Array.from(groups.entries()).sort(([a], [b]) => a - b)
+    // stepGroup 오름차순 + 그룹 내 order 오름차순 정렬 (swap 즉시 반영을 위해)
+    return Array.from(groups.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([sg, gNodes]) => [sg, [...gNodes].sort((a, b) => a.order - b.order)] as [number, RouteNode[]])
   }, [nodes])
 
   /** bus 노드 중 선택된 노선이 없는 노드가 있는지 검사 */
@@ -510,8 +530,20 @@ export default function SetupRoute() {
                 <div key={stepGroup} className="relative">
                   {/* 스텝 레이블 (그룹이 2개 이상인 경우 시각 구분) */}
                   {groupNodes.length > 1 && (
-                    <div className="text-caption text-text-tertiary font-medium mb-1 px-1">
-                      스텝 {stepGroup} — 빠른 버스 탑승
+                    <div className="flex items-center justify-between mb-1 px-1">
+                      <span className="text-caption text-text-tertiary font-medium">
+                        스텝 {stepGroup} — 빠른 버스 탑승
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleSwapGroupOrder(stepGroup)}
+                        className="rounded-control hover:bg-surface-muted w-9 h-9"
+                        aria-label="정류장 순서 바꾸기"
+                        title="정류장 순서 바꾸기 (Home 좌/우 위치 변경)"
+                      >
+                        <ArrowLeftRight className="w-[18px] h-[18px] text-text-secondary" strokeWidth={2} />
+                      </Button>
                     </div>
                   )}
                   <div className={`space-y-1.5 ${groupNodes.length > 1 ? 'pl-2 border-l-2 border-surface-info-border' : ''}`}>
