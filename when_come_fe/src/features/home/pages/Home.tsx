@@ -137,9 +137,11 @@ function getFastestArrivalText(stop: TransitStop, arrival: ArrivalData, elapsedS
 }
 
 // ─── Sortable card wrapper (isCurrent + group.length === 2) ───────────────────
+type SortableHandleProps = Record<string, unknown>;
+
 interface SortableSegmentCardProps {
   seg: RouteSegment;
-  children: React.ReactNode;
+  children: (handleProps: SortableHandleProps) => React.ReactNode;
 }
 
 function SortableSegmentCard({ seg, children }: SortableSegmentCardProps) {
@@ -161,11 +163,9 @@ function SortableSegmentCard({ seg, children }: SortableSegmentCardProps) {
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
-      className={`flex-1 min-w-0 touch-none ${isDragging ? 'opacity-50 scale-[0.97]' : ''}`}
+      className={`flex-1 min-w-0 ${isDragging ? 'opacity-50 scale-[0.97]' : ''}`}
     >
-      {children}
+      {children({ ...attributes, ...listeners })}
     </div>
   );
 }
@@ -711,12 +711,15 @@ export default function Home() {
                           const segArrivalError = segArrivalResult?.error ?? null;
                           const elapsedSec = (Date.now() - fetchedAtRef.current) / 1000;
 
-                          const card = (
+                          const renderCard = (handleProps?: SortableHandleProps) => (
                             <Card
                               className={`rounded-card border border-border-subtle shadow-card bg-surface-card overflow-hidden ${isGrouped ? 'w-full' : ''}`}
                             >
-                          {/* 정류장 정보 */}
-                          <div className={isGrouped ? "px-3 py-3 border-b border-border-subtle" : "p-5 border-b border-border-subtle"}>
+                          {/* 정류장 정보 — group.length === 2일 때만 드래그 핸들 */}
+                          <div
+                            {...(handleProps ?? {})}
+                            className={`${isGrouped ? "px-3 py-3 border-b border-border-subtle" : "p-5 border-b border-border-subtle"}${handleProps ? " cursor-grab active:cursor-grabbing touch-none select-none" : ""}`}
+                          >
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex-1 min-w-0">
                                 <div className="mb-1">
@@ -1064,11 +1067,11 @@ export default function Home() {
                           if (group.length === 2) {
                             return (
                               <SortableSegmentCard key={seg.id} seg={seg}>
-                                {card}
+                                {(handle) => renderCard(handle)}
                               </SortableSegmentCard>
                             );
                           }
-                          return <div key={seg.id} className="flex-1 min-w-0">{card}</div>;
+                          return <div key={seg.id} className="flex-1 min-w-0">{renderCard()}</div>;
                         })}
                       </div>
                     );
