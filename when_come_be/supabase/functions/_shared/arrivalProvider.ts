@@ -124,7 +124,7 @@ export class SeoulBusProvider implements ArrivalProvider {
 
     const url =
       `http://ws.bus.go.kr/api/rest/stationinfo/getStationByUid` +
-      `?ServiceKey=${seoulBusApiKey()}&arsId=${ctx.arsId}&resultType=json`
+      `?serviceKey=${seoulBusApiKey()}&arsId=${ctx.arsId}&resultType=json`
 
     const res = await fetch(url)
     if (!res.ok) throw new AppError(

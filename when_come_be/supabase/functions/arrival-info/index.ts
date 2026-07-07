@@ -180,7 +180,7 @@ async function getBusArrival(
   ord: string,
 ): Promise<LegacyBusArrivalResponse | null> {
   const url = `http://ws.bus.go.kr/api/rest/arrive/getArrInfoByRoute` +
-    `?ServiceKey=${busApiKey()}&stId=${stId}&busRouteId=${busRouteId}&ord=${ord}&resultType=json`
+    `?serviceKey=${busApiKey()}&stId=${stId}&busRouteId=${busRouteId}&ord=${ord}&resultType=json`
 
   const res = await fetch(url)
   if (!res.ok) throw new AppError(
@@ -228,7 +228,7 @@ async function findBusArrivalByArsId(
   arsId: string,
 ): Promise<LegacyBusArrivalResponse | null> {
   const url = `http://ws.bus.go.kr/api/rest/stationinfo/getStationByUid` +
-    `?ServiceKey=${busApiKey()}&arsId=${arsId}&resultType=json`
+    `?serviceKey=${busApiKey()}&arsId=${arsId}&resultType=json`
 
   const res = await fetch(url)
   if (!res.ok) throw new AppError(
