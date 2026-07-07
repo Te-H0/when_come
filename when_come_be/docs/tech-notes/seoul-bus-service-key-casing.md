@@ -38,3 +38,4 @@ BE 5곳 `ServiceKey=` → `serviceKey=` 소문자 변경:
 - 서울시가 공지 없이 파라미터 대소문자 판정을 조인 것으로 보임. 다른 공공 API도 유사 변경 가능성.
 - `anomaly_logs`가 있어서 원인 파악까지 5분 걸림 — fire-and-forget 로깅 인프라의 실효성 재확인.
 - 재발 방지: `_shared/`에 서울 버스 API 호출을 한 군데로 모으고 URL builder를 함수화하는 게 나음(현재 5곳 흩어짐). 백로그 후보.
+- 배포 이슈: 첫 배포 트리거(sha c01c9ff)에서 `supabase/setup-cli@v1` 액션이 transient 실패. 재트리거로 복구.
