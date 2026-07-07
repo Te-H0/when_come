@@ -43,7 +43,7 @@ export async function handler(req: Request): Promise<Response> {
     if (!arsId?.trim()) throw new AppError("arsId 파라미터가 필요합니다", 400, "STOP_QUERY_REQUIRED" satisfies StopErrorCode)
 
     const url = `http://ws.bus.go.kr/api/rest/stationinfo/getRouteByStation` +
-      `?ServiceKey=${busApiKey()}&arsId=${arsId}&resultType=json`
+      `?serviceKey=${busApiKey()}&arsId=${arsId}&resultType=json`
 
     const res = await fetch(url)
     if (!res.ok) throw new AppError("서울 버스 API 연결 실패", 502, "STOP_PROVIDER_ERROR" satisfies StopErrorCode)

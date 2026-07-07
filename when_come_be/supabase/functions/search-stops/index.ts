@@ -30,7 +30,7 @@ function seoulBusApiKey(): string {
 // ─── ARS 번호로 서울버스 API 정류장 조회 ────────────────────────────────────
 async function fetchStationNameByArsId(arsId: string): Promise<string | null> {
   const url = `http://ws.bus.go.kr/api/rest/stationinfo/getStationByUid` +
-    `?ServiceKey=${seoulBusApiKey()}&arsId=${arsId}&resultType=json`
+    `?serviceKey=${seoulBusApiKey()}&arsId=${arsId}&resultType=json`
 
   const res = await fetch(url)
   if (!res.ok) return null  // 서울버스 API 실패 → fallback
