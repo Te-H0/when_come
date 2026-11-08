@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import App from "./app/App.tsx"
 import "./styles/index.css"
-import { initAuth } from "./lib/supabase.ts"
+import { Startup } from "./app/Startup"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -13,10 +13,11 @@ const queryClient = new QueryClient({
   },
 })
 
-initAuth().then(() => {
-  createRoot(document.getElementById("root")!).render(
+const root = document.getElementById('root');
+if (root) createRoot(root).render(
+  <Startup>
     <QueryClientProvider client={queryClient}>
       <App />
     </QueryClientProvider>
-  )
-})
+  </Startup>,
+);

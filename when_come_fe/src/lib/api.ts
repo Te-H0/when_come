@@ -13,6 +13,7 @@ import type {
 } from '@/types/api'
 import { getJwt } from './supabase'
 import { logClientError } from './clientErrorLog'
+import { normalizeStopResults } from '@/features/map/services/normalizeStopResults'
 
 const BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 
@@ -71,10 +72,14 @@ function isLegacyError(val: unknown): val is LegacyErrorBody {
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = await getJwt()
   const method = (options?.method ?? 'GET').toUpperCase()
 
   let res: Response
+  if (import.meta.env.DEV && import.meta.env.VITE_LOCAL_DEMO === 'true') {
+    const { demoFetch } = await import('@/dev/demo/api');
+    res = await demoFetch(path, options);
+  } else {
+  const token = await getJwt()
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       ...options,
@@ -85,6 +90,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       },
     })
   } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') throw e
     // 네트워크/CORS/DNS 등 fetch 자체 실패 — status 없음
     logClientError({
       path,
@@ -94,6 +100,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       message: e instanceof Error ? e.message : String(e),
     })
     throw e
+  }
+
   }
 
   if (!res.ok) {
@@ -138,12 +146,13 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   }
 }
 
-export function searchPlaces(q: string): Promise<ApiPlace[]> {
-  return apiFetch<ApiPlace[]>(`/place-search?q=${encodeURIComponent(q)}`)
+export function searchPlaces(q: string, signal?: AbortSignal): Promise<ApiPlace[]> {
+  return apiFetch<ApiPlace[]>(`/place-search?q=${encodeURIComponent(q)}`, { signal })
 }
 
-export function searchStops(q: string): Promise<ApiStop[]> {
-  return apiFetch<ApiStop[]>(`/search-stops?q=${encodeURIComponent(q)}`)
+export async function searchStops(q: string, signal?: AbortSignal): Promise<ApiStop[]> {
+  const data = await apiFetch<unknown>(`/search-stops?q=${encodeURIComponent(q)}`, { signal });
+  return normalizeStopResults(data);
 }
 
 export function searchRoutes(

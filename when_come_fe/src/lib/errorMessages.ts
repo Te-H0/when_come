@@ -76,6 +76,8 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
 
   // STOP_*
   STOP_QUERY_REQUIRED: '검색어를 입력해 주세요',
+  STOP_PARAMS_INVALID: '정류장 조회 조건을 확인해 주세요',
+  STOP_PROVIDER_TIMEOUT: '정류장 조회가 지연되고 있어요. 다시 시도해 주세요',
   STOP_NOT_FOUND: '정류장을 찾을 수 없습니다',
   STOP_PROVIDER_ERROR: '정류장 검색 서비스가 일시적으로 불안정합니다',
 

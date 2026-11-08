@@ -9,9 +9,9 @@ export interface ApiStop {
   id: string
   name: string
   type: 'bus' | 'subway'
-  lat: number
-  lng: number
-  arsId?: string
+  lat: number | null
+  lng: number | null
+  arsId?: string | null
   laneName?: string | null
   subwayCode?: string | null
 }

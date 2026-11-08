@@ -43,8 +43,7 @@ import { ApiError } from "@/lib/api";
 import { safeStorage } from "@/lib/safeStorage";
 import { usePageVisibility } from "@/lib/usePageVisibility";
 import { ArrivalText, splitArrival } from "@/utils/arrivalDisplay";
-
-const SELECTED_ROUTE_KEY = 'when_come:selectedRouteId';
+import { SELECTED_ROUTE_KEY } from "@/features/route/selectedRouteStorage";
 
 /**
  * 에러 코드 → inline 안내 메시지.
@@ -340,8 +339,7 @@ export default function Home() {
         sequence,
         stepGroup: seg.stepGroup,
         arsId: seg.stop.arsId,
-        lat: seg.stop.lat ?? undefined,
-        lng: seg.stop.lng ?? undefined,
+        // GET /routes에는 정류장 좌표가 없다. 기존처럼 좌표를 생략하며 추정하지 않는다.
         directionHeadsign: seg.stop.directionHeadsign ?? undefined,
         directionUpdn: seg.stop.directionUpdn ?? undefined,
         directionNextStop: seg.stop.directionNextStop ?? undefined,

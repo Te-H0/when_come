@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/collapsible";
 import { searchRoutes, saveRoute, getStopBuses } from "@/lib/api";
 import { getJwt } from "@/lib/supabase";
+import { safeStorage } from "@/lib/safeStorage";
+import { SELECTED_ROUTE_KEY } from "@/features/route/selectedRouteStorage";
 import { subwayApiCodeToLineName, seoulBisTypeToOdsayBusType } from "@/utils/transitColors";
 import { wayCodeToUpdn } from "@/utils/transitDirection";
 import type { ApiPlace, ApiStop, ApiRouteOption } from "@/types/api";
@@ -68,7 +70,7 @@ function apiRouteToSearchResult(route: ApiRouteOption): SearchRouteResult {
       id: `${route.id}-${idx}`,
       name: seg.startName,
       type: 'bus',
-      stopId: seg.startArsId ?? undefined,
+      stopId: seg.startOdsayId != null ? String(seg.startOdsayId) : undefined,
       arsId: seg.startArsId ?? undefined,
       availableBuses: seg.lines.map(l => l.routeName),
       busLines: seg.lines.map(l => ({
@@ -90,8 +92,8 @@ function apiRouteToSearchResult(route: ApiRouteOption): SearchRouteResult {
 }
 
 interface ReverseOfState {
-  fromName: string;
-  toName: string;
+  fromName: string | null;
+  toName: string | null;
 }
 
 /** nodes 배열에서 다음 신규 stepGroup 번호를 계산 */
@@ -118,8 +120,9 @@ export default function SetupRoute() {
   const [endPlace, setEndPlace] = useState<ApiPlace | null>(null);
 
   // reverseOf 프리필: 출발지/도착지 placeholder 힌트용 이름
-  const startPlaceholderHint = reverseOf?.fromName ?? '장소·주소 검색';
-  const endPlaceholderHint = reverseOf?.toName ?? '장소·주소 검색';
+  const placeSearchPlaceholder = import.meta.env.DEV && import.meta.env.MODE === 'localdev' ? '검색어 입력' : '장소·주소 검색';
+  const startPlaceholderHint = reverseOf?.fromName ?? placeSearchPlaceholder;
+  const endPlaceholderHint = reverseOf?.toName ?? placeSearchPlaceholder;
 
   const [nodes, setNodes] = useState<RouteNode[]>([]);
   const [searchResults, setSearchResults] = useState<SearchRouteResult[]>([]);
@@ -158,9 +161,9 @@ export default function SetupRoute() {
         stepGroup,
         order: orderInGroup,
         stopId: stop.id,
-        arsId: stop.arsId,
-        lat: stop.lat,
-        lng: stop.lng,
+        arsId: stop.arsId ?? undefined,
+        lat: stop.lat ?? undefined,
+        lng: stop.lng ?? undefined,
         busNumbers: [],
       };
       setNodes(prev => [...prev, newNode]);
@@ -194,8 +197,8 @@ export default function SetupRoute() {
         stepGroup,
         order: orderInGroup,
         stopId: stop.id,
-        lat: stop.lat,
-        lng: stop.lng,
+        lat: stop.lat ?? undefined,
+        lng: stop.lng ?? undefined,
         subwayLine: lineName,
         direction: dir.nextStop || undefined,
         // UnifiedStopPicker에서 받은 방향 정보 — 저장 시 우선 사용
@@ -436,7 +439,7 @@ export default function SetupRoute() {
       const originName = startPlace?.name?.trim() || null;
       const destinationName = endPlace?.name?.trim() || null;
 
-      await saveRoute({
+      const { id } = await saveRoute({
         name: routeName.trim(),
         originName,
         destinationName,
@@ -445,6 +448,7 @@ export default function SetupRoute() {
         stops,
       }, jwt);
 
+      safeStorage.set(SELECTED_ROUTE_KEY, id);
       queryClient.invalidateQueries({ queryKey: ['routes'] });
 
       const reverseState: ReverseOfState = { fromName: destinationName, toName: originName };
@@ -493,7 +497,7 @@ export default function SetupRoute() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <PlacePicker
               label="출발지"
               placeholder={startPlaceholderHint}
