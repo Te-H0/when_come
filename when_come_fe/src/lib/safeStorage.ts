@@ -4,6 +4,17 @@
  * 모든 접근은 이 wrapper만 사용. 실패는 silent (메모리 fallback 없음 — 단순 best-effort).
  */
 export const safeStorage = {
+  /** Explicit writes must not claim persistence after a browser storage failure. */
+  getOrThrow(key: string): string | null {
+    try { return window.localStorage.getItem(key) } catch {
+      throw new Error('브라우저 저장 공간을 읽을 수 없어요. 저장 허용 설정을 확인해 주세요.')
+    }
+  },
+  setOrThrow(key: string, value: string): void {
+    try { window.localStorage.setItem(key, value) } catch {
+      throw new Error('브라우저 저장 공간을 사용할 수 없어요. 저장 허용 설정을 확인해 주세요.')
+    }
+  },
   get(key: string): string | null {
     try {
       return window.localStorage.getItem(key)

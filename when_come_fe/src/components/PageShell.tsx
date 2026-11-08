@@ -1,5 +1,9 @@
+import { lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import BottomNav from '@/components/BottomNav'
+
+const DemoPanel = import.meta.env.DEV && import.meta.env.VITE_LOCAL_DEMO === 'true'
+  ? lazy(() => import('@/dev/demo/DemoPanel')) : null
 
 interface PageShellProps {
   children: ReactNode
@@ -37,6 +41,7 @@ export default function PageShell({
             : 'calc(var(--bottom-nav-total) + 24px + var(--keyboard-inset-height, 0px))',
         }}
       >
+        {DemoPanel && <Suspense fallback={null}><DemoPanel /></Suspense>}
         {children}
       </main>
       <BottomNav />

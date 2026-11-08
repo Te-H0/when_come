@@ -77,6 +77,8 @@ export type ArrivalErrorCode =
 // ─── STOP_* — 정류장/노선 검색 (`search-stops`, `stop-buses` 함수) ────────────
 export type StopErrorCode =
   | 'STOP_QUERY_REQUIRED'
+  | 'STOP_PARAMS_INVALID'
+  | 'STOP_PROVIDER_TIMEOUT'
   | 'STOP_NOT_FOUND'
   | 'STOP_PROVIDER_ERROR'
 

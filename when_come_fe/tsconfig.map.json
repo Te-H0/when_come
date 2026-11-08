@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/features/map", "src/test", "src/vite-env.d.ts"]
+}

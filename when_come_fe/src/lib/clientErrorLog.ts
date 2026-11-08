@@ -26,6 +26,7 @@ const THROTTLE_MS = 1000
  * - 같은 (method, path, status, code) 조합은 1초당 최대 1회 송신
  */
 export function logClientError(payload: ClientErrorPayload): void {
+  if (import.meta.env.DEV && import.meta.env.VITE_LOCAL_DEMO === 'true') return
   if (isClientLogPath(payload.path)) return
 
   const key = `${payload.method}|${payload.path}|${payload.status ?? 'net'}|${payload.code ?? ''}`
@@ -40,6 +41,7 @@ export function logClientError(payload: ClientErrorPayload): void {
 }
 
 async function sendLog(payload: ClientErrorPayload): Promise<void> {
+  if (import.meta.env.DEV && import.meta.env.VITE_LOCAL_DEMO === 'true') return
   try {
     const token = await getJwt()
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/client-log`

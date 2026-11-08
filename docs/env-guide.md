@@ -8,6 +8,8 @@
 |------|------|--------|
 | `VITE_SUPABASE_URL` | Supabase 프로젝트 URL | Supabase 대시보드 > Settings > API |
 | `VITE_SUPABASE_ANON_KEY` | Supabase 공개 키 | Supabase 대시보드 > Settings > API |
+| `VITE_NAVER_MAPS_CLIENT_ID` | 새 지도 loader가 사용하는 NAVER Maps 공개 client ID | [네이버 클라우드](https://console.ncloud.com/) |
+| `VITE_ENABLE_STOP_MAP` | 지도 선택 UI 표시 flag (`true`일 때 표시) | 기본 OFF, 로컬 demo는 ON. 운영에서는 Vercel Production에 명시적으로 설정 |
 | `VITE_NAVER_MAP_CLIENT_ID` | 네이버 지도 클라이언트 ID | [네이버 클라우드](https://console.ncloud.com/) |
 
 ## BE 환경변수 (when_come_be/.env.local)
@@ -26,6 +28,8 @@
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase 서비스 키 | Supabase 대시보드 | ⚠️ Edge Function 내부 전용. 절대 FE 노출 금지. RLS 우회하므로 일반 라우트에 사용 금지 |
 
 ## 로컬 vs 프로덕션
+
+운영에서 지도를 켜려면 네이버 클라우드 Maps의 Web 서비스 URL에 운영 호스트를 등록하고, Vercel의 Production 환경에 해당 앱의 공개 ID를 `VITE_NAVER_MAPS_CLIENT_ID`로 설정한 뒤 `VITE_ENABLE_STOP_MAP=true`를 지정한다. 두 변수는 FE 빌드 시점에 적용한다.
 
 Supabase는 로컬 (`supabase start`)과 원격 두 개를 운영한다.
 

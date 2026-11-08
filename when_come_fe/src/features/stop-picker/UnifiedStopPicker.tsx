@@ -1,267 +1,58 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { ArrowLeft, Loader2, X } from 'lucide-react'
-import { searchStops } from '@/lib/api'
-import type { ApiStop } from '@/types/api'
+import { lazy, Suspense, useMemo, useState } from 'react';
+import { ArrowLeft, Loader2, X } from 'lucide-react';
+import { searchStops } from '@/lib/api';
+import { StopMap } from '@/features/map/components/StopMap';
+import { stopKey } from '@/features/map/types/map';
+import { useDiscoverySearch } from '@/features/search/hooks/useDiscoverySearch';
+import type { ApiStop } from '@/types/api';
 
-// ──────────────────────── Types ────────────────────────
+const QuickSearches = import.meta.env.DEV && import.meta.env.VITE_LOCAL_DEMO === 'true'
+  ? lazy(() => import('@/dev/demo/QuickSearches')) : null;
 
 export type PickerPayload =
-  | {
-      type: 'bus'
-      stop: ApiStop
-    }
-  | {
-      type: 'subway'
-      stop: ApiStop
-      /** 항상 null — 옵션 A: 방향 선택 제거, 양방향 모두 표시 */
-      direction: { updn: null; nextStop: null }
-    }
+  | { type: 'bus'; stop: ApiStop }
+  | { type: 'subway'; stop: ApiStop; /** Legacy picker explicitly retains its existing both-direction behavior. */ direction: { updn: null; nextStop: null } };
 
 interface UnifiedStopPickerProps {
-  onComplete: (payload: PickerPayload) => void
-  onCancel?: () => void
+  onComplete: (payload: PickerPayload) => void;
+  onCancel?: () => void;
 }
 
-// ──────────────────────── State Machine ────────────────────────
-
-type PickerStep =
-  | { kind: 'searching' }
-  | { kind: 'lineSelecting'; stop: ApiStop; candidates: ApiStop[] }
-
-// ──────────────────────── Component ────────────────────────
-
-export default function UnifiedStopPicker({ onComplete, onCancel }: UnifiedStopPickerProps) {
-  const [step, setStep] = useState<PickerStep>({ kind: 'searching' })
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<ApiStop[]>([])
-  const [isSearching, setIsSearching] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // 한글 IME composition 진행 중에는 API 호출 대기 — "강+"/"강나" 단계마다 검색 발사 방지.
-  const isComposingRef = useRef(false)
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
-  }, [])
-
-  const scheduleSearch = (text: string) => {
-    if (timerRef.current) clearTimeout(timerRef.current)
-    if (!text.trim()) { setResults([]); return }
-    timerRef.current = setTimeout(async () => {
-      // composition 중이면 다음 사이클까지 대기 (compositionend가 다시 트리거)
-      if (isComposingRef.current) return
-      setIsSearching(true)
-      try {
-        const data = await searchStops(text)
-        setResults(data.slice(0, 20))
-      } catch {
-        setResults([])
-      } finally {
-        setIsSearching(false)
-      }
-    }, 300)
+export default function UnifiedStopPicker({ onComplete, onCancel = undefined }: UnifiedStopPickerProps) {
+  const search = useDiscoverySearch(searchStops, 20);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const mapStops = useMemo(() => search.results.map(stop => ({ ...stop, arsId: stop.arsId ?? null })), [search.results]);
+  const selected = search.results.find(stop => stopKey(stop) === selectedKey);
+  function handleConfirm() {
+    if (!selected) return;
+    if (selected.type === 'bus') onComplete({ type: 'bus', stop: selected });
+    else onComplete({ type: 'subway', stop: selected, direction: { updn: null, nextStop: null } });
+    setSelectedKey(null);
   }
-
-  // ── 검색 ──
-  const handleInput = (text: string) => {
-    setQuery(text)
-    scheduleSearch(text)
-  }
-
-  const handleCompositionStart = () => {
-    isComposingRef.current = true
-  }
-
-  const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
-    isComposingRef.current = false
-    // composition 끝난 시점의 완성형 텍스트로 검색
-    scheduleSearch(e.currentTarget.value)
-  }
-
-  const handleClear = () => {
-    setQuery('')
-    setResults([])
-  }
-
-  // ── 결과에서 정류장 선택 ──
-  const handleSelectStop = (stop: ApiStop) => {
-    if (stop.type === 'bus') {
-      onComplete({ type: 'bus', stop })
-      return
-    }
-
-    // 지하철 — 같은 stationName 그룹에서 호선 후보 추출
-    const sameName = results.filter(
-      (r) => r.type === 'subway' && r.name === stop.name,
-    )
-
-    // 단일 호선이면 호선 선택 스킵 → 즉시 완료
-    if (sameName.length <= 1) {
-      onComplete({ type: 'subway', stop, direction: { updn: null, nextStop: null } })
-    } else {
-      setStep({ kind: 'lineSelecting', stop, candidates: sameName })
-    }
-  }
-
-  // ── 호선 선택 → 즉시 완료 (방향 선택 없음) ──
-  const handleSelectLine = (lineStop: ApiStop) => {
-    onComplete({ type: 'subway', stop: lineStop, direction: { updn: null, nextStop: null } })
-  }
-
-  // ── 뒤로가기 ──
-  const handleBack = () => {
-    if (step.kind === 'lineSelecting') {
-      setStep({ kind: 'searching' })
-    } else {
-      onCancel?.()
-    }
-  }
-
-  // ──────────────────────── Render ────────────────────────
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* 헤더 행 */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={handleBack}
-          className="inline-flex items-center justify-center w-8 h-8 rounded-chip text-text-secondary hover:bg-surface-muted transition-colors"
-          aria-label="뒤로"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-        <span className="text-caption font-medium text-text-secondary">
-          {step.kind === 'searching' && '정류장/역 검색'}
-          {step.kind === 'lineSelecting' && '호선 선택'}
-        </span>
-      </div>
-
-      {/* 검색 단계 */}
-      {step.kind === 'searching' && (
-        <SearchStep
-          query={query}
-          results={results}
-          isSearching={isSearching}
-          onInput={handleInput}
-          onCompositionStart={handleCompositionStart}
-          onCompositionEnd={handleCompositionEnd}
-          onClear={handleClear}
-          onSelect={handleSelectStop}
-        />
-      )}
-
-      {/* 호선 선택 단계 */}
-      {step.kind === 'lineSelecting' && (
-        <LineSelectStep
-          candidates={step.candidates}
-          onSelect={handleSelectLine}
-        />
-      )}
+  return <div className="flex flex-col gap-3">
+    <div className="flex items-center gap-2">
+      {onCancel && <button type="button" onClick={onCancel} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control text-text-secondary hover:bg-surface-muted" aria-label="정류장 선택 취소"><ArrowLeft className="h-4 w-4" /></button>}
+      <label htmlFor="stop-search" className="text-label text-text-secondary">정류장/역 검색</label>
     </div>
-  )
-}
-
-// ──────────────────────── Sub-components ────────────────────────
-
-interface SearchStepProps {
-  query: string
-  results: ApiStop[]
-  isSearching: boolean
-  onInput: (text: string) => void
-  onCompositionStart: () => void
-  onCompositionEnd: (e: React.CompositionEvent<HTMLInputElement>) => void
-  onClear: () => void
-  onSelect: (stop: ApiStop) => void
-}
-
-function SearchStep({
-  query,
-  results,
-  isSearching,
-  onInput,
-  onCompositionStart,
-  onCompositionEnd,
-  onClear,
-  onSelect,
-}: SearchStepProps) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="relative">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => onInput(e.target.value)}
-          onCompositionStart={onCompositionStart}
-          onCompositionEnd={onCompositionEnd}
-          placeholder="정류장 또는 역 이름 입력"
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-          className="w-full h-11 pl-3.5 pr-10 rounded-control border border-border-default bg-surface-card focus:outline-none focus:ring-2 focus:ring-ring-focus focus:border-border-focus"
-          style={{ fontSize: '16px' }}
-        />
-        {isSearching ? (
-          <Loader2 className="absolute right-3 top-3 w-5 h-5 text-text-tertiary animate-spin" />
-        ) : query ? (
-          <button
-            onClick={onClear}
-            className="absolute right-3 top-3 text-text-tertiary hover:text-text-secondary"
-            aria-label="지우기"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        ) : null}
-      </div>
-
-      {results.length > 0 && (
-        <div className="rounded-control border border-border-subtle shadow-card overflow-hidden max-h-64 overflow-y-auto bg-surface-card">
-          {results.map((stop) => (
-            <button
-              key={stop.id}
-              onClick={() => onSelect(stop)}
-              className="w-full px-4 py-3 text-left hover:bg-surface-input transition-colors flex items-center justify-between gap-3 border-b border-border-subtle last:border-0"
-            >
-              <div className="min-w-0">
-                <div className="text-label font-medium text-text-primary truncate">{stop.name}</div>
-                <div className="text-caption text-text-secondary flex items-center gap-1.5 flex-wrap">
-                  <span>{stop.type === 'bus' ? '버스 정류장' : stop.laneName ?? '지하철역'}</span>
-                  {stop.type === 'bus' && stop.arsId && (
-                    <span className="font-mono text-text-tertiary">ARS {stop.arsId}</span>
-                  )}
-                </div>
-              </div>
-              <span className="text-caption px-2 py-0.5 rounded-chip bg-surface-muted text-text-secondary flex-shrink-0">
-                {stop.type === 'bus' ? '버스' : '지하철'}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="relative">
+      <input id="stop-search" type="search" value={search.query} onChange={event => { search.changeQuery(event.target.value); setSelectedKey(null); }}
+        onCompositionStart={search.handleCompositionStart} onCompositionEnd={event => search.handleCompositionEnd(event.currentTarget.value)}
+        placeholder="정류장 또는 역 이름 입력" autoComplete="off" autoCorrect="off" spellCheck={false}
+        className="h-12 w-full rounded-control border border-border-default bg-surface-card pl-3 pr-12 text-card-title text-text-primary focus:outline-none focus:ring-2 focus:ring-ring-focus" />
+      {search.isLoading ? <Loader2 aria-label="정류장 검색 중" className="absolute right-3 top-3 h-5 w-5 animate-spin text-text-tertiary" /> : search.query &&
+        <button type="button" onClick={() => { search.changeQuery(''); setSelectedKey(null); }} className="absolute right-0 top-0 flex min-h-12 min-w-12 items-center justify-center text-text-tertiary" aria-label="정류장 검색 지우기"><X className="h-5 w-5" /></button>}
     </div>
-  )
-}
-
-interface LineSelectStepProps {
-  candidates: ApiStop[]
-  onSelect: (stop: ApiStop) => void
-}
-
-function LineSelectStep({ candidates, onSelect }: LineSelectStepProps) {
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-caption text-text-secondary">이용할 호선을 선택하세요</p>
-      <div className="flex flex-wrap gap-2">
-        {candidates.map((stop) => (
-          <button
-            key={stop.id}
-            onClick={() => onSelect(stop)}
-            className="px-3.5 py-2 rounded-control border border-border-default text-caption font-medium text-text-primary bg-surface-card hover:bg-surface-muted transition-colors"
-          >
-            {stop.laneName ?? stop.name}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
+    {QuickSearches && <Suspense fallback={null}><QuickSearches onSearch={text => { search.changeQuery(text); setSelectedKey(null); }} /></Suspense>}
+    {search.error && <div role="alert" className="text-body text-text-danger">{search.error}<button type="button" onClick={search.retry} className="min-h-11 rounded-control px-3 text-button">검색 다시 시도</button></div>}
+    {!search.isLoading && !search.error && search.query && search.results.length === 0 && <p role="status" className="text-body text-text-secondary">검색 결과가 없어요. 다른 이름으로 찾아보세요.</p>}
+    {search.results.length > 0 && <>
+      <p role="status" className="text-caption text-text-secondary">검색 결과 {search.results.length}개 · 지도와 목록에서 같은 정류장을 선택할 수 있어요.</p>
+      <StopMap stops={mapStops} resultsKey={search.resultsKey} selectedStopKey={selectedKey} onSelect={setSelectedKey} />
+    </>}
+    {selected && <div className="space-y-3 rounded-card border border-border-default bg-surface-card p-4">
+      <p className="text-body text-text-primary">{selected.name}{selected.laneName ? ` · ${selected.laneName}` : ''}</p>
+      {selected.type === 'subway' && <p className="text-caption text-text-secondary">이 선택기는 양방향 도착정보를 표시해요.</p>}
+      <button type="button" onClick={handleConfirm} className="min-h-12 w-full rounded-control bg-text-primary px-4 text-button text-white">이 정류장 선택</button>
+    </div>}
+  </div>;
 }
