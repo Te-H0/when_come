@@ -118,6 +118,8 @@ export default function SetupRoute() {
   const [routeName, setRouteName] = useState('');
   const [startPlace, setStartPlace] = useState<ApiPlace | null>(null);
   const [endPlace, setEndPlace] = useState<ApiPlace | null>(null);
+  const [mode, setMode] = useState<'auto' | 'manual'>('auto');
+  const [showManualPlaces, setShowManualPlaces] = useState(false);
 
   // reverseOf 프리필: 출발지/도착지 placeholder 힌트용 이름
   const placeSearchPlaceholder = import.meta.env.DEV && import.meta.env.MODE === 'localdev' ? '검색어 입력' : '장소·주소 검색';
@@ -127,7 +129,8 @@ export default function SetupRoute() {
   const [nodes, setNodes] = useState<RouteNode[]>([]);
   const [searchResults, setSearchResults] = useState<SearchRouteResult[]>([]);
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
-  const [isSearching, setIsSearching] = useState(false);
+  const [routeSearchStatus, setRouteSearchStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const routeSearchRequestRef = useRef(0);
   const [isSaving, setIsSaving] = useState(false);
   const savingLockRef = useRef(false);
 
@@ -212,23 +215,37 @@ export default function SetupRoute() {
     }
   };
 
+  const handlePlaceChange = (field: 'start' | 'end', place: ApiPlace | null) => {
+    const previous = field === 'start' ? startPlace : endPlace;
+    if (previous === place) return;
+    routeSearchRequestRef.current += 1;
+    setSearchResults([]);
+    setRouteSearchStatus('idle');
+    if (field === 'start') setStartPlace(place);
+    else setEndPlace(place);
+  };
+
   const handleAutoSearch = async () => {
-    if (!startPlace || !endPlace) return;
-    setIsSearching(true);
+    if (!startPlace || !endPlace || routeSearchStatus === 'loading') return;
+    const request = ++routeSearchRequestRef.current;
+    setSearchResults([]);
+    setRouteSearchStatus('loading');
     try {
       const routes = await searchRoutes(
         parseFloat(startPlace.x), parseFloat(startPlace.y),
         parseFloat(endPlace.x), parseFloat(endPlace.y),
       );
+      if (request !== routeSearchRequestRef.current) return;
       const results = routes.map(apiRouteToSearchResult);
       setSearchResults(results);
       setSortKey('default');
       setShowAll(false);
-      if (results.length > 0) setExpandedRoutes(new Set([results[0].routeId]));
+      setExpandedRoutes(results.length > 0 ? new Set([results[0].routeId]) : new Set());
+      setRouteSearchStatus('ready');
     } catch (e) {
+      if (request !== routeSearchRequestRef.current) return;
+      setRouteSearchStatus('error');
       showApiErrorToast(e, '경로 검색에 실패했어요');
-    } finally {
-      setIsSearching(false);
     }
   };
 
@@ -390,6 +407,10 @@ export default function SetupRoute() {
   const hasBusNodeWithoutRoute = nodes.some(
     n => n.type === 'bus' && (!n.busNumbers || n.busNumbers.length === 0)
   );
+  const isSearching = routeSearchStatus === 'loading';
+  const saveHint = !routeName.trim()
+    ? '경로 이름을 입력해 주세요.'
+    : hasBusNodeWithoutRoute ? '버스 정류장마다 탈 노선을 선택해 주세요.' : null;
 
   const handleSave = async () => {
     if (!routeName.trim() || nodes.length === 0) return;
@@ -481,7 +502,26 @@ export default function SetupRoute() {
     <PageShell reserveStickyFooter>
       <PageHeader back title="경로 등록" badge={reverseBadge} />
 
-      <div className="max-w-[var(--page-max-width)] mx-auto px-[var(--page-padding-x)] pt-4 space-y-3">
+      <Tabs
+        value={mode}
+        onValueChange={next => { if (next === 'auto' || next === 'manual') setMode(next); }}
+        className="max-w-[var(--page-max-width)] mx-auto px-[var(--page-padding-x)] pt-4 gap-3"
+      >
+        <TabsList aria-label="경로 등록 방식" className="grid h-11 w-full grid-cols-2 bg-surface-card rounded-control border border-border-subtle p-1">
+          <TabsTrigger
+            value="auto"
+            className="rounded-chip data-[state=active]:bg-text-primary data-[state=active]:text-white text-label font-medium"
+          >
+            자동 검색
+          </TabsTrigger>
+          <TabsTrigger
+            value="manual"
+            className="rounded-chip data-[state=active]:bg-text-primary data-[state=active]:text-white text-label font-medium"
+          >
+            수동 등록
+          </TabsTrigger>
+        </TabsList>
+
         {/* 기본 정보 */}
         <Card className="p-5 rounded-card border border-border-subtle shadow-card bg-surface-card space-y-4">
           <div>
@@ -497,19 +537,33 @@ export default function SetupRoute() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <PlacePicker
-              label="출발지"
-              placeholder={startPlaceholderHint}
-              value={startPlace}
-              onChange={setStartPlace}
-            />
-            <PlacePicker
-              label="도착지"
-              placeholder={endPlaceholderHint}
-              value={endPlace}
-              onChange={setEndPlace}
-            />
+          {mode === 'manual' && (
+            <button
+              type="button"
+              aria-expanded={showManualPlaces}
+              aria-controls="route-place-fields"
+              className="flex min-h-11 w-full items-center justify-between rounded-control border border-border-subtle px-3 text-left text-label text-text-secondary"
+              onClick={() => setShowManualPlaces(value => !value)}
+            >
+              출발지·도착지 (선택)
+              {showManualPlaces ? <ChevronUp aria-hidden="true" className="h-4 w-4" /> : <ChevronDown aria-hidden="true" className="h-4 w-4" />}
+            </button>
+          )}
+          <div id="route-place-fields" hidden={mode === 'manual' && !showManualPlaces}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <PlacePicker
+                label="출발지"
+                placeholder={startPlaceholderHint}
+                value={startPlace}
+                onChange={place => handlePlaceChange('start', place)}
+              />
+              <PlacePicker
+                label="도착지"
+                placeholder={endPlaceholderHint}
+                value={endPlace}
+                onChange={place => handlePlaceChange('end', place)}
+              />
+            </div>
           </div>
         </Card>
 
@@ -591,7 +645,7 @@ export default function SetupRoute() {
                   스텝 {addingAlternativeToStep}의 대안 정류장을 추가하세요
                 </p>
                 <p className="text-caption text-text-info mt-0.5 opacity-80">
-                  아래 수동 등록 탭에서 정류장을 선택하거나, 자동 검색 결과에서 추가하세요
+                  수동 등록에서 정류장을 선택하거나 자동 검색 결과에서 추가하세요
                 </p>
               </div>
             )}
@@ -599,163 +653,151 @@ export default function SetupRoute() {
         )}
 
         {/* 노드 추가 */}
-        <Tabs defaultValue="auto">
-          <TabsList className="grid w-full grid-cols-2 bg-surface-card rounded-control border border-border-subtle p-1">
-            <TabsTrigger
-              value="auto"
-              className="rounded-chip data-[state=active]:bg-text-primary data-[state=active]:text-white text-label font-medium"
-            >
-              자동 검색
-            </TabsTrigger>
-            <TabsTrigger
-              value="manual"
-              className="rounded-chip data-[state=active]:bg-text-primary data-[state=active]:text-white text-label font-medium"
-            >
-              수동 등록
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="auto" className="space-y-3 mt-3">
-            <Card className="p-4 rounded-card border border-border-subtle shadow-card bg-surface-card">
-              <p className="text-label text-text-secondary mb-3">
-                출발지·도착지를 선택하면 경로를 검색합니다
-              </p>
-              <Button
-                onClick={handleAutoSearch}
-                className="w-full bg-text-primary hover:bg-text-primary/90 rounded-control h-11 text-body font-medium text-white"
-                disabled={!startPlace || !endPlace || isSearching}
-              >
-                {isSearching ? (
-                  <Loader2 className="w-[18px] h-[18px] mr-2 animate-spin" />
-                ) : (
-                  <Search className="w-[18px] h-[18px] mr-2" strokeWidth={2} />
-                )}
-                경로 검색
-              </Button>
-            </Card>
-
-            {searchResults.length > 0 && (
-              <div className="space-y-2">
-                {/* 정렬 칩 */}
-                <div className="flex gap-2 flex-wrap">
-                  {([
-                    { key: 'default', label: '추천' },
-                    { key: 'time', label: '시간 짧은 순' },
-                    { key: 'transfer', label: '환승 적은 순' },
-                    { key: 'walk', label: '도보 적은 순' },
-                  ] as const).map(({ key, label }) => (
-                    <button
-                      key={key}
-                      onClick={() => { setSortKey(key); setShowAll(false); }}
-                      className={`px-3 py-1.5 rounded-pill text-caption font-medium transition-colors ${
-                        sortKey === key
-                          ? 'bg-text-primary text-white'
-                          : 'bg-surface-muted text-text-secondary hover:bg-surface-muted/70'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                {visibleResults.map((route, routeIdx) => (
-                  <Card key={route.routeId} className="overflow-hidden rounded-card border border-border-subtle shadow-card bg-surface-card">
-                    <Collapsible
-                      open={expandedRoutes.has(route.routeId)}
-                      onOpenChange={() => toggleRoute(route.routeId)}
-                    >
-                      <div className="px-4 pt-4 pb-0">
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <CollapsibleTrigger asChild>
-                            <button className="flex-1 text-left group">
-                              <div className="flex items-center gap-2 mb-1.5">
-                                <span className="text-body font-semibold text-text-primary">추천 {routeIdx + 1}</span>
-                                {expandedRoutes.has(route.routeId) ? (
-                                  <ChevronUp className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
-                                )}
-                              </div>
-                              {/* 부가 정보 chip */}
-                              <div className="flex flex-wrap gap-1.5">
-                                <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
-                                  {route.totalTime}분
-                                </span>
-                                {route.totalTransferCount !== null && (
-                                  <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
-                                    {route.totalTransferCount === 0 ? '직통' : `환승 ${route.totalTransferCount}회`}
-                                  </span>
-                                )}
-                                {route.totalWalkMeters !== null && (
-                                  <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
-                                    {formatWalkDistance(route.totalWalkMeters)}
-                                  </span>
-                                )}
-                                {route.paymentWon !== null && (
-                                  <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
-                                    {route.paymentWon.toLocaleString()}원
-                                  </span>
-                                )}
-                              </div>
-                            </button>
-                          </CollapsibleTrigger>
-
-                          {/* 전체 경로 추가 버튼 */}
-                          <button
-                            onClick={() => handleAddAllNodes(route)}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-control bg-text-primary hover:bg-text-primary/90 text-white text-caption font-medium transition-colors flex-shrink-0"
-                          >
-                            <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
-                            전체 추가
-                          </button>
-                        </div>
-                      </div>
-
-                      <CollapsibleContent>
-                        <div className="px-3 pb-3 pt-2 space-y-2 border-t border-border-subtle mt-2">
-                          {route.nodes.map((node) => (
-                            <SearchResultNode
-                              key={node.id}
-                              node={node}
-                              routeIndex={routeIdx}
-                              onAdd={(n) => handleAddNodeFromSearch(n, addingAlternativeToStep ?? undefined)}
-                            />
-                          ))}
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  </Card>
-                ))}
-
-                {/* 더보기 버튼 */}
-                {!showAll && remainingCount > 0 && (
-                  <button
-                    onClick={() => setShowAll(true)}
-                    className="w-full py-3 rounded-card border border-border-subtle bg-surface-card text-label text-text-secondary font-medium hover:bg-surface-input transition-colors"
-                  >
-                    더보기 (남은 {remainingCount}개)
-                  </button>
-                )}
-              </div>
+        <TabsContent value="auto" className="space-y-3">
+          <Card className="p-4 rounded-card border border-border-subtle shadow-card bg-surface-card">
+            {(!startPlace || !endPlace) && (
+              <p className="text-label text-text-secondary mb-3">출발지와 도착지를 선택해 주세요.</p>
             )}
-          </TabsContent>
-
-          <TabsContent value="manual" className="space-y-3 mt-3">
-            <Card className="p-4 rounded-card border border-border-subtle shadow-card bg-surface-card">
-              {addingAlternativeToStep !== null && (
-                <p className="text-caption text-text-info font-medium mb-3">
-                  스텝 {addingAlternativeToStep} 대안 정류장 검색
-                </p>
+            <Button
+              onClick={handleAutoSearch}
+              className="w-full bg-text-primary hover:bg-text-primary/90 rounded-control h-11 text-body font-medium text-white"
+              disabled={!startPlace || !endPlace || isSearching}
+            >
+              {isSearching ? (
+                <Loader2 className="w-[18px] h-[18px] mr-2 animate-spin" />
+              ) : (
+                <Search className="w-[18px] h-[18px] mr-2" strokeWidth={2} />
               )}
-              <UnifiedStopPicker
-                onComplete={handleManualPickerComplete}
-                onCancel={() => setAddingAlternativeToStep(null)}
-              />
-            </Card>
-          </TabsContent>
-        </Tabs>
+              {routeSearchStatus === 'error' ? '경로 다시 검색' : '경로 검색'}
+            </Button>
+          </Card>
 
-      </div>
+          {routeSearchStatus === 'ready' && searchResults.length === 0 && (
+            <p role="status" className="rounded-card border border-border-subtle bg-surface-card p-4 text-label text-text-secondary">
+              경로를 찾지 못했어요. 장소를 바꾸거나 수동으로 등록할 수 있어요.
+            </p>
+          )}
+
+          {searchResults.length > 0 && (
+            <div className="space-y-2">
+              {/* 정렬 칩 */}
+              <div className="flex gap-2 flex-wrap">
+                {([
+                  { key: 'default', label: '추천' },
+                  { key: 'time', label: '시간 짧은 순' },
+                  { key: 'transfer', label: '환승 적은 순' },
+                  { key: 'walk', label: '도보 적은 순' },
+                ] as const).map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setSortKey(key); setShowAll(false); }}
+                    className={`px-3 py-1.5 rounded-pill text-caption font-medium transition-colors ${
+                      sortKey === key
+                        ? 'bg-text-primary text-white'
+                        : 'bg-surface-muted text-text-secondary hover:bg-surface-muted/70'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {visibleResults.map((route, routeIdx) => (
+                <Card key={route.routeId} className="overflow-hidden rounded-card border border-border-subtle shadow-card bg-surface-card">
+                  <Collapsible
+                    open={expandedRoutes.has(route.routeId)}
+                    onOpenChange={() => toggleRoute(route.routeId)}
+                  >
+                    <div className="px-4 pt-4 pb-0">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <CollapsibleTrigger asChild>
+                          <button className="flex-1 text-left group">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className="text-body font-semibold text-text-primary">추천 {routeIdx + 1}</span>
+                              {expandedRoutes.has(route.routeId) ? (
+                                <ChevronUp className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-text-tertiary" strokeWidth={2} />
+                              )}
+                            </div>
+                            {/* 부가 정보 chip */}
+                            <div className="flex flex-wrap gap-1.5">
+                              <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
+                                {route.totalTime}분
+                              </span>
+                              {route.totalTransferCount !== null && (
+                                <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
+                                  {route.totalTransferCount === 0 ? '직통' : `환승 ${route.totalTransferCount}회`}
+                                </span>
+                              )}
+                              {route.totalWalkMeters !== null && (
+                                <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
+                                  {formatWalkDistance(route.totalWalkMeters)}
+                                </span>
+                              )}
+                              {route.paymentWon !== null && (
+                                <span className="text-caption text-text-secondary bg-surface-muted px-2 py-0.5 rounded-chip">
+                                  {route.paymentWon.toLocaleString()}원
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        </CollapsibleTrigger>
+
+                        {/* 전체 경로 추가 버튼 */}
+                        <button
+                          onClick={() => handleAddAllNodes(route)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-control bg-text-primary hover:bg-text-primary/90 text-white text-caption font-medium transition-colors flex-shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                          전체 추가
+                        </button>
+                      </div>
+                    </div>
+
+                    <CollapsibleContent>
+                      <div className="px-3 pb-3 pt-2 space-y-2 border-t border-border-subtle mt-2">
+                        {route.nodes.map((node) => (
+                          <SearchResultNode
+                            key={node.id}
+                            node={node}
+                            routeIndex={routeIdx}
+                            onAdd={(n) => handleAddNodeFromSearch(n, addingAlternativeToStep ?? undefined)}
+                          />
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </Card>
+              ))}
+
+              {/* 더보기 버튼 */}
+              {!showAll && remainingCount > 0 && (
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="w-full py-3 rounded-card border border-border-subtle bg-surface-card text-label text-text-secondary font-medium hover:bg-surface-input transition-colors"
+                >
+                  더보기 (남은 {remainingCount}개)
+                </button>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="manual" forceMount hidden={mode !== 'manual'} className="space-y-3">
+          <Card className="p-4 rounded-card border border-border-subtle shadow-card bg-surface-card">
+            {addingAlternativeToStep !== null && (
+              <p className="text-caption text-text-info font-medium mb-3">
+                스텝 {addingAlternativeToStep} 대안 정류장 검색
+              </p>
+            )}
+            <UnifiedStopPicker
+              onComplete={handleManualPickerComplete}
+              onCancel={addingAlternativeToStep !== null ? () => setAddingAlternativeToStep(null) : undefined}
+            />
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Sticky 저장 버튼 — BottomNav 위에 고정 */}
       {nodes.length > 0 && (
@@ -767,19 +809,19 @@ export default function SetupRoute() {
           }}
         >
           <div className="max-w-[var(--page-max-width)] mx-auto space-y-1.5">
-            {hasBusNodeWithoutRoute && (
+            {saveHint && (
               <p className="text-center text-caption text-text-danger font-medium">
-                모든 정류장에 노선을 선택해주세요
+                {saveHint}
               </p>
             )}
             <Button
               onClick={handleSave}
               className="w-full rounded-control h-12 text-body font-medium text-white shadow-floating disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
-                backgroundColor: hasBusNodeWithoutRoute || !routeName.trim() ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                backgroundColor: saveHint ? 'var(--text-tertiary)' : 'var(--text-primary)',
               }}
               size="lg"
-              disabled={!routeName.trim() || isSaving || hasBusNodeWithoutRoute}
+              disabled={Boolean(saveHint) || isSaving}
             >
               {isSaving ? (
                 <Loader2 className="w-[18px] h-[18px] mr-2 animate-spin" />

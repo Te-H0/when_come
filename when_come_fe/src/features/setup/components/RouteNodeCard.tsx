@@ -179,56 +179,62 @@ export default function RouteNodeCard({
               {isAddingBus ? (
                 node.busLines && node.busLines.length > 0 ? (
                   <div className="rounded-control border border-border-default overflow-hidden">
-                    {node.busLines.map(l => {
-                      const busInfo = getBusTypeByOdsay(l.busType, l.routeName);
-                      const isSelected = draftBusNumbers.includes(l.routeName);
-                      return (
-                        <button
-                          key={l.routeName}
-                          onClick={() => handleToggleDraftBus(l.routeName)}
-                          className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
-                            isSelected ? 'bg-surface-info-soft' : 'hover:bg-surface-input'
-                          }`}
-                        >
-                          {/* 체크 표시 영역 */}
-                          <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border"
-                            style={{
-                              backgroundColor: isSelected ? busInfo.color : 'transparent',
-                              borderColor: isSelected ? busInfo.color : 'var(--border-default)',
-                            }}
+                    <div className="max-h-48 overflow-y-auto overscroll-contain">
+                      {node.busLines.map(l => {
+                        const busInfo = getBusTypeByOdsay(l.busType, l.routeName);
+                        const isSelected = draftBusNumbers.includes(l.routeName);
+                        return (
+                          <button
+                            key={l.routeName}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() => handleToggleDraftBus(l.routeName)}
+                            className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
+                              isSelected ? 'bg-surface-info-soft' : 'hover:bg-surface-input'
+                            }`}
                           >
-                            {isSelected && (
-                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                                <path d="M2 5l2.5 2.5 3.5-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            )}
-                          </div>
-                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: busInfo.color }} />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-label font-medium text-text-primary">{l.routeName}번</span>
-                              <span className="text-caption text-text-tertiary">{busInfo.label}버스</span>
+                            {/* 체크 표시 영역 */}
+                            <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border"
+                              style={{
+                                backgroundColor: isSelected ? busInfo.color : 'transparent',
+                                borderColor: isSelected ? busInfo.color : 'var(--border-default)',
+                              }}
+                            >
+                              {isSelected && (
+                                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                                  <path d="M2 5l2.5 2.5 3.5-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
                             </div>
-                            {(l.startStation || l.endStation) && (
-                              <div className="text-caption text-text-tertiary truncate">
-                                {l.startStation}{l.startStation && l.endStation ? ' ~ ' : ''}{l.endStation}
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: busInfo.color }} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-label font-medium text-text-primary">{l.routeName}번</span>
+                                <span className="text-caption text-text-tertiary">{busInfo.label}버스</span>
                               </div>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
+                              {(l.startStation || l.endStation) && (
+                                <div className="text-caption text-text-tertiary truncate">
+                                  {l.startStation}{l.startStation && l.endStation ? ' ~ ' : ''}{l.endStation}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                     {/* 확인 / 취소 버튼 */}
                     <div className="flex border-t border-border-subtle">
                       <button
+                        type="button"
                         onClick={handleCancelDropdown}
-                        className="flex-1 px-3 py-2 text-caption text-text-tertiary hover:bg-surface-input transition-colors border-r border-border-subtle"
+                        className="min-h-11 flex-1 px-3 text-caption text-text-secondary hover:bg-surface-input transition-colors border-r border-border-subtle"
                       >
                         취소
                       </button>
                       <button
+                        type="button"
                         onClick={handleConfirmDropdown}
-                        className="flex-1 px-3 py-2 text-caption font-medium text-text-primary hover:bg-surface-input transition-colors"
+                        className="min-h-11 flex-1 px-3 text-caption font-medium text-text-primary hover:bg-surface-input transition-colors"
                       >
                         확인
                       </button>

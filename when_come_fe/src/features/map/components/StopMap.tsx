@@ -9,6 +9,15 @@ import type { MapCoordinates, StopSummary } from '../types/map';
 const DEFAULT_CENTER: MapCoordinates = { lat: 37.5666, lng: 126.9784 };
 type MapFailure = MapsLoadErrorReason | 'adapter';
 
+export function mapResultDetails(stop: StopSummary, itemLabel: '정류장' | '장소'): string {
+  const details = itemLabel === '정류장'
+    ? [stop.type === 'subway' ? stop.laneName || '지하철' : `버스 · ${stop.arsId || '정류장 번호 없음'}`]
+    : [];
+  if (stop.directionLabel) details.push(stop.directionLabel);
+  if (!isMappableStop(stop)) details.push('위치 정보 없음');
+  return details.join(' · ');
+}
+
 interface StopMapProps {
   stops: readonly StopSummary[];
   selectedStopKey: string | null;
@@ -16,6 +25,8 @@ interface StopMapProps {
   enabled?: boolean;
   showList?: boolean;
   itemLabel?: '정류장' | '장소';
+  listLabel?: string;
+  expanded?: boolean;
   initialCenter?: MapCoordinates;
   /** Change for a new discovery request; omitted uses identity/coordinate content. */
   resultsKey?: string;
@@ -27,11 +38,10 @@ interface StopMapProps {
 export function StopMap({
   stops, selectedStopKey, onSelect,
   enabled = import.meta.env.VITE_ENABLE_STOP_MAP === 'true',
-  showList = true, itemLabel = '정류장',
+  showList = true, itemLabel = '정류장', listLabel = `지도 ${itemLabel} 목록`, expanded = false,
   initialCenter = DEFAULT_CENTER, resultsKey = undefined, adapter = undefined,
 }: StopMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const rowsRef = useRef(new Map<string, HTMLButtonElement>());
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   const lastFitRef = useRef<{ view: StopMapView; key: string }>();
@@ -124,7 +134,6 @@ export function StopMap({
         if (keys.length > 1) setOverlapKeys(keys);
         else if (keys[0]) {
           setOverlapKeys([]);
-          rowsRef.current.get(keys[0])?.scrollIntoView?.({ block: 'nearest' });
           onSelectRef.current(keys[0]);
         }
       });
@@ -166,11 +175,11 @@ export function StopMap({
   const overlappingStops = validStops.filter(stop => overlapKeys.includes(stopKey(stop)));
 
   return (
-    <section aria-label={`${itemLabel} 지도와 목록`} className="space-y-3">
-      {enabled && <div ref={containerRef} hidden={failure !== null} role="region" aria-label={`${itemLabel} 위치 지도`} className="h-72 w-full rounded-card border border-border-subtle bg-surface-muted" />}
+    <section aria-label={`${itemLabel} 지도와 목록`} className={expanded ? 'flex h-full flex-col gap-3' : 'space-y-3'}>
+      {enabled && <div ref={containerRef} hidden={failure !== null} role="region" aria-label={`${itemLabel} 위치 지도`} className={`${expanded ? 'min-h-48 flex-1' : 'h-72'} w-full rounded-card border border-border-subtle bg-surface-muted`} />}
       {enabled && !failure && !view && <p role="status" className="text-body text-text-secondary">지도를 불러오는 중이에요.</p>}
       {enabled && failure && <div role="status" {...(import.meta.env.DEV && { 'data-map-failure': failure })} className="rounded-card border border-border-subtle bg-surface-card p-4">
-        <p className="text-body text-text-secondary">지도를 불러오지 못했어요. 목록에서 {itemLabel}을 선택할 수 있어요.</p>
+        <p className="text-body text-text-secondary">지도를 불러오지 못했어요. 목록에서 선택할 수 있어요.</p>
         <button type="button" onClick={handleRetry} className="min-h-12 rounded-control px-4 text-button text-text-primary">지도 다시 시도</button>
       </div>}
       {overlappingStops.length > 1 && <div className="rounded-card border border-border-default bg-surface-card p-4">
@@ -181,15 +190,15 @@ export function StopMap({
           </li>)}
         </ul>
       </div>}
-      {showList && <ul aria-label={`지도 ${itemLabel} 목록`} className="space-y-3">
+      {showList && <ul aria-label={listLabel} className="space-y-3">
         {stops.map(stop => {
           const key = stopKey(stop);
           const selected = key === selectedStopKey;
           return <li key={key}>
-            <button ref={node => { if (node) rowsRef.current.set(key, node); else rowsRef.current.delete(key); }} type="button" aria-pressed={selected}
+            <button type="button" aria-pressed={selected}
               onClick={() => handleSelect(key)} className="min-h-12 w-full rounded-control border border-border-default bg-surface-card p-4 text-left text-body text-text-primary">
               <span className="block text-card-title">{stop.name}{selected && ' · 선택됨'}</span>
-              <span className="block text-label text-text-secondary">{stop.type === 'subway' ? stop.laneName || '지하철' : `버스 · ${stop.arsId || '정류장 번호 없음'}`}{stop.directionLabel ? ` · ${stop.directionLabel}` : ''}{!isMappableStop(stop) && ' · 위치 정보 없음'}</span>
+              <span className="block break-words text-label text-text-secondary">{mapResultDetails(stop, itemLabel)}</span>
             </button>
           </li>;
         })}
