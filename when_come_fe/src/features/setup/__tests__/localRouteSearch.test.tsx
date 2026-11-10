@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -5,6 +6,7 @@ import { delay, http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
+import type { ApiPlace } from '@/types/api';
 
 const API = 'http://127.0.0.1:55421/functions/v1';
 const MISSING_ID = 'NAVER_SEARCH_CLIENT_ID not configured';
@@ -41,8 +43,8 @@ describe('운영 장소 선택', () => {
     await user.type(screen.getByRole('searchbox', { name: '출발지' }), '테스트');
     const option = await screen.findByRole('button', { name: /테스트 장소/ });
     if (flag === 'true') {
-      await screen.findByRole('button', { name: '지도 다시 시도' });
-      expect(screen.getByRole('status')).not.toHaveAttribute('data-map-failure');
+      const retry = await screen.findByRole('button', { name: '지도 다시 시도' });
+      expect(retry.closest('[role="status"]')).not.toHaveAttribute('data-map-failure');
     } else {
       expect(screen.queryByRole('region', { name: '장소 위치 지도' })).toBeNull();
       expect(screen.queryByRole('button', { name: '지도 다시 시도' })).toBeNull();
@@ -51,6 +53,70 @@ describe('운영 장소 선택', () => {
     await user.click(option);
     await user.click(screen.getByRole('button', { name: '출발지로 선택' }));
     expect(onChange).toHaveBeenLastCalledWith(place);
+  });
+
+  it('장소 후보를 고르면 목록을 접고 재조회 없이 복원하며 확정한 장소를 변경할 수 있다', async () => {
+    const placeSearch = vi.fn();
+    const places = Array.from({ length: 8 }, (_, index) => ({ name: `테스트 장소 ${index + 1}`, address: '테스트 주소', x: '126.8', y: '37.4' }));
+    server.use(http.get(`${API}/place-search`, () => {
+      placeSearch();
+      return HttpResponse.json(places);
+    }));
+    const { default: PlacePicker } = await import('../components/PlacePicker');
+    function ControlledPlacePicker() {
+      const [value, setValue] = useState<ApiPlace | null>(null);
+      return <PlacePicker label="출발지" placeholder="장소·주소 검색" value={value} onChange={setValue} />;
+    }
+    const user = userEvent.setup();
+    render(<ControlledPlacePicker />);
+    const input = screen.getByRole('searchbox', { name: '출발지' });
+    await user.type(input, '테스트');
+    const lastCandidate = await screen.findByRole('button', { name: /테스트 장소 8/ });
+
+    await user.click(lastCandidate);
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    const confirm = screen.getByRole('button', { name: '출발지로 선택' });
+    expect(confirm).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: '검색 결과 다시 보기' }));
+    await user.click(screen.getByRole('button', { name: /테스트 장소 8/ }));
+    await user.click(screen.getByRole('button', { name: '출발지로 선택' }));
+    expect(input).toHaveValue('테스트 장소 8');
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(placeSearch).toHaveBeenCalledOnce();
+
+    const change = screen.getByRole('button', { name: '출발지 변경' });
+    expect(change).toHaveFocus();
+    await user.click(change);
+    expect(input).toHaveValue('');
+    expect(input).toHaveFocus();
+    expect(placeSearch).toHaveBeenCalledOnce();
+  });
+});
+
+describe('수동 정류장 선택', () => {
+  it('후보를 확인하면 기존 선택 데이터로 완료하고 검색 목록을 접는다', async () => {
+    const stopSearch = vi.fn();
+    server.use(http.get(`${API}/search-stops`, () => {
+      stopSearch();
+      return HttpResponse.json([ORIGIN, DESTINATION]);
+    }));
+    const { default: UnifiedStopPicker } = await import('@/features/stop-picker/UnifiedStopPicker');
+    const onComplete = vi.fn();
+    const user = userEvent.setup();
+    render(<UnifiedStopPicker onComplete={onComplete} />);
+    const input = screen.getByRole('searchbox', { name: '정류장/역 검색' });
+    await user.type(input, '역');
+    const list = await screen.findByRole('list', { name: '지도 정류장 목록' });
+    await user.click(within(list).getByRole('button', { name: /뚝섬/ }));
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    const confirm = screen.getByRole('button', { name: '이 정류장 선택' });
+    expect(confirm).toHaveFocus();
+    await user.click(confirm);
+
+    expect(onComplete).toHaveBeenCalledWith({ type: 'subway', stop: { ...DESTINATION, arsId: null, subwayCode: null }, direction: { updn: null, nextStop: null } });
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(input).toHaveValue('');
+    expect(stopSearch).toHaveBeenCalledOnce();
   });
 });
 
@@ -81,7 +147,7 @@ describe('로컬 자동 경로 등록', () => {
     </QueryClientProvider>);
 
     await user.type(screen.getByRole('searchbox', { name: '출발지' }), '개봉역');
-    const origins = within(screen.getByRole('list', { name: '출발지 검색 결과' }));
+    const origins = within(await screen.findByRole('list', { name: '출발지 검색 결과' }));
     const origin = await origins.findByRole('button', { name: /개봉.*지하철역.*수도권 1호선.*역 ID 101/ });
     expect(screen.getByText('장소·주소 검색을 사용할 수 없어 역·정류장 검색 결과를 표시해요.')).toBeInTheDocument();
     expect(origins.getByRole('button', { name: /개봉.*수도권 2호선.*역 ID 102/ })).toBeInTheDocument();
